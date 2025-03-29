@@ -1,7 +1,9 @@
 import os
+import asyncio
 from discord.ext import commands
 from dotenv import load_dotenv
-import asyncio
+from apps.scheduler import setup_scheduler
+
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -18,5 +20,7 @@ async def main():
         await bot.start(TOKEN)
 
 asyncio.run(main())
+
+setup_scheduler(bot)
 
 bot.run(TOKEN)
