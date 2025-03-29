@@ -44,3 +44,7 @@ def get_votes_for_option(dag, tijd):
 def get_user_votes(user_id):
     votes = load_votes()
     return votes.get(str(user_id), {"vrijdag": [], "zaterdag": [], "zondag": []})
+
+def reset_votes():
+    with open(VOTES_FILE, 'w', encoding='utf-8') as f:
+        json.dump({}, f)
