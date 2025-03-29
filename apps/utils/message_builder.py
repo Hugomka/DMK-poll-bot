@@ -17,11 +17,13 @@ def build_poll_message():
             else:
                 doorgaat = "19:00"
 
-        message += f"{dag.capitalize()}:\n"
+        message += f"📅 {dag.capitalize()}:\n"
         for tijd in tijden:
             count = get_votes_for_option(dag, tijd)
             markering = " → Gaat door!" if tijd == doorgaat else ""
-            message += f"- {tijd} uur ({count} stemmen){markering}\n"
+            if (tijd == "19:00"):
+                message += f"🕖 19:00 uur ({count} stemmen){markering}\n"
+            else:
+                message += f"🕤 20:30 uur ({count} stemmen){markering}\n"
         message += "\n"
-
     return message

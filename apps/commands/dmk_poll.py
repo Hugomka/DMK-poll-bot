@@ -1,10 +1,9 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from apps.utils.poll_message import save_message_id, get_message_id, clear_message_id
+from apps.utils.poll_message import save_message_id, get_message_id, clear_message_id, update_poll_message
 from apps.utils.poll_storage import add_vote, remove_vote
 from apps.utils.message_builder import build_poll_message
-from apps.utils.poll_message import update_poll_message
 from apps.utils.poll_storage import save_votes, load_votes, reset_votes
 
 
@@ -59,21 +58,15 @@ class DMKPoll(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         try:
-            reset_votes()
-            clear_message_id(channel.id)
-
-            # Verwijder oud bericht als dat er is
-            old_message_id = get_message_id(channel.id)
-            if old_message_id:
-                old_msg = await channel.fetch_message(old_message_id)
-                await old_msg.delete()
-
-            # Plaats nieuw bericht
-            content = build_poll_message()
-            message = await channel.send(content)
-            save_message_id(channel.id, message.id)
-
-            await interaction.followup.send("🔄 Poll is volledig gereset voor een nieuwe week.")
+            message_id = get_message_id(channel.id)
+            if message_id:
+                message = await channel.fetch_message(message_id)
+                reset_votes()
+                new_content = build_poll_message()
+                await message.edit(content=new_content)
+                await interaction.followup.send("🔄 Poll is succesvol gereset voor een nieuwe week.")
+            else:
+                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden om te resetten.")
         except Exception as e:
             await interaction.followup.send(f"❌ Reset is mislukt: {e}")
     
@@ -84,33 +77,23 @@ class DMKPoll(commands.Cog):
     )
     async def stem(self, interaction: discord.Interaction, dag: str, tijd: str):
         try:
-            print("✅ Commando /dmk-poll stem ontvangen")
-            print(f"📅 dag = {dag}, ⏰ tijd = {tijd}")
             user_id = str(interaction.user.id)
-            print(f"👤 gebruiker = {user_id}")
-
             votes = load_votes()
             votes.setdefault(user_id, {"vrijdag": [], "zaterdag": [], "zondag": []})
 
             if tijd not in votes[user_id][dag]:
                 votes[user_id][dag].append(tijd)
-                print("📝 Tijd toegevoegd:", tijd)
-            else:
-                print("ℹ️ Tijd stond er al in")
 
             save_votes(votes)
-            print("💾 Stem succesvol opgeslagen")
 
             await interaction.response.send_message(
                 f"✅ Je stem voor **{dag} {tijd} uur** is geregistreerd.",
                 ephemeral=True
             )
-            print("📤 Antwoord verzonden")
             await update_poll_message(interaction.channel)
 
             
         except Exception as e:
-            print("❌ Fout tijdens stemverwerking:", e)
             try:
                 await interaction.response.send_message(
                     "⚠️ Er is iets misgegaan bij het verwerken van je stem.",

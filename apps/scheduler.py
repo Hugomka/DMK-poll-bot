@@ -1,11 +1,8 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
 import pytz
-from apps.utils.message_builder import update_poll_message
-from apps.utils.poll_storage import save_votes
-from apps.utils.poll_message import get_message_id
-from apps.utils.poll_storage import load_votes
+from apps.utils.poll_storage import save_votes, load_votes
+from apps.utils.poll_message import get_message_id, update_poll_message, clear_message_id
 
 scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Amsterdam"))
 
@@ -56,6 +53,7 @@ async def reset_polls(bot):
             message_id = get_message_id(channel.id)
             if message_id:
                 try:
+                    clear_message_id(message_id)
                     await channel.send("🔄 Nieuwe week! Stem opnieuw via `/dmk-poll stem`")
                 except:
                     pass
