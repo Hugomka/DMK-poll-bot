@@ -1,3 +1,5 @@
+import discord
+import pytz
 from discord import app_commands
 from discord.ext import commands
 from apps.utils.poll_storage import get_votes_for_option
@@ -5,7 +7,6 @@ from apps.utils.poll_message import save_message_id, get_message_id
 from apps.utils.poll_storage import add_vote, remove_vote
 from apps.utils.message_builder import build_poll_message, update_poll_message
 from datetime import datetime
-import pytz
 
 
 class DMKPoll(commands.Cog):
