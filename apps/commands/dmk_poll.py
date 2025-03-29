@@ -3,10 +3,10 @@ import pytz
 from discord import app_commands
 from discord.ext import commands
 from apps.utils.poll_storage import get_votes_for_option
-from apps.utils.poll_message import save_message_id, get_message_id, update_poll_message
+from apps.utils.poll_message import save_message_id, get_message_id, clear_message_id
 from apps.utils.poll_storage import add_vote, remove_vote
 from apps.utils.message_builder import build_poll_message, update_poll_message
-from apps.utils.poll_storage import save_votes, load_votes
+from apps.utils.poll_storage import save_votes, load_votes, reset_votes
 from datetime import datetime
 
 
@@ -17,7 +17,7 @@ class DMKPoll(commands.Cog):
     @app_commands.command(name="dmk-poll-on", description="Post of update de DMK poll")
     @app_commands.checks.has_permissions(administrator=True)
     async def on(self, interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         content = build_poll_message()
         message_id = get_message_id(channel.id)
@@ -40,7 +40,7 @@ class DMKPoll(commands.Cog):
     @app_commands.command(name="dmk-poll-stop", description="Verwijder de poll uit dit kanaal")
     @app_commands.checks.has_permissions(administrator=True)
     async def stop(self, interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
 
         try:
@@ -58,7 +58,7 @@ class DMKPoll(commands.Cog):
     @app_commands.command(name="dmk-poll-reset", description="Reset de poll naar nieuwe week.")
     @app_commands.checks.has_permissions(administrator=True)
     async def reset(self, interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         try:
             reset_votes()

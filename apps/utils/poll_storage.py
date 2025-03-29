@@ -1,16 +1,16 @@
 import json
 import os
 
-VOTE_FILE = "votes.json"
+VOTES_FILE = "votes.json"
 
 def load_votes():
-    if not os.path.exists(VOTE_FILE):
+    if not os.path.exists(VOTES_FILE):
         return {}
-    with open(VOTE_FILE, "r", encoding="utf-8") as f:
+    with open(VOTES_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_votes(data):
-    with open(VOTE_FILE, "w", encoding="utf-8") as f:
+    with open(VOTES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 def add_vote(user_id, dag, tijd):
