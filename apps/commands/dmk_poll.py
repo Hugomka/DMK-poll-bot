@@ -1,10 +1,11 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+from apps.entities.poll_option import POLL_OPTIONS
 from apps.utils.poll_message import save_message_id, get_message_id, clear_message_id, update_poll_message
-from apps.utils.poll_storage import add_vote, remove_vote
+from apps.utils.poll_storage import remove_vote
 from apps.utils.message_builder import build_poll_message
-from apps.utils.poll_storage import save_votes, load_votes, reset_votes
+from apps.utils.poll_storage import reset_votes
 from apps.ui.poll_buttons import PollButtonView
 
 
@@ -19,21 +20,24 @@ class DMKPoll(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         content = build_poll_message()
+        view = PollButtonView(str(interaction.user.id))
+
+        # Bekijk of je wilt editen of nieuw bericht
         message_id = get_message_id(channel.id)
 
         try:
             if message_id:
                 # Probeer het bestaande bericht te bewerken
                 message = await channel.fetch_message(message_id)
-                await message.edit(content=content)
+                await message.edit(content=content, view=view)
             else:
                 # Geen bestaand bericht: maak een nieuwe
-                message = await channel.send(content=content, view=PollButtonView())
+                message = await channel.send(content=content, view=view)
                 save_message_id(channel.id, message.id)
 
-            await interaction.followup.send("✅ Poll is geplaatst of bijgewerkt.")
+            await interaction.followup.send("✅ Poll is geplaatst of bijgewerkt.", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ Er is een fout opgetreden: {e}")
+            await interaction.followup.send(f"❌ Er is iets fout gegaan: {e}", ephemeral=True)
 
 
     @app_commands.command(name="dmk-poll-stop", description="Verwijder de poll uit dit kanaal")
@@ -81,14 +85,14 @@ class DMKPoll(commands.Cog):
         user_id = interaction.user.id
         dag = dag.lower()
         tijd = tijd.strip()
-
-        if dag not in ["vrijdag", "zaterdag", "zondag"] or tijd not in ["19:00", "20:30"]:
+        geldige_combies = {(opt.dag, opt.tijd) for opt in POLL_OPTIONS if opt.dag in ["vrijdag", "zaterdag", "zondag"]}
+        if (dag, tijd) not in geldige_combies:
             await interaction.response.send_message("❌ Ongeldige dag of tijd.", ephemeral=True)
             return
 
         remove_vote(user_id, dag, tijd)
         await update_poll_message(interaction.channel)
-        await interaction.response.send_message(f"🗑️ Je stem voor {dag} {tijd} uur is verwijderd.", ephemeral=True)
+        await interaction.response.send_message(f"🗑️ Je stem voor {dag} {tijd} is verwijderd.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(DMKPoll(bot))

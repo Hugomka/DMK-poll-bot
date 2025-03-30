@@ -2,25 +2,29 @@ from discord.ui import View, Button
 from discord import Interaction, ButtonStyle
 from apps.utils.poll_storage import add_vote
 from apps.utils.poll_message import update_poll_message
+from apps.utils.poll_storage import get_user_votes
+from apps.entities.poll_option import POLL_OPTIONS
+from discord import ButtonStyle
+
 
 class PollButtonView(View):
-    def __init__(self):
-        super().__init__(timeout=None)  # timeout=None = blijft altijd actief
+    def __init__(self, user_id=""):
+        super().__init__(timeout=None)
+        votes = get_user_votes(user_id) if user_id else {}
+        for option in POLL_OPTIONS:
+            is_selected = False
 
-        dagen = ["vrijdag", "zaterdag", "zondag"]
-        tijden = ["19:00", "20:30"]
+            if option.dag in ["misschien", "niet_meedoen"]:
+                is_selected = votes.get(option.dag) is True
+            else:
+                is_selected = option.tijd in votes.get(option.dag, [])
 
-        for dag in dagen:
-            for tijd in tijden:
-                label = f"{dag.capitalize()} {tijd}"
-                self.add_item(PollButton(dag, tijd, label))
-
-        self.add_item(PollButton("misschien", "misschien", "Ⓜ️ Misschien", style=ButtonStyle.secondary))
-        self.add_item(PollButton("niet", "niet", "❌ Niet meedoen", style=ButtonStyle.danger))
+            stijl = ButtonStyle.success if is_selected else option.stijl
+            self.add_item(PollButton(option.dag, option.tijd, option.label, stijl))
 
 class PollButton(Button):
-    def __init__(self, dag, tijd, label, style=ButtonStyle.primary):
-        super().__init__(label=label, style=style, custom_id=f"{dag}:{tijd}")
+    def __init__(self, dag, tijd, label, stijl):
+        super().__init__(label=label, style=stijl, custom_id=f"{dag}:{tijd}")
         self.dag = dag
         self.tijd = tijd
 
@@ -31,7 +35,6 @@ class PollButton(Button):
 
             add_vote(user_id, self.dag, self.tijd)
             await update_poll_message(interaction.channel)
-            await interaction.followup.send(f"✅ Je hebt gestemd op **{self.label}**", ephemeral=True)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)

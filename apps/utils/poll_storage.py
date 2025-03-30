@@ -1,5 +1,6 @@
 import json
 import os
+from apps.entities.poll_option import POLL_OPTIONS
 
 VOTES_FILE = "votes.json"
 
@@ -13,12 +14,21 @@ def save_votes(data):
     with open(VOTES_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-def add_vote(user_id, dag, tijd):
+def get_user_votes(user_id):
     votes = load_votes()
+    unieke_dagen = {opt.dag for opt in POLL_OPTIONS}
+    return votes.get(str(user_id), {dag: [] for dag in unieke_dagen})
+
+def add_vote(user_id, dag, tijd):
     user_id = str(user_id)
+    votes = load_votes()
+
+    if not is_valid_option(dag, tijd):
+        print(f"⚠️ Ongeldige combinatie in add_vote: {dag}, {tijd}")
+        return
 
     if user_id not in votes:
-        votes[user_id] = {"vrijdag": [], "zaterdag": [], "zondag": [], "misschien": [], "niet": []}
+        votes[user_id] = {opt.dag: [] for opt in POLL_OPTIONS}
 
     if tijd not in votes[user_id].get(dag, []):
         votes[user_id][dag].append(tijd)
@@ -26,25 +36,32 @@ def add_vote(user_id, dag, tijd):
     save_votes(votes)
 
 def remove_vote(user_id, dag, tijd):
-    votes = load_votes()
     user_id = str(user_id)
+    votes = load_votes()
+
+    if not is_valid_option(dag, tijd):
+        print(f"⚠️ Ongeldige combinatie in remove_vote: {dag}, {tijd}")
+        return
 
     if user_id in votes and tijd in votes[user_id].get(dag, []):
         votes[user_id][dag].remove(tijd)
         save_votes(votes)
 
 def get_votes_for_option(dag, tijd):
+    if not is_valid_option(dag, tijd):
+        print(f"⚠️ Ongeldige combinatie in get_votes_for_option: {dag}, {tijd}")
+        return 0
+
     votes = load_votes()
     count = 0
-    for user_data in votes.values():
-        if tijd in user_data.get(dag, []):
+    for v in votes.values():
+        tijden = v.get(dag)
+        if isinstance(tijden, list) and tijd in tijden:
             count += 1
     return count
 
-def get_user_votes(user_id):
-    votes = load_votes()
-    return votes.get(str(user_id), {"vrijdag": [], "zaterdag": [], "zondag": [], "misschien": [], "niet": []})
-
 def reset_votes():
-    with open(VOTES_FILE, 'w', encoding='utf-8') as f:
-        json.dump({}, f)
+    save_votes({})
+
+def is_valid_option(dag, tijd):
+    return any(opt.dag == dag and opt.tijd == tijd for opt in POLL_OPTIONS)
