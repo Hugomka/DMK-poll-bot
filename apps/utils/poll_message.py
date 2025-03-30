@@ -1,8 +1,7 @@
 import json
 import os
 import discord
-from datetime import datetime, timezone
-from .message_builder import build_poll_message
+from apps.utils.message_builder import build_poll_message
 
 POLL_MESSAGE_FILE = "poll_message.json"
 
@@ -42,14 +41,16 @@ def clear_message_id(channel_id):
     with open(POLL_MESSAGE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f)
 
-async def update_poll_message(channel):
+async def update_poll_message(channel, user_id=None):
     message_id = get_message_id(channel.id)
     if message_id:
         try:
+            from apps.ui.poll_buttons import PollButtonView
             message = await channel.fetch_message(message_id)
-            await message.edit(content=build_poll_message())
+            content = build_poll_message()
+            view = PollButtonView(user_id) if user_id else None
+            await message.edit(content=content, view=view)
         except discord.NotFound:
-            print(f"⚠️ Pollbericht niet gevonden voor channel {channel.id}, ID {message_id}. Verwijder ID.")
             clear_message_id(channel.id)
         except Exception as e:
             print(f"❌ Fout bij updaten van pollbericht: {e}")

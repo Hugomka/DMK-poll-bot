@@ -16,6 +16,6 @@ POLL_OPTIONS = [
     PollOption("zaterdag_2030", "zaterdag", "om 20:30 uur", "⚪"),
     PollOption("zondag_1900", "zondag", "om 19:00 uur", "🟢"),
     PollOption("zondag_2030", "zondag", "om 20:30 uur", "🔵"),
-    PollOption("misschien", "misschien", "", "Ⓜ️"),
+    PollOption("misschien_", "misschien", "", "Ⓜ️"),
     PollOption("niet_meedoen", "niet meedoen", "", "❌"),
 ]

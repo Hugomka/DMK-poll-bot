@@ -92,7 +92,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag):
             if mentions:
                 try:
                     await channel.send(
-                        f"📢 DMK op **{dag} om {winnaar} uur** gaat door!\n"
+                        f"📢 DMK op **{dag} {winnaar}** gaat door!\n"
                         f"{' '.join(mentions)}"
                     )
                 except Exception as e:

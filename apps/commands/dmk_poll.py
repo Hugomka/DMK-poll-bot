@@ -52,11 +52,11 @@ class DMKPoll(commands.Cog):
                 message = await channel.fetch_message(message_id)
                 await message.delete()
                 clear_message_id(channel.id)
-                await interaction.followup.send("🛑 De poll is gestopt en verwijderd.")
+                await interaction.followup.send("🛑 De poll is gestopt en verwijderd.", ephemeral=True)
             else:
-                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden.")
+                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden.", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ Fout bij het stoppen van de poll: {e}")
+            await interaction.followup.send(f"❌ Fout bij het stoppen van de poll: {e}", ephemeral=True)
 
     @app_commands.command(name="dmk-poll-reset", description="Reset de poll naar nieuwe week.")
     @app_commands.checks.has_permissions(administrator=True)
@@ -70,11 +70,11 @@ class DMKPoll(commands.Cog):
                 reset_votes()
                 new_content = build_poll_message()
                 await message.edit(content=new_content)
-                await interaction.followup.send("🔄 Poll is succesvol gereset voor een nieuwe week.")
+                await interaction.followup.send("🔄 Poll is succesvol gereset voor een nieuwe week.", ephemeral=True)
             else:
-                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden om te resetten.")
+                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden om te resetten.", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ Reset is mislukt: {e}")
+            await interaction.followup.send(f"❌ Reset is mislukt: {e}", ephemeral=True)
 
     @app_commands.command(name="dmk-poll-verwijder", description="Verwijder je stem op een dag en tijd")
     @app_commands.describe(

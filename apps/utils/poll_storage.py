@@ -35,6 +35,24 @@ def add_vote(user_id, dag, tijd):
 
     save_votes(votes)
 
+def toggle_vote(user_id, dag, tijd):
+    user_id = str(user_id)
+    votes = load_votes()
+
+    if not is_valid_option(dag, tijd):
+        print(f"⚠️ Ongeldige combinatie in toggle_vote: {dag}, {tijd}")
+        return
+
+    if user_id not in votes:
+        votes[user_id] = {opt.dag: [] for opt in POLL_OPTIONS}
+
+    if tijd in votes[user_id].get(dag, []):
+        votes[user_id][dag].remove(tijd)
+    else:
+        votes[user_id][dag].append(tijd)
+
+    save_votes(votes)
+
 def remove_vote(user_id, dag, tijd):
     user_id = str(user_id)
     votes = load_votes()
