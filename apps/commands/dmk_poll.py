@@ -8,8 +8,6 @@ from apps.utils.message_builder import build_poll_message
 from apps.utils.poll_storage import reset_votes
 from apps.ui.poll_buttons import PollButtonView
 
-
-
 class DMKPoll(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -39,25 +37,6 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Er is iets fout gegaan: {e}", ephemeral=True)
 
-
-    @app_commands.command(name="dmk-poll-stop", description="Verwijder de poll uit dit kanaal")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def stop(self, interaction):
-        await interaction.response.defer(ephemeral=True)
-        channel = interaction.channel
-
-        try:
-            message_id = get_message_id(channel.id)
-            if message_id:
-                message = await channel.fetch_message(message_id)
-                await message.delete()
-                clear_message_id(channel.id)
-                await interaction.followup.send("🛑 De poll is gestopt en verwijderd.", ephemeral=True)
-            else:
-                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden.", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Fout bij het stoppen van de poll: {e}", ephemeral=True)
-
     @app_commands.command(name="dmk-poll-reset", description="Reset de poll naar nieuwe week.")
     @app_commands.checks.has_permissions(administrator=True)
     async def reset(self, interaction):
@@ -76,23 +55,55 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Reset is mislukt: {e}", ephemeral=True)
 
-    @app_commands.command(name="dmk-poll-verwijder", description="Verwijder je stem op een dag en tijd")
-    @app_commands.describe(
-        dag="Dag waarvan je je stem wilt verwijderen",
-        tijd="Tijd die je wilt verwijderen"
-    )
-    async def verwijder(self, interaction: discord.Interaction, dag: str, tijd: str):
-        user_id = interaction.user.id
-        dag = dag.lower()
-        tijd = tijd.strip()
-        geldige_combies = {(opt.dag, opt.tijd) for opt in POLL_OPTIONS if opt.dag in ["vrijdag", "zaterdag", "zondag"]}
-        if (dag, tijd) not in geldige_combies:
-            await interaction.response.send_message("❌ Ongeldige dag of tijd.", ephemeral=True)
+    @app_commands.command(name="dmk-poll-pauze", description="Pauzeer of hervat de pollknoppen")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def pauze(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel = interaction.channel
+            message_id = get_message_id(channel.id)
+            if not message_id:
+                await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden.", ephemeral=True)
+                return
+            message = await channel.fetch_message(message_id)
+            nieuwe_status = not all(button.disabled for row in message.components for button in row.children)
+            nieuwe_view = PollButtonView()
+            for child in nieuwe_view.children:
+                child.disabled = nieuwe_status
+            new_content = build_poll_message(pauze=nieuwe_status)
+            await message.edit(content=new_content, view=nieuwe_view)
+            tekst = "gepauzeerd" if nieuwe_status else "hervat"
+            await interaction.followup.send(f"⏯️ De poll is {tekst}.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Fout tijdens pauzeren/hervatten: {e}", ephemeral=True)
+
+
+    @app_commands.command(name="dmk-poll-verwijderen", description="Verwijder het pollbericht uit het kanaal en uit het systeem.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def verwijderbericht(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        message_id = get_message_id(channel.id)
+
+        if not message_id:
+            await interaction.followup.send("⚠️ Geen pollbericht gevonden om te verwijderen.", ephemeral=True)
             return
 
-        remove_vote(user_id, dag, tijd)
-        await update_poll_message(interaction.channel)
-        await interaction.response.send_message(f"🗑️ Je stem voor {dag} {tijd} is verwijderd.", ephemeral=True)
+        try:
+            message = await channel.fetch_message(message_id)
+
+            # Verwijder view/knoppen en vervang door afsluittekst
+            afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
+            await message.edit(content=afsluit_tekst, view=None)
+
+            # Verwijder message ID uit JSON
+            clear_message_id(channel.id)
+            await interaction.followup.send("✅ De poll is verwijderd en afgesloten.", ephemeral=True)
+
+        except Exception as e:
+            print(f"❌ Fout bij verwijderen poll: {e}")
+            await interaction.followup.send(f"❌ Er is iets fout gegaan: {e}", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(DMKPoll(bot))

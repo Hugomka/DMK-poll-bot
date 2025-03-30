@@ -12,12 +12,7 @@ class PollButtonView(View):
 
         for option in POLL_OPTIONS:
             is_selected = False
-
-            if option.dag in ["misschien_", "niet_meedoen"]:
-                is_selected = votes.get(option.dag) is True
-            else:
-                is_selected = option.tijd in votes.get(option.dag, [])
-
+            is_selected = option.tijd in votes.get(option.dag, [])
             stijl = ButtonStyle.primary if is_selected else ButtonStyle.secondary
             self.add_item(PollButton(option.dag, option.tijd, option.label, stijl))
 
