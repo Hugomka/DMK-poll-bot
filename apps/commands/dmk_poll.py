@@ -5,6 +5,8 @@ from apps.utils.poll_message import save_message_id, get_message_id, clear_messa
 from apps.utils.poll_storage import add_vote, remove_vote
 from apps.utils.message_builder import build_poll_message
 from apps.utils.poll_storage import save_votes, load_votes, reset_votes
+from apps.ui.poll_buttons import PollButtonView
+
 
 
 class DMKPoll(commands.Cog):
@@ -26,7 +28,7 @@ class DMKPoll(commands.Cog):
                 await message.edit(content=content)
             else:
                 # Geen bestaand bericht: maak een nieuwe
-                message = await channel.send(content)
+                message = await channel.send(content=content, view=PollButtonView())
                 save_message_id(channel.id, message.id)
 
             await interaction.followup.send("✅ Poll is geplaatst of bijgewerkt.")
@@ -69,38 +71,6 @@ class DMKPoll(commands.Cog):
                 await interaction.followup.send("⚠️ Geen bestaand pollbericht gevonden om te resetten.")
         except Exception as e:
             await interaction.followup.send(f"❌ Reset is mislukt: {e}")
-    
-    @app_commands.command(name="dmk-poll-stem", description="Stem op een dag en tijd")
-    @app_commands.describe(
-        dag="Kies een dag: vrijdag, zaterdag of zondag",
-        tijd="Kies een tijd: 19:00 of 20:30"
-    )
-    async def stem(self, interaction: discord.Interaction, dag: str, tijd: str):
-        try:
-            user_id = str(interaction.user.id)
-            votes = load_votes()
-            votes.setdefault(user_id, {"vrijdag": [], "zaterdag": [], "zondag": []})
-
-            if tijd not in votes[user_id][dag]:
-                votes[user_id][dag].append(tijd)
-
-            save_votes(votes)
-
-            await interaction.response.send_message(
-                f"✅ Je stem voor **{dag} {tijd} uur** is geregistreerd.",
-                ephemeral=True
-            )
-            await update_poll_message(interaction.channel)
-
-            
-        except Exception as e:
-            try:
-                await interaction.response.send_message(
-                    "⚠️ Er is iets misgegaan bij het verwerken van je stem.",
-                    ephemeral=True
-                )
-            except Exception as inner_e:
-                print("❌ Kan geen response meer sturen:", inner_e)
 
     @app_commands.command(name="dmk-poll-verwijder", description="Verwijder je stem op een dag en tijd")
     @app_commands.describe(

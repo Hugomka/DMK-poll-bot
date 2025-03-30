@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from apps.ui.poll_buttons import PollButtonView
 import asyncio
 
 load_dotenv()
@@ -26,6 +27,7 @@ async def main():
     setup_scheduler(bot)
 
     await bot.load_extension("apps.commands.dmk_poll")
+    bot.add_view(PollButtonView()) 
     await bot.start(TOKEN)
 
 asyncio.run(main())

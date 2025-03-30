@@ -18,7 +18,7 @@ def add_vote(user_id, dag, tijd):
     user_id = str(user_id)
 
     if user_id not in votes:
-        votes[user_id] = {"vrijdag": [], "zaterdag": [], "zondag": []}
+        votes[user_id] = {"vrijdag": [], "zaterdag": [], "zondag": [], "misschien": [], "niet": []}
 
     if tijd not in votes[user_id].get(dag, []):
         votes[user_id][dag].append(tijd)
@@ -43,7 +43,7 @@ def get_votes_for_option(dag, tijd):
 
 def get_user_votes(user_id):
     votes = load_votes()
-    return votes.get(str(user_id), {"vrijdag": [], "zaterdag": [], "zondag": []})
+    return votes.get(str(user_id), {"vrijdag": [], "zaterdag": [], "zondag": [], "misschien": [], "niet": []})
 
 def reset_votes():
     with open(VOTES_FILE, 'w', encoding='utf-8') as f:

@@ -26,4 +26,8 @@ def build_poll_message():
             else:
                 message += f"🕤 20:30 uur ({count} stemmen){markering}\n"
         message += "\n"
+    message += f"\nⓂ️ Misschien ({get_votes_for_option("misschien", "misschien")} stemmen)"
+    message += f"\n❌ Niet meedoen ({get_votes_for_option("niet", "niet")} stemmen)"
+    message += f"\n "
+
     return message
