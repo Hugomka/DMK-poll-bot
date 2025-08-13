@@ -1,11 +1,11 @@
-# Environment & secrets
+# Omgevingsbestanden en geheime sleutels
 .env
 .env.*
 
-# Allow the example file to be committed
+# Zorg dat het voorbeeldbestand wél gecommit kan worden
 !.env.example
 
-# Python cache & build artifacts
+# Python cache‑ en buildbestanden
 __pycache__/
 *.py[cod]
 *.pyo
@@ -13,14 +13,18 @@ __pycache__/
 *.so
 .Python
 
-# Distribution / packaging
+# Distributie- / packagingbestanden
 build/
 dist/
 *.egg-info/
 
-# Logs
+# Logbestanden
 *.log
 
-# OS-specific cruft
+# Systeembestanden die je niet in Git wilt
 .DS_Store
 Thumbs.db
+
+# Runtime-bestanden die de bot aanmaakt en die niet mee in Git moeten
+votes.json
+poll_message.json
