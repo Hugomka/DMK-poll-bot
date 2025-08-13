@@ -3,6 +3,7 @@ import os
 from apps.entities.poll_option import POLL_OPTIONS
 
 VOTES_FILE = "votes.json"
+SPECIALS = {"misschien", "niet meedoen"}
 
 def load_votes():
     if not os.path.exists(VOTES_FILE):
@@ -35,23 +36,37 @@ def add_vote(user_id, dag, tijd):
 
     save_votes(votes)
 
-def toggle_vote(user_id, dag, tijd):
-    user_id = str(user_id)
+def toggle_vote(user_id: str, dag: str, tijd: str):
     votes = load_votes()
+    user = votes.setdefault(user_id, {})
+    day_votes = user.setdefault(dag, [])
 
+    # Validatie: bestaand optie?
     if not is_valid_option(dag, tijd):
-        print(f"⚠️ Ongeldige combinatie in toggle_vote: {dag}, {tijd}")
-        return
+        return day_votes  # negeer ongeldige input
 
-    if user_id not in votes:
-        votes[user_id] = {opt.dag: [] for opt in POLL_OPTIONS}
-
-    if tijd in votes[user_id].get(dag, []):
-        votes[user_id][dag].remove(tijd)
+    if tijd in SPECIALS:
+        # Klik op 'misschien' of 'niet meedoen'
+        if tijd in day_votes and all(v in SPECIALS for v in day_votes):
+            # stond al aan, en er stond geen tijd → zet uit
+            day_votes = [v for v in day_votes if v != tijd]
+        else:
+            # zet exclusief deze special aan → alle tijden en andere special uit
+            day_votes = [tijd]
     else:
-        votes[user_id][dag].append(tijd)
+        # Klik op een tijdoptie (bijv. 'om 19:00 uur' / 'om 20:30 uur')
+        # specials altijd uit bij tijdstem
+        day_votes = [v for v in day_votes if v not in SPECIALS]
+        if tijd in day_votes:
+            # toggle uit
+            day_votes = [v for v in day_votes if v != tijd]
+        else:
+            # toggle aan (meerdere tijden mogen)
+            day_votes.append(tijd)
 
+    user[dag] = day_votes
     save_votes(votes)
+    return day_votes
 
 def remove_vote(user_id, dag, tijd):
     user_id = str(user_id)
