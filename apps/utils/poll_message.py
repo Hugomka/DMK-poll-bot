@@ -1,58 +1,75 @@
 import json
 import os
 import discord
-from apps.utils.message_builder import build_poll_message
+from apps.utils.message_builder import build_poll_message_for_day
+from apps.entities.poll_option import POLL_OPTIONS
+from apps.utils.poll_storage import get_votes_for_option
 
 POLL_MESSAGE_FILE = "poll_message.json"
 
-def save_message_id(channel_id, message_id):
-    file_path = POLL_MESSAGE_FILE
-    data = {}
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
+def _load_data():
+    if os.path.exists(POLL_MESSAGE_FILE):
+        with open(POLL_MESSAGE_FILE, 'r', encoding='utf-8') as f:
             try:
-                data = json.load(f)
+                return json.load(f)
             except json.JSONDecodeError:
                 print("⚠️ Bestand is corrupt. Nieuw bestand wordt aangemaakt.")
-                data = {}
-    if "message_id_per_channel" not in data:
-        data["message_id_per_channel"] = {}
-    data["message_id_per_channel"][str(channel_id)] = message_id
-    with open(file_path, 'w', encoding='utf-8') as f:
+    return {}
+
+def _save_data(data):
+    with open(POLL_MESSAGE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
-def get_message_id(channel_id):
-    if os.path.exists(POLL_MESSAGE_FILE):
-        with open(POLL_MESSAGE_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data.get("message_id_per_channel", {}).get(str(channel_id))
-    return None
+def save_message_id(channel_id, dag, message_id):
+    """
+    Sla per kanaal en per dag het bericht‑ID op.
+    """
+    data = _load_data()
+    channel_str = str(channel_id)
+    data.setdefault("message_id_per_channel", {}).setdefault(channel_str, {})[dag] = message_id
+    _save_data(data)
 
-def clear_message_id(channel_id):
-    if os.path.exists(POLL_MESSAGE_FILE):
-        with open(POLL_MESSAGE_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    else:
-        data = {}
+def get_message_id(channel_id, dag):
+    """
+    Haal het bericht‑ID op voor een kanaal en een specifieke dag.
+    """
+    data = _load_data()
+    return (
+        data.get("message_id_per_channel", {})
+            .get(str(channel_id), {})
+            .get(dag)
+    )
 
-    data["message_id_per_channel"] = data.get("message_id_per_channel", {})
-    data["message_id_per_channel"].pop(str(channel_id), None)
+def clear_message_id(channel_id, dag=None):
+    """
+    Verwijder het bericht‑ID. Als 'dag' None is, worden alle dagen voor dit kanaal verwijderd.
+    """
+    data = _load_data()
+    channel_str = str(channel_id)
+    if "message_id_per_channel" in data and channel_str in data["message_id_per_channel"]:
+        if dag:
+            data["message_id_per_channel"][channel_str].pop(dag, None)
+        else:
+            data["message_id_per_channel"].pop(channel_str, None)
+        _save_data(data)
 
-    with open(POLL_MESSAGE_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f)
+async def update_poll_message(channel, dag, user_id=None):
+    """
+    Werk het pollbericht voor een specifieke dag bij.
+    """
+    message_id = get_message_id(channel.id, dag)
+    if not message_id:
+        print(f"ℹ️ Geen pollbericht gevonden voor {dag}.")
+        return
 
-async def update_poll_message(channel, user_id=None):
-    message_id = get_message_id(channel.id)
-    if message_id:
-        try:
-            from apps.ui.poll_buttons import PollButtonView
-            message = await channel.fetch_message(message_id)
-            content = build_poll_message()
-            view = PollButtonView(user_id) if user_id else None
-            await message.edit(content=content, view=view)
-        except discord.NotFound:
-            clear_message_id(channel.id)
-        except Exception as e:
-            print(f"❌ Fout bij updaten van pollbericht: {e}")
-    else:
-        print("ℹ️ Geen bestaand pollbericht om te updaten.")
+    try:
+        from apps.ui.poll_buttons import PollButtonView
+        message = await channel.fetch_message(message_id)
+        content = build_poll_message_for_day(dag)
+        view = PollButtonView(dag, user_id) if user_id else None
+        await message.edit(content=content, view=view)
+    except discord.NotFound:
+        # Bericht bestaat niet meer → verwijder ID
+        clear_message_id(channel.id, dag)
+    except Exception as e:
+        print(f"❌ Fout bij updaten van pollbericht voor {dag}: {e}")

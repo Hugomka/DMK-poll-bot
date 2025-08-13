@@ -39,12 +39,8 @@ def setup_scheduler(bot):
 async def update_all_polls(bot):
     for guild in bot.guilds:
         for channel in guild.text_channels:
-            message_id = get_message_id(channel.id)
-            if message_id:
-                try:
-                    await update_poll_message(channel)
-                except:
-                    pass  # Je kunt logging toevoegen hier
+            for dag in ["vrijdag", "zaterdag", "zondag"]:
+                await update_poll_message(channel, dag)
 
 async def reset_polls(bot):
     save_votes({})  # Leeg stemmenbestand

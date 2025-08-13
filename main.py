@@ -26,8 +26,13 @@ async def main():
     from apps.scheduler import setup_scheduler
     setup_scheduler(bot)
 
+    # Laad je commando's
     await bot.load_extension("apps.commands.dmk_poll")
-    bot.add_view(PollButtonView()) 
+
+    # Registreer een PollButtonView voor elke dag
+    for dag in ["vrijdag", "zaterdag", "zondag"]:
+        bot.add_view(PollButtonView(dag))
+
     await bot.start(TOKEN)
 
 asyncio.run(main())
