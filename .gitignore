@@ -1,7 +1,26 @@
-node_modules
+# Environment & secrets
 .env
-*.json
+.env.*
+
+# Allow the example file to be committed
+!.env.example
+
+# Python cache & build artifacts
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
+*.so
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# OS-specific cruft
+.DS_Store
+Thumbs.db
