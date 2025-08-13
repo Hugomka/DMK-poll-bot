@@ -10,6 +10,7 @@ from apps.utils.poll_message import (
 from apps.utils.poll_storage import remove_vote, reset_votes
 from apps.utils.message_builder import build_poll_message_for_day
 from apps.ui.poll_buttons import PollButtonView
+from apps.utils.poll_settings import toggle_visibility
 
 class DMKPoll(commands.Cog):
     def __init__(self, bot):
@@ -145,6 +146,40 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send("✅ De polls zijn verwijderd en afgesloten.", ephemeral=True)
         else:
             await interaction.followup.send("⚠️ Geen polls gevonden om te verwijderen.", ephemeral=True)
+        
+    @app_commands.command(
+        name="dmk-poll-stemmen-zichtbaar",
+        description="Wissel de weergave van stemaantallen tussen altijd en verbergen tot de deadline"
+    )
+    @app_commands.describe(
+        dag="Vrijdag, zaterdag, zondag of laat leeg voor alle avonden",
+        tijd="Tijdstip waarop aantallen zichtbaar worden, in uu:mm (optioneel)"
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def stemmen_zichtbaar(
+        self,
+        interaction: discord.Interaction,
+        dag: str | None = None,
+        tijd: str | None = None,
+    ):
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        tijd = tijd or "18:00"
+        dagen = [dag] if dag else ["vrijdag", "zaterdag", "zondag"]
+        for d in dagen:
+            nieuwe_instelling = toggle_visibility(channel.id, d, tijd)
+            # pollbericht verversen voor deze dag
+            await update_poll_message(channel, d)
+        if dag:
+            await interaction.followup.send(
+                f"⚙️ Instelling voor {dag} gewijzigd naar: {nieuwe_instelling['modus']} (tijd {nieuwe_instelling['tijd']}).",
+                ephemeral=True,
+            )
+        else:
+            await interaction.followup.send(
+                "⚙️ Instellingen voor alle avonden zijn gewijzigd.",
+                ephemeral=True,
+            )
 
 async def setup(bot):
     """

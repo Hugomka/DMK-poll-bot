@@ -1,9 +1,11 @@
+import datetime
+import discord
 import json
 import os
-import discord
-from apps.utils.message_builder import build_poll_message_for_day
+import pytz
 from apps.entities.poll_option import POLL_OPTIONS
-from apps.utils.poll_storage import get_votes_for_option
+from apps.utils.message_builder import build_poll_message_for_day
+from apps.utils.poll_settings import should_hide_counts
 
 POLL_MESSAGE_FILE = "poll_message.json"
 
@@ -63,10 +65,18 @@ async def update_poll_message(channel, dag, user_id=None):
         return
 
     try:
-        from apps.ui.poll_buttons import PollButtonView
         message = await channel.fetch_message(message_id)
-        content = build_poll_message_for_day(dag)
-        view = PollButtonView(dag, user_id) if user_id else None
+
+        from apps.ui.poll_buttons import PollButtonView
+
+        # bepaal of aantallen verborgen moeten blijven
+        now = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
+        hide_counts = should_hide_counts(channel.id, dag, now)
+
+        # bouw de tekst op met of zonder aantal stemmen
+        content = build_poll_message_for_day(dag, hide_counts=hide_counts)
+        view = PollButtonView(dag, user_id) if user_id else PollButtonView(dag)
+
         await message.edit(content=content, view=view)
     except discord.NotFound:
         # Bericht bestaat niet meer → verwijder ID

@@ -1,7 +1,6 @@
 from discord.ui import View, Button
 from discord import Interaction, ButtonStyle
 from apps.utils.poll_storage import toggle_vote
-from apps.utils.poll_message import update_poll_message
 from apps.utils.poll_storage import get_user_votes
 from apps.entities.poll_option import POLL_OPTIONS
 
@@ -30,7 +29,8 @@ class PollButton(Button):
             # Toggle stem
             toggle_vote(user_id, self.dag, self.tijd)
 
-            # Alleen het pollbericht voor deze dag verversen
+            # Importeer hier om een cirkelimport te voorkomen
+            from apps.utils.poll_message import update_poll_message
             await update_poll_message(interaction.channel, self.dag, user_id)
 
         except Exception as e:
