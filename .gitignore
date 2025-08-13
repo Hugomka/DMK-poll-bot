@@ -26,5 +26,6 @@ dist/
 Thumbs.db
 
 # Runtime-bestanden die de bot aanmaakt en die niet mee in Git moeten
-votes.json
 poll_message.json
+poll_settings.json
+votes.json
