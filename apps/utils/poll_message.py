@@ -5,7 +5,7 @@ import os
 import pytz
 from apps.entities.poll_option import POLL_OPTIONS
 from apps.utils.message_builder import build_poll_message_for_day
-from apps.utils.poll_settings import should_hide_counts
+from apps.utils.poll_settings import should_hide_counts, get_setting
 
 POLL_MESSAGE_FILE = "poll_message.json"
 
@@ -67,18 +67,27 @@ async def update_poll_message(channel, dag, user_id=None):
     try:
         message = await channel.fetch_message(message_id)
 
-        from apps.ui.poll_buttons import PollButtonView
-
         # bepaal of aantallen verborgen moeten blijven
         now = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
         hide_counts = should_hide_counts(channel.id, dag, now)
 
         # bouw de tekst op met of zonder aantal stemmen
         content = build_poll_message_for_day(dag, hide_counts=hide_counts)
+        from apps.ui.poll_buttons import PollButtonView
         view = PollButtonView(dag, user_id) if user_id else PollButtonView(dag)
+
+        # knoppen uitschakelen zodra de deadline is verstreken
+        instelling = get_setting(channel.id, dag)
+
+        # disable als modus 'deadline' is en de aantallen al zichtbaar zijn
+        disable_buttons = (instelling["modus"] == "deadline") and not hide_counts
+        if disable_buttons:
+            for knop in view.children:
+                knop.disabled = True
 
         await message.edit(content=content, view=view)
     except discord.NotFound:
+
         # Bericht bestaat niet meer → verwijder ID
         clear_message_id(channel.id, dag)
     except Exception as e:
