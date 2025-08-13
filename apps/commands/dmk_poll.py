@@ -1,5 +1,7 @@
+import io
 import discord
 from discord import app_commands
+from discord import File
 from discord.ext import commands
 from apps.utils.poll_message import (
     save_message_id,
@@ -7,10 +9,12 @@ from apps.utils.poll_message import (
     clear_message_id,
     update_poll_message,
 )
-from apps.utils.poll_storage import remove_vote, reset_votes
+from apps.utils.poll_storage import reset_votes
 from apps.utils.message_builder import build_poll_message_for_day
 from apps.ui.poll_buttons import PollButtonView
 from apps.utils.poll_settings import toggle_visibility
+from apps.utils.archive import append_week_snapshot
+from apps.utils.archive import open_archive_bytes, delete_archive, archive_exists
 
 class DMKPoll(commands.Cog):
     def __init__(self, bot):
@@ -56,6 +60,9 @@ class DMKPoll(commands.Cog):
         channel = interaction.channel
         dagen = ["vrijdag", "zaterdag", "zondag"]
         gevonden = False
+
+        # eerst archiveren
+        append_week_snapshot()   
 
         # leeg het stemmenbestand
         reset_votes()
@@ -180,6 +187,40 @@ class DMKPoll(commands.Cog):
                 "⚙️ Instellingen voor alle avonden zijn gewijzigd.",
                 ephemeral=True,
             )
+
+    @app_commands.command(
+        name="dmk-poll-archief-download",
+        description="(Admin) Download het CSV-archief met weekresultaten."
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def archief_download(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=False)
+        if not archive_exists():
+            await interaction.followup.send("Er is nog geen archief.", ephemeral=True)
+            return
+
+        filename, data = open_archive_bytes()
+        if not data:
+            await interaction.followup.send("Archief kon niet worden gelezen.", ephemeral=True)
+            return
+
+        view = ArchiveDeleteView()
+        await interaction.followup.send(
+            "CSV-archief met weekresultaten. Wil je het hierna verwijderen?",
+            file=File(io.BytesIO(data), filename=filename),
+            view=view
+        )
+
+    @app_commands.command(
+        name="dmk-poll-archief-verwijderen",
+        description="(Admin) Verwijder het volledige archief."
+    )
+    @app_commands.checks.has_permissions(administrator=True)
+    async def archief_verwijderen(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        ok = delete_archive()
+        msg = "Archief verwijderd. ✅" if ok else "Er was geen archief om te verwijderen."
+        await interaction.followup.send(msg, ephemeral=True)
 
 async def setup(bot):
     """
