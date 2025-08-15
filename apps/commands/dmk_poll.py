@@ -329,10 +329,10 @@ class DMKPoll(commands.Cog):
 
                 # regels met emoji + label + stemmen
                 regels: list[str] = []
-                for opt in get_poll_options:
+                for opt in get_poll_options():
                     if opt.dag != dag:
                         continue
-                    n = get_votes_for_option(dag, opt.tijd)
+                    n = await get_votes_for_option(dag, opt.tijd)
                     # enkelvoud/meervoud netjes is optioneel; we houden het simpel
                     regels.append(f"{opt.emoji} {opt.tijd} — **{n}** stemmen")
 
