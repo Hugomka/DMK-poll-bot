@@ -1,9 +1,12 @@
+# main.py
+
 import os
 import discord
+import asyncio
+
 from discord.ext import commands
 from dotenv import load_dotenv
-from apps.ui.poll_buttons import PollButtonView
-import asyncio
+from apps.ui.poll_buttons import OneStemButtonView
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -29,9 +32,8 @@ async def main():
     # Laad je commando's
     await bot.load_extension("apps.commands.dmk_poll")
 
-    # Registreer een PollButtonView voor elke dag
-    for dag in ["vrijdag", "zaterdag", "zondag"]:
-        bot.add_view(PollButtonView(dag))
+    # Zodat de 'Stemmen'-knop blijft werken na herstart
+    bot.add_view(OneStemButtonView())
 
     await bot.start(TOKEN)
 

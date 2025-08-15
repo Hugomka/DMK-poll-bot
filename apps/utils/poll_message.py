@@ -1,94 +1,66 @@
-import datetime
-import discord
+#apps\utils\poll_message.py
+
 import json
 import os
-import pytz
-from apps.entities.poll_option import POLL_OPTIONS
+import discord
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from apps.utils.message_builder import build_poll_message_for_day
-from apps.utils.poll_settings import should_hide_counts, get_setting
+from apps.utils.poll_settings import should_hide_counts
 
 POLL_MESSAGE_FILE = "poll_message.json"
 
-def _load_data():
+def _load():
     if os.path.exists(POLL_MESSAGE_FILE):
-        with open(POLL_MESSAGE_FILE, 'r', encoding='utf-8') as f:
-            try:
+        try:
+            with open(POLL_MESSAGE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-            except json.JSONDecodeError:
-                print("⚠️ Bestand is corrupt. Nieuw bestand wordt aangemaakt.")
+        except json.JSONDecodeError:
+            pass
     return {}
 
-def _save_data(data):
-    with open(POLL_MESSAGE_FILE, 'w', encoding='utf-8') as f:
+def _save(data):
+    with open(POLL_MESSAGE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-def save_message_id(channel_id, dag, message_id):
+def save_message_id(channel_id, key, message_id):
+    data = _load()
+    data.setdefault("per_channel", {}).setdefault(str(channel_id), {})[key] = message_id
+    _save(data)
+
+def get_message_id(channel_id, key):
+    data = _load()
+    return data.get("per_channel", {}).get(str(channel_id), {}).get(key)
+
+def clear_message_id(channel_id, key):
+    data = _load()
+    per = data.setdefault("per_channel", {}).setdefault(str(channel_id), {})
+    per.pop(key, None)
+    _save(data)
+
+async def update_poll_message(channel, dag: str | None = None):
     """
-    Sla per kanaal en per dag het bericht‑ID op.
+    Update de 3 dag-berichten. Toont of verbergt aantallen per dag
+    op basis van poll_settings.should_hide_counts(...).
     """
-    data = _load_data()
-    channel_str = str(channel_id)
-    data.setdefault("message_id_per_channel", {}).setdefault(channel_str, {})[dag] = message_id
-    _save_data(data)
+    keys = [dag] if dag else ["vrijdag", "zaterdag", "zondag"]
+    now = datetime.now(ZoneInfo("Europe/Amsterdam"))
 
-def get_message_id(channel_id, dag):
-    """
-    Haal het bericht‑ID op voor een kanaal en een specifieke dag.
-    """
-    data = _load_data()
-    return (
-        data.get("message_id_per_channel", {})
-            .get(str(channel_id), {})
-            .get(dag)
-    )
+    for d in keys:
+        mid = get_message_id(channel.id, d)
+        if not mid:
+            continue
+        try:
+            msg = await channel.fetch_message(mid)
 
-def clear_message_id(channel_id, dag=None):
-    """
-    Verwijder het bericht‑ID. Als 'dag' None is, worden alle dagen voor dit kanaal verwijderd.
-    """
-    data = _load_data()
-    channel_str = str(channel_id)
-    if "message_id_per_channel" in data and channel_str in data["message_id_per_channel"]:
-        if dag:
-            data["message_id_per_channel"][channel_str].pop(dag, None)
-        else:
-            data["message_id_per_channel"].pop(channel_str, None)
-        _save_data(data)
+            # bepaal of aantallen verborgen moeten worden
+            hide = should_hide_counts(channel.id, d, now)
+            content = build_poll_message_for_day(d, hide_counts=hide)
 
-async def update_poll_message(channel, dag, user_id=None):
-    """
-    Werk het pollbericht voor een specifieke dag bij.
-    """
-    message_id = get_message_id(channel.id, dag)
-    if not message_id:
-        print(f"ℹ️ Geen pollbericht gevonden voor {dag}.")
-        return
+            # publieke dag-berichten blijven knop-vrij
+            await msg.edit(content=content, view=None)
 
-    try:
-        message = await channel.fetch_message(message_id)
-
-        # bepaal of aantallen verborgen moeten blijven
-        now = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
-        hide_counts = should_hide_counts(channel.id, dag, now)
-
-        # bouw de tekst op met of zonder aantal stemmen
-        content = build_poll_message_for_day(dag, hide_counts=hide_counts)
-        from apps.ui.poll_buttons import PollButtonView
-        view = PollButtonView(dag, user_id) if user_id else PollButtonView(dag)
-
-        # knoppen uitschakelen zodra de deadline is verstreken
-        instelling = get_setting(channel.id, dag)
-
-        # disable als modus 'deadline' is en de aantallen al zichtbaar zijn
-        disable_buttons = (instelling["modus"] == "deadline") and not hide_counts
-        if disable_buttons:
-            for knop in view.children:
-                knop.disabled = True
-
-        await message.edit(content=content, view=view)
-    except discord.NotFound:
-
-        # Bericht bestaat niet meer → verwijder ID
-        clear_message_id(channel.id, dag)
-    except Exception as e:
-        print(f"❌ Fout bij updaten van pollbericht voor {dag}: {e}")
+        except discord.NotFound:
+            clear_message_id(channel.id, d)
+        except Exception as e:
+            print(f"❌ Fout bij updaten voor {d}: {e}")

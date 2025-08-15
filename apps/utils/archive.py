@@ -1,7 +1,10 @@
+# apps\utils\archive.py
+
 import os
 import csv
-import datetime
 import pytz
+
+from datetime import datetime, timedelta
 
 from apps.utils.poll_storage import load_votes
 from apps.entities.poll_option import POLL_OPTIONS
@@ -39,7 +42,7 @@ def _week_dates_eu(now):
 
     def last_weekday(now_dt, target_weekday):  # ma=0..zo=6
         delta = (now_dt.weekday() - target_weekday) % 7
-        return (now_dt - datetime.timedelta(days=delta)).date()
+        return (now_dt - timedelta(days=delta)).date()
 
     vr = last_weekday(now, 4)  # vrijdag
     za = last_weekday(now, 5)  # zaterdag
@@ -55,7 +58,7 @@ def append_week_snapshot(now=None):
     """
     _ensure_dir()
     if now is None:
-        now = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
+        now = datetime.now(pytz.timezone("Europe/Amsterdam"))
 
     votes = load_votes()
     telling = _build_counts_from_votes(votes)

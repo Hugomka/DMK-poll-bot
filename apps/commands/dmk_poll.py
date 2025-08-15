@@ -1,20 +1,29 @@
+# apps\commands\dmk_poll.py
+
 import io
 import discord
-from discord import app_commands
-from discord import File
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from discord import app_commands, File
 from discord.ext import commands
+
 from apps.utils.poll_message import (
     save_message_id,
     get_message_id,
     clear_message_id,
     update_poll_message,
 )
+from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
 from apps.utils.poll_storage import reset_votes
 from apps.utils.message_builder import build_poll_message_for_day
-from apps.ui.poll_buttons import PollButtonView
-from apps.utils.poll_settings import toggle_visibility
-from apps.utils.archive import append_week_snapshot
-from apps.utils.archive import open_archive_bytes, delete_archive, archive_exists
+from apps.utils.poll_settings import is_paused, should_hide_counts, toggle_paused, toggle_visibility
+from apps.utils.archive import append_week_snapshot, open_archive_bytes, delete_archive, archive_exists
+
+try:
+    from apps.ui.archive_view import ArchiveDeleteView
+except Exception:
+    ArchiveDeleteView = None
 
 class DMKPoll(commands.Cog):
     def __init__(self, bot):
@@ -23,144 +32,180 @@ class DMKPoll(commands.Cog):
     @app_commands.command(name="dmk-poll-on", description="Plaats of update de polls per avond")
     @app_commands.checks.has_permissions(administrator=True)
     async def on(self, interaction):
-        """
-        Plaatst of werkt drie aparte pollberichten bij voor vrijdag, zaterdag en zondag.
-        """
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
-        user_id = str(interaction.user.id)
         dagen = ["vrijdag", "zaterdag", "zondag"]
 
-        for dag in dagen:
-            content = build_poll_message_for_day(dag)
-            view = PollButtonView(dag, user_id)
-            message_id = get_message_id(channel.id, dag)
+        try:
+            # 1) Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
+            for dag in dagen:
+                content = build_poll_message_for_day(dag)
+                mid = get_message_id(channel.id, dag)
 
-            if message_id:
+                if mid:
+                    try:
+                        msg = await channel.fetch_message(mid)
+                        await msg.edit(content=content, view=None)
+                    except Exception:
+                        msg = await channel.send(content=content, view=None)
+                        save_message_id(channel.id, dag, msg.id)
+                else:
+                    msg = await channel.send(content=content, view=None)
+                    save_message_id(channel.id, dag, msg.id)
+
+            # 2) Vierde bericht: één knop “🗳️ Stemmen”
+            key = "stemmen"
+            tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+            mid = get_message_id(channel.id, key)
+            if mid:
                 try:
-                    message = await channel.fetch_message(message_id)
-                    await message.edit(content=content, view=view)
+                    msg = await channel.fetch_message(mid)
+                    await msg.edit(content=tekst, view=OneStemButtonView())
                 except Exception:
-                    # Als het oude bericht niet gevonden kan worden, maak een nieuw bericht
-                    message = await channel.send(content=content, view=view)
-                    save_message_id(channel.id, dag, message.id)
+                    msg = await channel.send(content=tekst, view=OneStemButtonView())
+                    save_message_id(channel.id, key, msg.id)
             else:
-                message = await channel.send(content=content, view=view)
-                save_message_id(channel.id, dag, message.id)
+                msg = await channel.send(content=tekst, view=OneStemButtonView())
+                save_message_id(channel.id, key, msg.id)
 
-        await interaction.followup.send("✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True)
+            await interaction.followup.send("✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True)
 
+        except Exception as e:
+            await interaction.followup.send(f"❌ Fout bij plaatsen: {e}", ephemeral=True)
+            
     @app_commands.command(name="dmk-poll-reset", description="Reset de polls naar een nieuwe week.")
     @app_commands.checks.has_permissions(administrator=True)
-    async def reset(self, interaction):
-        """
-        Reset alle stemmen en zet de drie polls terug naar nul stemmen.
-        """
+    async def reset(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         dagen = ["vrijdag", "zaterdag", "zondag"]
-        gevonden = False
 
-        # eerst archiveren
-        append_week_snapshot()   
-
-        # leeg het stemmenbestand
-        reset_votes()
-
-        for dag in dagen:
-            message_id = get_message_id(channel.id, dag)
-            if not message_id:
-                continue
-            gevonden = True
+        try:
+            # 1) Archief bijwerken (mag mislukken zonder het command te breken)
             try:
-                message = await channel.fetch_message(message_id)
-                nieuwe_inhoud = build_poll_message_for_day(dag)
-                await message.edit(content=nieuwe_inhoud, view=PollButtonView(dag))
+                append_week_snapshot()
             except Exception as e:
-                print(f"Fout bij resetten van poll voor {dag}: {e}")
+                print(f"⚠️ append_week_snapshot mislukte: {e}")
 
-        if gevonden:
-            await interaction.followup.send("🔄 De polls zijn gereset voor een nieuwe week.", ephemeral=True)
-        else:
-            await interaction.followup.send("⚠️ Geen polls gevonden om te resetten.", ephemeral=True)
+            # 2) Alle stemmen wissen
+            reset_votes()
+
+            # 3) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
+            now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+            paused = is_paused(channel.id)
+            gevonden = False
+
+            for dag in dagen:
+                mid = get_message_id(channel.id, dag)
+                if not mid:
+                    continue
+                gevonden = True
+                try:
+                    msg = await channel.fetch_message(mid)
+                    hide = should_hide_counts(channel.id, dag, now)
+                    content = build_poll_message_for_day(dag, hide_counts=hide, pauze=paused)
+                    await msg.edit(content=content, view=None)  # <-- geen knoppen op dag-berichten
+                except Exception as e:
+                    print(f"Fout bij resetten van poll voor {dag}: {e}")
+
+            if gevonden:
+                await interaction.followup.send("🔄 De stemmen zijn gereset voor een nieuwe week.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ Geen dag-berichten gevonden om te resetten.", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Reset mislukt: {e}", ephemeral=True)
 
     @app_commands.command(name="dmk-poll-pauze", description="Pauzeer of hervat alle polls")
     @app_commands.checks.has_permissions(administrator=True)
     async def pauze(self, interaction: discord.Interaction):
-        """
-        Zet alle pollknoppen uit (pauze) of aan (hervat) en past de tekst aan.
-        """
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
-        dagen = ["vrijdag", "zaterdag", "zondag"]
-        message_ids = [get_message_id(channel.id, dag) for dag in dagen]
-        # filter alleen bestaande berichten
-        ids_met_dagen = [(dag, mid) for dag, mid in zip(dagen, message_ids) if mid]
-        if not ids_met_dagen:
-            await interaction.followup.send("⚠️ Geen polls gevonden om te pauzeren.", ephemeral=True)
-            return
 
-        # Bepaal nieuwe status aan de hand van het eerste bericht (aan/uit)
-        eerste_dag, eerste_id = ids_met_dagen[0]
         try:
-            eerste_bericht = await channel.fetch_message(eerste_id)
-        except Exception:
-            await interaction.followup.send("⚠️ Er kon geen pollbericht worden opgehaald.", ephemeral=True)
-            return
+            # 1) Toggle pauze-status
+            paused = toggle_paused(channel.id)  # True = nu gepauzeerd
 
-        huidige_status = all(button.disabled for row in eerste_bericht.components for button in row.children)
-        nieuwe_status = not huidige_status  # wissel pauze/herstart
+            # 2) Stemmen-bericht updaten (knop disabled + tekst)
+            key = "stemmen"
+            mid = get_message_id(channel.id, key)
+            tekst = "⏸️ Stemmen is tijdelijk gepauzeerd." if paused else "Klik op **🗳️ Stemmen** om je keuzes te maken."
+            view = OneStemButtonView(paused=paused)
 
-        for dag, mid in ids_met_dagen:
-            try:
-                bericht = await channel.fetch_message(mid)
-                nieuwe_view = PollButtonView(dag)
-                for knop in nieuwe_view.children:
-                    knop.disabled = nieuwe_status
-                nieuwe_inhoud = build_poll_message_for_day(dag, pauze=nieuwe_status)
-                await bericht.edit(content=nieuwe_inhoud, view=nieuwe_view)
-            except Exception as e:
-                print(f"Fout bij pauzeren van poll voor {dag}: {e}")
+            if mid:
+                try:
+                    msg = await channel.fetch_message(mid)
+                    await msg.edit(content=tekst, view=view)
+                except Exception:
+                    newmsg = await channel.send(content=tekst, view=view)
+                    save_message_id(channel.id, key, newmsg.id)
+            else:
+                newmsg = await channel.send(content=tekst, view=view)
+                save_message_id(channel.id, key, newmsg.id)
 
-        tekst = "gepauzeerd" if nieuwe_status else "hervat"
-        await interaction.followup.send(f"⏯️ De polls zijn {tekst}.", ephemeral=True)
+            status_txt = "gepauzeerd" if paused else "hervat"
+            await interaction.followup.send(f"⏯️ Stemmen is {status_txt}.", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.command(name="dmk-poll-verwijderen", description="Verwijder alle pollberichten uit het kanaal en uit het systeem.")
     @app_commands.checks.has_permissions(administrator=True)
     async def verwijderbericht(self, interaction: discord.Interaction):
-        """
-        Verwijdert de drie polls definitief en verwijdert de opgeslagen IDs.
-        """
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         dagen = ["vrijdag", "zaterdag", "zondag"]
-        gevonden = False
 
-        for dag in dagen:
-            message_id = get_message_id(channel.id, dag)
-            if not message_id:
-                continue
-            gevonden = True
-            try:
-                message = await channel.fetch_message(message_id)
-                afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
-                await message.edit(content=afsluit_tekst, view=None)
-                clear_message_id(channel.id, dag)
-            except Exception as e:
-                print(f"❌ Fout bij verwijderen poll ({dag}): {e}")
+        try:
+            gevonden = False
 
-        if gevonden:
-            await interaction.followup.send("✅ De polls zijn verwijderd en afgesloten.", ephemeral=True)
-        else:
-            await interaction.followup.send("⚠️ Geen polls gevonden om te verwijderen.", ephemeral=True)
-        
+            # 1) Dag-berichten afsluiten (knop-vrij) en keys wissen
+            for dag in dagen:
+                mid = get_message_id(channel.id, dag)
+                if not mid:
+                    continue
+                gevonden = True
+                try:
+                    msg = await channel.fetch_message(mid)
+                    afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
+                    await msg.edit(content=afsluit_tekst, view=None)
+                except Exception as e:
+                    print(f"❌ Fout bij verwijderen poll ({dag}): {e}")
+                finally:
+                    # key altijd opschonen
+                    clear_message_id(channel.id, dag)
+
+            # 2) Losse “Stemmen”-bericht ook opruimen
+            s_mid = get_message_id(channel.id, "stemmen")
+            if s_mid:
+                try:
+                    s_msg = await channel.fetch_message(s_mid)
+                    try:
+                        await s_msg.delete()
+                    except Exception:
+                        # als delete niet mag, dan in elk geval neutraliseren
+                        await s_msg.edit(content="📴 Stemmen gesloten.", view=None)
+                except Exception as e:
+                    print(f"❌ Fout bij opruimen stemmen-bericht: {e}")
+                finally:
+                    clear_message_id(channel.id, "stemmen")
+
+            # 3) Terugkoppeling
+            if gevonden:
+                await interaction.followup.send("✅ De polls zijn verwijderd en afgesloten.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ Geen polls gevonden om te verwijderen.", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
     @app_commands.command(
         name="dmk-poll-stemmen-zichtbaar",
         description="Wissel de weergave van stemaantallen tussen altijd en verbergen tot de deadline"
     )
     @app_commands.describe(
-        dag="Vrijdag, zaterdag, zondag of laat leeg voor alle avonden",
-        tijd="Tijdstip waarop aantallen zichtbaar worden, in uu:mm (optioneel)"
+        dag="Vrijdag, zaterdag of zondag (leeg = alle avonden)",
+        tijd="Deadline in uu:mm (alleen gebruikt als je naar 'deadline' schakelt)"
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def stemmen_zichtbaar(
@@ -171,22 +216,38 @@ class DMKPoll(commands.Cog):
     ):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
-        tijd = tijd or "18:00"
-        dagen = [dag] if dag else ["vrijdag", "zaterdag", "zondag"]
-        for d in dagen:
-            nieuwe_instelling = toggle_visibility(channel.id, d, tijd)
-            # pollbericht verversen voor deze dag
-            await update_poll_message(channel, d)
-        if dag:
-            await interaction.followup.send(
-                f"⚙️ Instelling voor {dag} gewijzigd naar: {nieuwe_instelling['modus']} (tijd {nieuwe_instelling['tijd']}).",
-                ephemeral=True,
-            )
-        else:
-            await interaction.followup.send(
-                "⚙️ Instellingen voor alle avonden zijn gewijzigd.",
-                ephemeral=True,
-            )
+
+        try:
+            tijd = (tijd or "18:00").strip()
+            geldige = {"vrijdag", "zaterdag", "zondag"}
+
+            if dag:
+                dag = dag.lower().strip()
+                if dag not in geldige:
+                    raise ValueError("Ongeldige dag. Kies uit: vrijdag, zaterdag of zondag.")
+                doel_dagen = [dag]
+            else:
+                doel_dagen = ["vrijdag", "zaterdag", "zondag"]
+
+            laatste = None
+            for d in doel_dagen:
+                laatste = toggle_visibility(channel.id, d, tijd)
+                # Dagbericht direct verversen met verberg/tonen logica
+                await update_poll_message(channel, d)
+
+            if dag:
+                await interaction.followup.send(
+                    f"⚙️ Instelling voor {dag} gewijzigd naar: {laatste['modus']} (tijd {laatste['tijd']}).",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    "⚙️ Instellingen voor alle avonden zijn gewijzigd.",
+                    ephemeral=True
+                )
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.command(
         name="dmk-poll-archief-download",
@@ -194,22 +255,36 @@ class DMKPoll(commands.Cog):
     )
     @app_commands.checks.has_permissions(administrator=True)
     async def archief_download(self, interaction: discord.Interaction):
+        # NIET-ephemeral defer, want we willen de file publiek kunnen sturen
         await interaction.response.defer(ephemeral=False)
-        if not archive_exists():
-            await interaction.followup.send("Er is nog geen archief.", ephemeral=True)
-            return
 
-        filename, data = open_archive_bytes()
-        if not data:
-            await interaction.followup.send("Archief kon niet worden gelezen.", ephemeral=True)
-            return
+        try:
+            if not archive_exists():
+                # Korte privé melding als er niets is
+                await interaction.followup.send("Er is nog geen archief.", ephemeral=True)
+                return
 
-        view = ArchiveDeleteView()
-        await interaction.followup.send(
-            "CSV-archief met weekresultaten. Wil je het hierna verwijderen?",
-            file=File(io.BytesIO(data), filename=filename),
-            view=view
-        )
+            filename, data = open_archive_bytes()
+            if not data:
+                await interaction.followup.send("Archief kon niet worden gelezen.", ephemeral=True)
+                return
+
+            if ArchiveDeleteView is None:
+                await interaction.followup.send(
+                    content="CSV-archief met weekresultaten.",
+                    file=File(io.BytesIO(data), filename=filename),
+                )
+                return
+
+            view = ArchiveDeleteView()
+            await interaction.followup.send(
+                "CSV-archief met weekresultaten. Wil je het hierna verwijderen?",
+                file=File(io.BytesIO(data), filename=filename),
+                view=view
+            )
+        except Exception as e:
+            # Altijd afronden met feedback
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
@@ -218,12 +293,12 @@ class DMKPoll(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def archief_verwijderen(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        ok = delete_archive()
-        msg = "Archief verwijderd. ✅" if ok else "Er was geen archief om te verwijderen."
-        await interaction.followup.send(msg, ephemeral=True)
+        try:
+            ok = delete_archive()
+            msg = "Archief verwijderd. ✅" if ok else "Er was geen archief om te verwijderen."
+            await interaction.followup.send(msg, ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
 async def setup(bot):
-    """
-    Laadt deze cog in het Discord-bot systeem.
-    """
     await bot.add_cog(DMKPoll(bot))

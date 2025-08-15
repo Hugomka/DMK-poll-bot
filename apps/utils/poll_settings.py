@@ -1,6 +1,8 @@
-import datetime
+# apps\utils\poll_settings.py
+
 import json
 import os
+from datetime import datetime, time
 
 
 SETTINGS_FILE = "poll_settings.json"
@@ -51,33 +53,45 @@ def toggle_visibility(channel_id: int, dag: str, tijd: str = '18:00'):
     _save_data(data)
     return instelling
 
-def should_hide_counts(channel_id: int, dag: str, now: datetime.datetime) -> bool:
+def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     instelling = get_setting(channel_id, dag)
     if instelling["modus"] == "altijd":
         return False
 
+    # Deadline-uur:minuut
     tijd_str = instelling.get("tijd", "18:00")
     try:
         uur, minuut = map(int, tijd_str.split(":"))
     except ValueError:
         uur, minuut = 18, 0
 
-    # bepaal de eerstvolgende datum voor de gevraagde dag
-    target_idx = DAYS_INDEX.get(dag, None)
+    target_idx = DAYS_INDEX.get(dag)
     if target_idx is None:
         return False  # onbekende dag
 
     huidige_idx = now.weekday()
-    delta_dagen = (target_idx - huidige_idx) % 7
-    # als het vandaag al die dag is maar we zijn vóór de deadline, dan delta_dagen = 0 is prima
-    # anders springt het naar de volgende week
 
-    deadline_datum = now.date() + datetime.timedelta(days=delta_dagen)
-    deadline_dt = datetime.datetime.combine(
-        deadline_datum,
-        datetime.time(uur, minuut),
-        tzinfo=now.tzinfo,
-    )
+    # vóór de dag → verbergen
+    if huidige_idx < target_idx:
+        return True
+    # na de dag → tonen
+    if huidige_idx > target_idx:
+        return False
 
-    # verberg tot de deadline is bereikt
-    return now < deadline_dt
+    # zelfde dag: verbergen tot de deadline-tijd
+    deadline = time(uur, minuut)  # gebruik datetime.time-klasse die we importeerden
+    return now.time() < deadline
+
+def is_paused(channel_id: int) -> bool:
+    data = _load_data()
+    return bool(data.get(str(channel_id), {}).get("__paused__", False))
+
+def set_paused(channel_id: int, value: bool) -> bool:
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+    ch["__paused__"] = bool(value)
+    _save_data(data)
+    return ch["__paused__"]
+
+def toggle_paused(channel_id: int) -> bool:
+    return set_paused(channel_id, not is_paused(channel_id))

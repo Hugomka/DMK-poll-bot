@@ -1,3 +1,5 @@
+# apps\utils\poll_storage.py
+
 import json
 import os
 from apps.entities.poll_option import POLL_OPTIONS
@@ -8,8 +10,13 @@ SPECIALS = {"misschien", "niet meedoen"}
 def load_votes():
     if not os.path.exists(VOTES_FILE):
         return {}
-    with open(VOTES_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(VOTES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        # Corrupt bestand → reset naar leeg
+        print("⚠️ votes.json is corrupt. Ik zet 'm terug naar leeg {}.")
+        return {}
 
 def save_votes(data):
     with open(VOTES_FILE, "w", encoding="utf-8") as f:

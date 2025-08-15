@@ -1,8 +1,10 @@
+# apps\utils\message_builder.py
+
 from apps.entities.poll_option import POLL_OPTIONS
 from apps.utils.poll_storage import get_votes_for_option
 
-def build_poll_message_for_day(dag, hide_counts=False, pauze=False):
-    title = f"**DMK‑poll voor {dag.capitalize()}**"
+def build_poll_message_for_day(dag: str, hide_counts: bool = False, pauze: bool = False) -> str:
+    title = f"**DMK-poll voor {dag.capitalize()}**"
     if pauze:
         title += " **- _(Gepauzeerd)_**"
     message = f"{title}\n\n"

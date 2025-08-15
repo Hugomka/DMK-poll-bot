@@ -1,6 +1,9 @@
+# apps\scheduler.py
+
+import pytz
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import pytz
 from apps.utils.poll_storage import save_votes, load_votes
 from apps.utils.poll_message import get_message_id, update_poll_message, clear_message_id
 
