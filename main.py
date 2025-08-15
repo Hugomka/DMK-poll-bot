@@ -3,7 +3,6 @@
 import os
 import discord
 import asyncio
-
 from discord.ext import commands
 from dotenv import load_dotenv
 from apps.ui.poll_buttons import OneStemButtonView
@@ -27,13 +26,10 @@ async def on_ready():
 
 async def main():
     from apps.scheduler import setup_scheduler
-    setup_scheduler(bot)
+    setup_scheduler(bot)  # <-- start de APScheduler jobs
 
-    # Laad je commando's
     await bot.load_extension("apps.commands.dmk_poll")
-
-    # Zodat de 'Stemmen'-knop blijft werken na herstart
-    bot.add_view(OneStemButtonView())
+    bot.add_view(OneStemButtonView())  # persistente view
 
     await bot.start(TOKEN)
 
