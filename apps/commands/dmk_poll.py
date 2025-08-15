@@ -17,7 +17,7 @@ from apps.utils.poll_message import (
 )
 from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
 from apps.utils.poll_storage import get_votes_for_option, reset_votes
-from apps.utils.message_builder import build_poll_message_for_day
+from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import get_setting, is_paused, should_hide_counts, toggle_paused, toggle_visibility
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
 
@@ -41,7 +41,7 @@ class DMKPoll(commands.Cog):
         try:
             # 1) Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
             for dag in dagen:
-                content = build_poll_message_for_day(dag)
+                content = await build_poll_message_for_day_async(dag)
                 mid = get_message_id(channel.id, dag)
 
                 if mid:
@@ -105,7 +105,7 @@ class DMKPoll(commands.Cog):
                 try:
                     msg = await channel.fetch_message(mid)
                     hide = should_hide_counts(channel.id, dag, now)
-                    content = build_poll_message_for_day(dag, hide_counts=hide, pauze=paused)
+                    content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused)
                     await msg.edit(content=content, view=None)  # <-- geen knoppen op dag-berichten
                 except Exception as e:
                     print(f"Fout bij resetten van poll voor {dag}: {e}")

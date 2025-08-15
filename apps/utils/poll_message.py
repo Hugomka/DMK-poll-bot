@@ -5,7 +5,7 @@ import os
 import discord
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from apps.utils.message_builder import build_poll_message_for_day
+from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
 
 POLL_MESSAGE_FILE = "poll_message.json"
@@ -55,7 +55,7 @@ async def update_poll_message(channel, dag: str | None = None):
 
             # bepaal of aantallen verborgen moeten worden
             hide = should_hide_counts(channel.id, d, now)
-            content = build_poll_message_for_day(d, hide_counts=hide)
+            content = await build_poll_message_for_day_async(d, hide_counts=hide)
 
             # publieke dag-berichten blijven knop-vrij
             await msg.edit(content=content, view=None)

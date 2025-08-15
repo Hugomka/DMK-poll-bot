@@ -4,53 +4,17 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from apps.utils.poll_storage import save_votes, load_votes
+from apps.utils.poll_storage import load_votes, reset_votes
 from apps.utils.poll_message import get_message_id, update_poll_message, clear_message_id
 
 scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Amsterdam"))
 
 def setup_scheduler(bot):
-    # Dagelijks om 18:00 → pollberichten updaten (zichtig/verborgen)
-    scheduler.add_job(
-        update_all_polls,
-        CronTrigger(hour=18, minute=0),
-        args=[bot],
-        name="Dagelijkse pollupdate om 18:00",
-        misfire_grace_time=3600
-    )
-
-    # Elke maandag 00:00 → resetten
-    scheduler.add_job(
-        reset_polls,
-        CronTrigger(day_of_week="mon", hour=0, minute=0),
-        args=[bot],
-        name="Wekelijkse reset",
-        misfire_grace_time=3600
-    )
-
-    # Notificaties om 18:00 per dag
-    scheduler.add_job(
-        notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="fri", hour=18, minute=0),
-        args=[bot, "vrijdag"],
-        name="Notificatie vrijdagavond",
-        misfire_grace_time=3600
-    )
-    scheduler.add_job(
-        notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="sat", hour=18, minute=0),
-        args=[bot, "zaterdag"],
-        name="Notificatie zaterdagavond",
-        misfire_grace_time=3600
-    )
-    scheduler.add_job(
-        notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="sun", hour=18, minute=0),
-        args=[bot, "zondag"],
-        name="Notificatie zondagavond",
-        misfire_grace_time=3600
-    )
-
+    scheduler.add_job(update_all_polls, CronTrigger(hour=18, minute=0), args=[bot], name="Dagelijkse pollupdate om 18:00")
+    scheduler.add_job(reset_polls, CronTrigger(day_of_week="mon", hour=0, minute=0), args=[bot], name="Wekelijkse reset")
+    scheduler.add_job(notify_voters_if_avond_gaat_door, CronTrigger(day_of_week="fri", hour=18, minute=0), args=[bot, "vrijdag"], name="Notificatie vrijdag")
+    scheduler.add_job(notify_voters_if_avond_gaat_door, CronTrigger(day_of_week="sat", hour=18, minute=0), args=[bot, "zaterdag"], name="Notificatie zaterdag")
+    scheduler.add_job(notify_voters_if_avond_gaat_door, CronTrigger(day_of_week="sun", hour=18, minute=0), args=[bot, "zondag"], name="Notificatie zondag")
     scheduler.start()
 
 async def update_all_polls(bot):
@@ -62,7 +26,7 @@ async def update_all_polls(bot):
 
 async def reset_polls(bot):
     # stemmen leegmaken en keys opruimen (nieuwe week)
-    save_votes({})
+    reset_votes()
     for guild in bot.guilds:
         for channel in guild.text_channels:
             for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
