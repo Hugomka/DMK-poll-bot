@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from discord import app_commands, File
 from discord.ext import commands
 
+from apps.entities.poll_option import POLL_OPTIONS
 from apps.utils.poll_message import (
     save_message_id,
     get_message_id,
@@ -15,10 +16,11 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
-from apps.utils.poll_storage import reset_votes
+from apps.utils.poll_storage import get_votes_for_option, reset_votes
 from apps.utils.message_builder import build_poll_message_for_day
-from apps.utils.poll_settings import is_paused, should_hide_counts, toggle_paused, toggle_visibility
-from apps.utils.archive import append_week_snapshot, open_archive_bytes, delete_archive, archive_exists
+from apps.utils.poll_settings import get_setting, is_paused, should_hide_counts, toggle_paused, toggle_visibility
+from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
+
 
 try:
     from apps.ui.archive_view import ArchiveDeleteView
@@ -299,6 +301,54 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send(msg, ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
+    @app_commands.command(
+    name="dmk-poll-status",
+    description="Toon pauze, zichtbaarheid en alle stemmen per dag (ephemeral embed)."
+    )
+    async def status(self, interaction: discord.Interaction):
+        # Ephemeral = alleen jij ziet het
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+
+        try:
+            pauze_txt = "Ja" if is_paused(channel.id) else "Nee"
+            embed = discord.Embed(
+                title="📊 DMK-poll status",
+                description=f"⏸️ Pauze: **{pauze_txt}**",
+                color=discord.Color.blurple()
+            )
+
+            # Per dag een veld met zichtbaarheid + aantallen
+            for dag in ["vrijdag", "zaterdag", "zondag"]:
+                instelling = get_setting(channel.id, dag)
+                if instelling.get("modus") == "altijd":
+                    zicht_txt = "altijd zichtbaar"
+                else:
+                    zicht_txt = f"deadline {instelling.get('tijd', '18:00')}"
+
+                # regels met emoji + label + stemmen
+                regels: list[str] = []
+                for opt in POLL_OPTIONS:
+                    if opt.dag != dag:
+                        continue
+                    n = get_votes_for_option(dag, opt.tijd)
+                    # enkelvoud/meervoud netjes is optioneel; we houden het simpel
+                    regels.append(f"{opt.emoji} {opt.tijd} — **{n}** stemmen")
+
+                # Als er geen opties zijn (zou niet gebeuren), zet placeholder
+                value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
+                embed.add_field(
+                    name=f"{dag.capitalize()} ({zicht_txt})",
+                    value=value,
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(DMKPoll(bot))
