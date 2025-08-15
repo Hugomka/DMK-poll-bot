@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from discord import app_commands, File
 from discord.ext import commands
 
-from apps.entities.poll_option import POLL_OPTIONS
+from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_message import (
     save_message_id,
     get_message_id,
@@ -329,7 +329,7 @@ class DMKPoll(commands.Cog):
 
                 # regels met emoji + label + stemmen
                 regels: list[str] = []
-                for opt in POLL_OPTIONS:
+                for opt in get_poll_options:
                     if opt.dag != dag:
                         continue
                     n = get_votes_for_option(dag, opt.tijd)

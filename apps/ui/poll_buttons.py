@@ -6,7 +6,7 @@ from discord import Interaction, ButtonStyle
 from apps.utils.poll_settings import is_paused
 from apps.utils.poll_storage import toggle_vote, get_user_votes
 from apps.utils.poll_message import update_poll_message
-from apps.entities.poll_option import POLL_OPTIONS
+from apps.entities.poll_option import get_poll_options
 
 class PollButtonView(View):
     """Ephemeral knoppen voor ALLE opties; jouw eigen keuzes lichten op."""
@@ -14,14 +14,10 @@ class PollButtonView(View):
         super().__init__(timeout=60)
         votes = get_user_votes(user_id) if user_id else {}
 
-        for option in POLL_OPTIONS:
-            # Heb jij dit tijdslot gestemd?
+        for option in get_poll_options():
             selected = option.tijd in votes.get(option.dag, [])
-
-            # Groen (success) + ✅ als jij dit hebt geselecteerd, anders grijs
             stijl = ButtonStyle.success if selected else ButtonStyle.secondary
             label = f"✅ {option.label}" if selected else option.label
-
             self.add_item(PollButton(option.dag, option.tijd, label, stijl))
 
 class PollButton(Button):
@@ -94,13 +90,13 @@ class DailyPollView(View):
         super().__init__(timeout=None)
 
         def match_opt(dag: str, tijd: str):
-            if tijd in ("19:00", "20:30"):
-                return next((o for o in POLL_OPTIONS if o.dag == dag and o.tijd.endswith(f"{tijd} uur")), None)
-            if tijd == "misschien":
-                return next((o for o in POLL_OPTIONS if o.dag == "misschien" and o.tijd == f"op {dag}"), None)
+            # zoek dynamisch in de live opties
+            for o in get_poll_options():
+                if o.dag != dag:
+                    continue
+                if tijd in ("19:00", "20:30"):
+                    if o.tijd.endswith(f"{tijd} uur"):
+                        return o
+                elif tijd == "misschien" and o.tijd == "misschien":
+                    return o
             return None
-
-        for t in tijden:
-            opt = match_opt(dag, t)
-            if opt:
-                self.add_item(PollButton(opt.dag, opt.tijd, opt.label, ButtonStyle.secondary))

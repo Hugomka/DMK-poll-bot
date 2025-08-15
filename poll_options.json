@@ -1,0 +1,62 @@
+[
+    {
+        "dag": "vrijdag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🔴"
+    },
+    {
+        "dag": "vrijdag",
+        "tijd": "om 20:30 uur",
+        "emoji": "🟠"
+    },
+    {
+        "dag": "vrijdag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "vrijdag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    },
+    {
+        "dag": "zaterdag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🟡"
+    },
+    {
+        "dag": "zaterdag",
+        "tijd": "om 20:30 uur",
+        "emoji": "⚪"
+    },
+    {
+        "dag": "zaterdag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "zaterdag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    },
+    {
+        "dag": "zondag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🟢"
+    },
+    {
+        "dag": "zondag",
+        "tijd": "om 20:30 uur",
+        "emoji": "🔵"
+    },
+    {
+        "dag": "zondag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "zondag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    }
+]

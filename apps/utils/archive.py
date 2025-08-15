@@ -7,14 +7,17 @@ import pytz
 from datetime import datetime, timedelta
 
 from apps.utils.poll_storage import load_votes
-from apps.entities.poll_option import POLL_OPTIONS
+from apps.entities.poll_option import get_poll_options
 
 ARCHIVE_DIR = "archive"
 ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
 
 # vaste labels die we tellen
 VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "niet meedoen"]
-DAGEN = sorted({o.dag for o in POLL_OPTIONS if o.dag in ["vrijdag", "zaterdag", "zondag"]})
+DAGEN = []
+for o in get_poll_options():
+    if o.dag not in DAGEN and o.dag in ["vrijdag", "zaterdag", "zondag"]:
+        DAGEN.append(o.dag)
 
 def _ensure_dir():
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
