@@ -95,3 +95,9 @@ def set_paused(channel_id: int, value: bool) -> bool:
 
 def toggle_paused(channel_id: int) -> bool:
     return set_paused(channel_id, not is_paused(channel_id))
+
+def reset_settings() -> None:
+    """Verwijdert alle zichtbaarheid- en pauze-instellingen."""
+    if os.path.exists(SETTINGS_FILE):
+        os.remove(SETTINGS_FILE)
+

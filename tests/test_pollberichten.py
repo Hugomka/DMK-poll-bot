@@ -1,0 +1,25 @@
+# tests/test_pollberichten.py
+
+import unittest
+from apps.utils.poll_message import build_poll_message_for_day_async
+from apps.utils.poll_settings import reset_settings
+from apps.utils.poll_storage import reset_votes
+
+class TestPollBerichten(unittest.IsolatedAsyncioTestCase):
+
+    async def asyncSetUp(self):
+        await reset_votes()
+        reset_settings()
+
+    async def test_pollbericht_zonder_stemmen(self):
+        bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False)
+        self.assertIn("vrijdag", bericht.lower())
+        self.assertIn("0 stemmen", bericht)
+
+    async def test_pollbericht_met_pauze(self):
+        bericht = await build_poll_message_for_day_async("zaterdag", hide_counts=False, pauze=True)
+        self.assertIn("gepauzeerd", bericht.lower())
+
+    async def test_pollbericht_verbergt_aantallen(self):
+        bericht = await build_poll_message_for_day_async("zondag", hide_counts=True, pauze=False)
+        self.assertIn("stemmen verborgen", bericht.lower())
