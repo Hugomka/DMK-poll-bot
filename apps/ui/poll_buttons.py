@@ -11,7 +11,6 @@ from apps.entities.poll_option import get_poll_options
 
 class PollButton(Button):
     def __init__(self, dag: str, tijd: str, label: str, stijl: ButtonStyle):
-        # Let op: custom_id vereist persistente view!
         super().__init__(label=label, style=stijl, custom_id=f"{dag}:{tijd}")
         self.dag = dag
         self.tijd = tijd
@@ -22,16 +21,31 @@ class PollButton(Button):
             return
 
         user_id = str(interaction.user.id)
+
+        # ✅ Check of stem nog klopt met votes.json (bijvoorbeeld na reset)
+        user_votes = await get_user_votes(user_id)
+        dag_opties = user_votes.get(self.dag, [])
+        if self.tijd not in dag_opties and dag_opties != []:
+            # oude knop zichtbaar, maar stem niet meer geldig → view is verouderd
+            new_view = await create_poll_button_view(user_id)
+            await interaction.response.send_message(
+                "🔄 De stemknoppen zijn opnieuw geladen, bijvoorbeeld na een reset.",
+                view=new_view,
+                ephemeral=True
+            )
+            return
+
+        # ✅ Toggle stem
         await toggle_vote(user_id, self.dag, self.tijd)
 
-        # Vervang eigen view (ephemeral)
+        # ✅ Vervang eigen view (ephemeral)
         new_view = await create_poll_button_view(user_id)
         if interaction.response.is_done():
             await interaction.edit_original_response(view=new_view)
         else:
             await interaction.response.edit_message(view=new_view)
 
-        # Update publieke poll
+        # ✅ Update publieke poll
         await update_poll_message(interaction.channel)
 
 
@@ -59,7 +73,7 @@ class OpenStemmenButton(Button):
 
     async def callback(self, interaction: Interaction):
         if is_paused(interaction.channel.id):
-            await interaction.response.send_message("⏸️ Stemmen is gepauzeerd.", ephemeral=True)
+            await interaction.response.send_message("⏸️ Stemmen is tijdelijk gepauzeerd.", ephemeral=True)
             return
 
         view = await create_poll_button_view(str(interaction.user.id))
@@ -72,7 +86,6 @@ class OpenStemmenButton(Button):
 
 class OneStemButtonView(View):
     """De vaste stemknop onderaan het pollbericht."""
-
     def __init__(self, paused: bool = False):
         super().__init__(timeout=None)
         self.add_item(OpenStemmenButton(paused))

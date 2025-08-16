@@ -1,10 +1,10 @@
-# apps\utils\archive.py
+# apps/utils/archive.py
 
 import os
 import csv
 import pytz
-
 from datetime import datetime, timedelta
+from typing import Tuple
 
 from apps.utils.poll_storage import load_votes
 from apps.entities.poll_option import get_poll_options
@@ -12,21 +12,22 @@ from apps.entities.poll_option import get_poll_options
 ARCHIVE_DIR = "archive"
 ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
 
-# vaste labels die we tellen
 VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "niet meedoen"]
 DAGEN = []
 for o in get_poll_options():
     if o.dag not in DAGEN and o.dag in ["vrijdag", "zaterdag", "zondag"]:
         DAGEN.append(o.dag)
 
+
 def _ensure_dir():
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
+
 
 def _empty_counts():
     return {dag: {k: 0 for k in VOLGORDE} for dag in DAGEN}
 
+
 def _build_counts_from_votes(votes: dict):
-    # votes: { user_id: { dag: [tijd, ...] } }
     telling = _empty_counts()
     for per_dag in votes.values():
         for dag, keuzes in per_dag.items():
@@ -37,24 +38,25 @@ def _build_counts_from_votes(votes: dict):
                     telling[dag][tijd] += 1
     return telling
 
+
 def _week_dates_eu(now):
     """Geef (week, datum_vrijdag, datum_zaterdag, datum_zondag) als YYYY-MM-DD."""
-    # pak locale tijd (Europe/Amsterdam) als dat nog niet zo is
     if now.tzinfo is None:
         now = pytz.timezone("Europe/Amsterdam").localize(now)
 
-    def last_weekday(now_dt, target_weekday):  # ma=0..zo=6
+    def last_weekday(now_dt, target_weekday):
         delta = (now_dt.weekday() - target_weekday) % 7
         return (now_dt - timedelta(days=delta)).date()
 
-    vr = last_weekday(now, 4)  # vrijdag
-    za = last_weekday(now, 5)  # zaterdag
-    zo = last_weekday(now, 6)  # zondag
+    vr = last_weekday(now, 4)
+    za = last_weekday(now, 5)
+    zo = last_weekday(now, 6)
 
-    week = vr.isocalendar().week  # weeknummer op basis van vrijdag
+    week = vr.isocalendar().week
     return (week, vr.isoformat(), za.isoformat(), zo.isoformat())
 
-def append_week_snapshot(now=None):
+
+async def append_week_snapshot(now=None) -> None:
     """
     Schrijf 1 rij naar CSV met week + datums + aantallen per dag/optie.
     Roep dit A L T I J D aan vóór reset_votes().
@@ -63,11 +65,10 @@ def append_week_snapshot(now=None):
     if now is None:
         now = datetime.now(pytz.timezone("Europe/Amsterdam"))
 
-    votes = load_votes()
+    votes = await load_votes()
     telling = _build_counts_from_votes(votes)
     week, vr, za, zo = _week_dates_eu(now)
 
-    # brede tabel: 1 rij per week
     header = [
         "week", "datum_vrijdag", "datum_zaterdag", "datum_zondag",
         "vr_19", "vr_2030", "vr_misschien", "vr_niet",
@@ -88,18 +89,20 @@ def append_week_snapshot(now=None):
             w.writerow(header)
         w.writerow(row)
 
-def archive_exists():
+
+def archive_exists() -> bool:
     return os.path.exists(ARCHIVE_CSV)
 
-def open_archive_bytes():
-    """Geef (filename, bytes) terug voor uploaden naar Discord."""
+
+def open_archive_bytes() -> Tuple[str, bytes] | Tuple[None, None]:
     if not archive_exists():
         return None, None
     with open(ARCHIVE_CSV, "rb") as f:
         data = f.read()
     return ("dmk_archive.csv", data)
 
-def delete_archive():
+
+def delete_archive() -> bool:
     if archive_exists():
         os.remove(ARCHIVE_CSV)
         return True

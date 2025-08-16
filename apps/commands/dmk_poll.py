@@ -21,7 +21,6 @@ from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import get_setting, is_paused, should_hide_counts, toggle_paused, toggle_visibility
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
 
-
 try:
     from apps.ui.archive_view import ArchiveDeleteView
 except Exception:
@@ -85,12 +84,12 @@ class DMKPoll(commands.Cog):
         try:
             # 1) Archief bijwerken (mag mislukken zonder het command te breken)
             try:
-                append_week_snapshot()
+                await append_week_snapshot()
             except Exception as e:
                 print(f"⚠️ append_week_snapshot mislukte: {e}")
 
-            # 2) Alle stemmen wissen
-            reset_votes()
+            # 2) Alle stemmen wissen (async!)
+            await reset_votes()
 
             # 3) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
@@ -106,7 +105,7 @@ class DMKPoll(commands.Cog):
                     msg = await channel.fetch_message(mid)
                     hide = should_hide_counts(channel.id, dag, now)
                     content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused)
-                    await msg.edit(content=content, view=None)  # <-- geen knoppen op dag-berichten
+                    await msg.edit(content=content, view=None)  # ← knoppen worden niet opnieuw getoond
                 except Exception as e:
                     print(f"Fout bij resetten van poll voor {dag}: {e}")
 
