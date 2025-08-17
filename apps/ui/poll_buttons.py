@@ -9,7 +9,7 @@ from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_settings import is_paused
 from apps.utils.poll_storage import toggle_vote, get_user_votes
 from apps.utils.poll_message import update_poll_message
-from apps.entities.poll_option import get_poll_options
+from apps.entities.poll_option import get_poll_options, list_days
 
 
 class PollButton(Button):
@@ -53,13 +53,15 @@ class PollButton(Button):
 
 
 class PollButtonView(View):
-    """Ephemeral stemknoppen voor 1 gebruiker."""
-    def __init__(self, votes: dict, channel_id: int):
+    """Ephemeral stemknoppen voor 1 gebruiker (optioneel gefilterd op dag)."""
+    def __init__(self, votes: dict, channel_id: int, filter_dag: str | None = None, now: datetime | None = None):
         super().__init__(timeout=60)
-        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+        now = now or datetime.now(ZoneInfo("Europe/Amsterdam"))
 
         for option in get_poll_options():
-            # 🔒 Verberg knop als deze niet meer geldig is
+            if filter_dag and option.dag != filter_dag:
+                continue
+
             if not is_vote_button_visible(channel_id, option.dag, option.tijd, now):
                 continue
 
@@ -68,9 +70,16 @@ class PollButtonView(View):
             label = f"✅ {option.label}" if selected else option.label
             self.add_item(PollButton(option.dag, option.tijd, label, stijl))
 
-async def create_poll_button_view(user_id: str, channel_id: int) -> PollButtonView:
+async def create_poll_button_views_per_day(user_id: str, channel_id: int) -> list[tuple[str, PollButtonView]]:
     votes = await get_user_votes(user_id)
-    return PollButtonView(votes, channel_id)
+    now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+    views = []
+
+    for dag in list_days():
+        view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
+        if view.children:  # alleen tonen als er knoppen zijn
+            views.append((dag, view))
+    return views
 
 class OpenStemmenButton(Button):
     def __init__(self, paused: bool = False):
@@ -83,18 +92,29 @@ class OpenStemmenButton(Button):
             await interaction.response.send_message("⏸️ Stemmen is tijdelijk gepauzeerd.", ephemeral=True)
             return
 
-        view = await create_poll_button_view(str(interaction.user.id), interaction.channel.id)
-        message_text = (
-            "Kies jouw tijden hieronder 👇 (alleen jij ziet dit)."
-            if view.children
-            else "Stemmen is gesloten voor alle dagen. Kom later terug."
-        )
+        user_id = str(interaction.user.id)
+        channel_id = interaction.channel.id
+        views_per_dag = await create_poll_button_views_per_day(user_id, channel_id)
+
+        if not views_per_dag:
+            await interaction.response.send_message(
+                "Stemmen is gesloten voor alle dagen. Kom later terug.",
+                ephemeral=True
+            )
+            return
+
+        # Hoofdbericht met uitleg
         await interaction.response.send_message(
-            message_text,
-            view=view,
+            "Kies jouw tijden hieronder 👇 per dag (alleen jij ziet dit).",
             ephemeral=True
         )
 
+        for dag, view in views_per_dag:
+            await interaction.followup.send(
+                f"📅 **{dag.capitalize()}** — kies jouw tijden 👇",
+                view=view,
+                ephemeral=True
+            )
 
 class OneStemButtonView(View):
     """De vaste stemknop onderaan het pollbericht."""
