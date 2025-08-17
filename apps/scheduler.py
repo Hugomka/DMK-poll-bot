@@ -26,7 +26,7 @@ async def update_all_polls(bot):
 
 async def reset_polls(bot):
     # stemmen leegmaken en keys opruimen (nieuwe week)
-    reset_votes()
+    await reset_votes()
     for guild in bot.guilds:
         for channel in guild.text_channels:
             for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
@@ -44,7 +44,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
     Stuur om 18:00 een melding als één tijd >= 6 stemmen heeft.
     Bij gelijk → 20:30 wint (DMK-regel).
     """
-    stemmen = load_votes()
+    stemmen = await load_votes()
     # Let op: jouw labels heten "om 19:00 uur" en "om 20:30 uur"
     keys = {"19": "om 19:00 uur", "2030": "om 20:30 uur"}
 
