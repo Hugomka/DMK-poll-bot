@@ -23,3 +23,10 @@ class TestPollBerichten(unittest.IsolatedAsyncioTestCase):
     async def test_pollbericht_verbergt_aantallen(self):
         bericht = await build_poll_message_for_day_async("zondag", hide_counts=True, pauze=False)
         self.assertIn("stemmen verborgen", bericht.lower())
+
+    async def test_pollbericht_met_geen_opties(self):
+        from unittest.mock import patch
+
+        with patch("apps.utils.message_builder.get_poll_options", return_value=[]):
+            bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False)
+            self.assertIn("geen opties gevonden", bericht.lower())

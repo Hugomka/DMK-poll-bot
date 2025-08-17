@@ -26,3 +26,7 @@ class TestZichtbaarheid(unittest.IsolatedAsyncioTestCase):
         toggle_visibility(self.channel_id, self.dag, tijd="18:00")
         nu = datetime(2025, 8, 15, 19, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))  # vrijdag 19:00
         self.assertFalse(should_hide_counts(self.channel_id, self.dag, nu))
+
+    async def test_onbekende_dag_geeft_false(self):
+        nu = datetime(2025, 8, 16, 12, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        self.assertFalse(should_hide_counts(self.channel_id, "maansdag", nu))  # dag bestaat niet

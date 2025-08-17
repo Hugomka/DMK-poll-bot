@@ -25,3 +25,13 @@ class TestResetEnArchief(unittest.IsolatedAsyncioTestCase):
         await append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
         self.assertTrue(archive_exists())
         self.assertTrue(os.path.exists("archive/dmk_archive.csv"))
+
+    async def test_append_leeg_snapshot(self):
+        await append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
+        self.assertTrue(archive_exists())
+
+    async def test_delete_archive_verwijdert_file(self):
+        await append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
+        delete_archive()
+        self.assertFalse(os.path.exists("archive/dmk_archive.csv"))
+

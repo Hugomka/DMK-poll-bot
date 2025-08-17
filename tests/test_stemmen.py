@@ -28,3 +28,21 @@ class TestStemmen(unittest.IsolatedAsyncioTestCase):
 
         votes = await load_votes()
         self.assertNotIn(tijd, votes[user][dag])
+
+    async def test_meerdere_stemmen_op_1_dag(self):
+        user = "222"
+        dag = "zaterdag"
+        await toggle_vote(user, dag, "om 19:00 uur")
+        await toggle_vote(user, dag, "om 20:30 uur")
+        votes = await load_votes()
+        self.assertIn("om 19:00 uur", votes[user][dag])
+        self.assertIn("om 20:30 uur", votes[user][dag])
+
+    async def test_speciale_opties_vervangen_anderen(self):
+        user = "333"
+        dag = "zondag"
+        await toggle_vote(user, dag, "om 19:00 uur")
+        await toggle_vote(user, dag, "misschien")
+        votes = await load_votes()
+        self.assertEqual(votes[user][dag], ["misschien"])
+
