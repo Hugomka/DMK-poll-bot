@@ -37,6 +37,14 @@ class PollButton(Button):
                 ephemeral=True
             )
             return
+        
+        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+        if not is_vote_button_visible(interaction.channel.id, self.dag, self.tijd, now):
+            await interaction.response.send_message(
+                f"❌ De stemmogelijkheid voor **{self.dag} {self.tijd}** is gesloten.",
+                ephemeral=True
+            )
+            return
 
         # ✅ Toggle stem
         await toggle_vote(user_id, self.dag, self.tijd)
