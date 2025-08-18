@@ -55,7 +55,13 @@ async def update_poll_message(channel, dag: str | None = None):
 
             # bepaal of aantallen verborgen moeten worden
             hide = should_hide_counts(channel.id, d, now)
-            content = await build_poll_message_for_day_async(d, hide_counts=hide)
+
+            # ✨ Geef guild mee voor naamvermelding (indien actief)
+            content = await build_poll_message_for_day_async(
+                d,
+                hide_counts=hide,
+                guild=channel.guild
+            )
 
             # publieke dag-berichten blijven knop-vrij
             await msg.edit(content=content, view=None)

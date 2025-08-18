@@ -20,6 +20,7 @@ from apps.utils.poll_storage import get_votes_for_option, reset_votes
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import get_setting, is_paused, should_hide_counts, toggle_paused, toggle_visibility
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
+from apps.utils.poll_settings import toggle_name_display
 
 try:
     from apps.ui.archive_view import ArchiveDeleteView
@@ -91,7 +92,11 @@ class DMKPoll(commands.Cog):
             # 2) Alle stemmen wissen (async!)
             await reset_votes()
 
-            # 3) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
+            # 3) Namen direct uitschakelen
+            from apps.utils.poll_settings import set_name_display
+            set_name_display(channel.id, False)
+
+            # 4) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
             paused = is_paused(channel.id)
             gevonden = False
@@ -347,6 +352,21 @@ class DMKPoll(commands.Cog):
 
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
+    @app_commands.command(name="dmk-poll-namen", description="Wissel tussen anoniem stemmen of namen tonen (alleen tijdelijk)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def toggle_namen(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        try:
+            enabled = toggle_name_display(channel.id)
+            status = "zichtbaar" if enabled else "anoniem"
+            for dag in ["vrijdag", "zaterdag", "zondag"]:
+                await update_poll_message(channel, dag)
+            await interaction.followup.send(f"🧑‍🤝‍🧑 Namen zijn nu **{status}** zichtbaar in de pollberichten.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
 
 
 async def setup(bot):
