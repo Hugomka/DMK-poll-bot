@@ -33,16 +33,23 @@ async def build_poll_message_for_day_async(
             message += f"{option.label} (stemmen verborgen)\n"
         else:
             n = counts.get(option.tijd, 0)
-            message += f"{option.label} ({n} stemmen)\n"
-
+            regel = f"{option.label} ({n} stemmen)"
+            
             if toon_namen and n > 0:
                 stemmers = []
                 for user_id, dag_votes in alle_votes.items():
                     if option.tijd in dag_votes.get(dag, []):
                         member = guild.get_member(int(user_id))
+                        if member is None and guild is not None:
+                            try:
+                                member = await guild.fetch_member(int(user_id))
+                            except discord.NotFound:
+                                member = None
                         if member:
-                            stemmers.append(f"{member.mention}")
+                            stemmers.append(member.mention)
                 if stemmers:
-                    message += ", ".join(stemmers) + "\n"
+                    regel += f": {', '.join(stemmers)}"
+            
+            message += regel + "\n"
 
     return message

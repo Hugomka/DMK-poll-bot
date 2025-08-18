@@ -16,9 +16,9 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
-from apps.utils.poll_storage import get_votes_for_option, reset_votes
+from apps.utils.poll_storage import get_votes_for_option, load_votes, reset_votes
 from apps.utils.message_builder import build_poll_message_for_day_async
-from apps.utils.poll_settings import get_setting, is_paused, should_hide_counts, toggle_paused, toggle_visibility
+from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, should_hide_counts, toggle_paused, toggle_visibility
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
 from apps.utils.poll_settings import toggle_name_display
 
@@ -41,7 +41,7 @@ class DMKPoll(commands.Cog):
         try:
             # 1) Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
             for dag in dagen:
-                content = await build_poll_message_for_day_async(dag)
+                content = await build_poll_message_for_day_async(dag, guild=channel.guild)
                 mid = get_message_id(channel.id, dag)
 
                 if mid:
@@ -109,7 +109,7 @@ class DMKPoll(commands.Cog):
                 try:
                     msg = await channel.fetch_message(mid)
                     hide = should_hide_counts(channel.id, dag, now)
-                    content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused)
+                    content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused, guild=channel.guild)
                     await msg.edit(content=content, view=None)  # ← knoppen worden niet opnieuw getoond
                 except Exception as e:
                     print(f"Fout bij resetten van poll voor {dag}: {e}")
@@ -307,46 +307,58 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.command(
-    name="dmk-poll-status",
-    description="Toon pauze, zichtbaarheid en alle stemmen per dag (ephemeral embed)."
+        name="dmk-poll-status",
+        description="Toon pauze, zichtbaarheid en alle stemmen per dag (ephemeral embed)."
     )
     async def status(self, interaction: discord.Interaction):
-        # Ephemeral = alleen jij ziet het
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
+        guild = channel.guild
 
         try:
             pauze_txt = "Ja" if is_paused(channel.id) else "Nee"
+            namen_aan = is_name_display_enabled(channel.id)
+            namen_txt = "zichtbaar" if namen_aan else "anoniem"
+
             embed = discord.Embed(
                 title="📊 DMK-poll status",
-                description=f"⏸️ Pauze: **{pauze_txt}**",
+                description=f"⏸️ Pauze: **{pauze_txt}**\n👤 Namen: **{namen_txt}**",
                 color=discord.Color.blurple()
             )
 
-            # Per dag een veld met zichtbaarheid + aantallen
+            all_votes = await load_votes()
+
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 instelling = get_setting(channel.id, dag)
-                if instelling.get("modus") == "altijd":
-                    zicht_txt = "altijd zichtbaar"
-                else:
-                    zicht_txt = f"deadline {instelling.get('tijd', '18:00')}"
+                zicht_txt = "altijd zichtbaar" if instelling.get("modus") == "altijd" else f"deadline {instelling.get('tijd', '18:00')}"
 
-                # regels met emoji + label + stemmen
                 regels: list[str] = []
+
                 for opt in get_poll_options():
                     if opt.dag != dag:
                         continue
-                    n = await get_votes_for_option(dag, opt.tijd)
-                    # enkelvoud/meervoud netjes is optioneel; we houden het simpel
-                    regels.append(f"{opt.emoji} {opt.tijd} — **{n}** stemmen")
 
-                # Als er geen opties zijn (zou niet gebeuren), zet placeholder
+                    # aantal stemmers tellen
+                    stemmers = []
+                    for user_id, user_votes in all_votes.items():
+                        if opt.tijd in user_votes.get(dag, []):
+                            member = guild.get_member(int(user_id))
+                            if member is None:
+                                try:
+                                    member = await guild.fetch_member(int(user_id))
+                                except discord.NotFound:
+                                    member = None
+                            if member:
+                                stemmers.append(member.mention)
+
+                    n = len(stemmers)
+                    regel = f"{opt.emoji} {opt.tijd} — **{n}** stemmen"
+                    if namen_aan and stemmers:
+                        regel += f":  {', '.join(stemmers)}"
+                    regels.append(regel)
+
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
-                embed.add_field(
-                    name=f"{dag.capitalize()} ({zicht_txt})",
-                    value=value,
-                    inline=False
-                )
+                embed.add_field(name=f"{dag.capitalize()} ({zicht_txt})", value=value, inline=False)
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
