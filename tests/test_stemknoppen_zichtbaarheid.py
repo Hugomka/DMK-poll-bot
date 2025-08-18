@@ -22,7 +22,8 @@ class TestStemknopZichtbaarheid(unittest.TestCase):
 
     # ⛔ Voorbeeld: zaterdag 00:00, vrijdag is al voorbij
     def test_knop_is_onzichtbaar_na_deadline(self):
-        now = datetime(2025, 8, 23, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Vrijdag 29 aug 2025 om 21:00 → ná de deadline voor vrijdag 20:30
+        now = datetime(2025, 8, 29, 21, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         zichtbaar = is_vote_button_visible(self.channel_id, self.dag, "om 20:30 uur", now)
         self.assertFalse(zichtbaar)
 

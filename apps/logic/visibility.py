@@ -1,6 +1,4 @@
-# apps/logic/visibility.py
-
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 from apps.utils.poll_settings import get_setting, should_hide_counts
 from apps.entities.poll_option import get_poll_options
@@ -28,28 +26,31 @@ def is_vote_button_visible(channel_id: int, dag: str, tijd: str, now: datetime) 
     if dag not in WEEKDAG_INDEX:
         return False
 
-    doel_idx = WEEKDAG_INDEX[dag]
-    huidige_idx = now.weekday()
-    verschil = (huidige_idx - doel_idx) % 7
-    stemdatum = now.date() - timedelta(days=verschil)
+    dag_index = WEEKDAG_INDEX[dag]
+    now_index = now.weekday()
 
+    # Deadline alleen op dag zelf vóór de ingestelde tijd
     if setting["modus"] == "deadline":
         if should_hide_counts(channel_id, dag, now) is False:
             return False
         else:
             return True
 
-    # → Tijd bepalen voor dit tijdslot
-    if tijd in TIJD_LABELS:
-        stem_uur, stem_min = TIJD_LABELS[tijd]
+    # Bepaal of dag deze week nog komt
+    if dag_index < now_index:
+        return False
+    elif dag_index > now_index:
+        return True
     else:
-        # Specials: gebruik hoogste bekende tijd voor deze dag
-        dag_tijden = [t for o in get_poll_options() if o.dag == dag and o.tijd in TIJD_LABELS for t in [TIJD_LABELS[o.tijd]]]
-        if not dag_tijden:
-            return False
-        stem_uur, stem_min = max(dag_tijden)
+        # Het is vandaag → controleer tijd
+        if tijd in TIJD_LABELS:
+            uur, minuut = TIJD_LABELS[tijd]
+        else:
+            # specials → check of ENIG TIJD nog in de toekomst is
+            tijden = [TIJD_LABELS[o.tijd] for o in get_poll_options()
+                      if o.dag == dag and o.tijd in TIJD_LABELS]
+            if not tijden:
+                return False
+            return any(now.time() < time(u, m) for u, m in tijden)
 
-    sluitmoment = datetime.combine(stemdatum, datetime.min.time(), tzinfo=ZoneInfo("Europe/Amsterdam"))
-    sluitmoment = sluitmoment.replace(hour=stem_uur, minute=stem_min)
-
-    return now < sluitmoment
+        return now.time() < time(uur, minuut)
