@@ -68,5 +68,9 @@ async def update_poll_message(channel, dag: str | None = None):
 
         except discord.NotFound:
             clear_message_id(channel.id, d)
-        except Exception as e:
-            print(f"❌ Fout bij updaten voor {d}: {e}")
+        except discord.HTTPException as e:
+            if e.code == 30046:
+                # "Too Many Requests (error code: 30046): Maximum number of edits to messages older than 1 hour reached."
+                pass  # Stil negeren
+            else:
+                print(f"❌ Fout bij updaten voor {d}: {e}")
