@@ -1,6 +1,5 @@
 # tests\test_stemknoppen_zichtbaarheid.py
 
-import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from apps.logic.visibility import is_vote_button_visible

@@ -1,6 +1,5 @@
-# tests/test_zichtbaarheid.py
+# tests\test_zichtbaarheid.py
 
-import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 

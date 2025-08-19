@@ -4,13 +4,16 @@ import json, os, asyncio
 from typing import Dict, Any
 from apps.entities.poll_option import get_poll_options, is_valid_option
 
-VOTES_FILE = os.getenv("VOTES_FILE", "votes.json")
 SPECIALS = {"misschien", "niet meedoen"}
 
 # 1 lock voor veilig schrijven/lezen
 _VOTES_LOCK = asyncio.Lock()
 
-async def _read_json(path: str) -> Dict[str, Any]:
+def get_votes_path() -> str:
+    return os.getenv("VOTES_FILE", "votes.json")
+
+async def _read_json(path: str = None) -> Dict[str, Any]:
+    path = path or get_votes_path()
     if not os.path.exists(path):
         return {}
     try:
@@ -31,11 +34,11 @@ async def _write_json(path: str, data: Dict[str, Any]) -> None:
 # Publiek async API
 async def load_votes() -> Dict[str, Any]:
     async with _VOTES_LOCK:
-        return await _read_json(VOTES_FILE)
+        return await _read_json(get_votes_path())
 
 async def save_votes(data: Dict[str, Any]) -> None:
     async with _VOTES_LOCK:
-        await _write_json(VOTES_FILE, data)
+        await _write_json(get_votes_path(), data)
 
 def _empty_days() -> Dict[str, list]:
     unieke_dagen = {opt.dag for opt in get_poll_options()}

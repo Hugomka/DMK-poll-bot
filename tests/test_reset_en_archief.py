@@ -1,6 +1,5 @@
-# tests/test_reset_en_archief.py
+# tests\test_reset_en_archief.py
 
-import unittest
 import os
 from apps.utils.poll_storage import toggle_vote, get_votes_for_option, reset_votes
 from apps.utils.archive import append_week_snapshot, delete_archive, archive_exists

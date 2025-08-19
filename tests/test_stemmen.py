@@ -1,7 +1,5 @@
 # tests\test_stemmen.py
 
-import os
-import unittest
 from apps.utils.poll_storage import toggle_vote, load_votes, reset_votes
 from tests.base import BaseTestCase
 

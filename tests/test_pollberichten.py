@@ -1,10 +1,8 @@
-# tests/test_pollberichten.py
+# tests\test_pollberichten.py
 
 from apps.utils.poll_message import build_poll_message_for_day_async
 from apps.utils.poll_settings import reset_settings
-from apps.utils.poll_storage import reset_votes, toggle_vote
-from apps.utils.poll_settings import toggle_name_display
-from unittest.mock import MagicMock
+from apps.utils.poll_storage import reset_votes
 from tests.base import BaseTestCase
 
 class TestPollBerichten(BaseTestCase):
