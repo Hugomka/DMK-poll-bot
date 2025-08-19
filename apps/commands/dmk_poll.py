@@ -389,7 +389,7 @@ class DMKPoll(commands.Cog):
                 embed.add_field(name=f"{dag.capitalize()} ({zicht_txt})", value=value, inline=False)
 
             # ➕ View alleen voor beheerders
-            view = NaamToggleView() if interaction.user.guild_permissions.administrator else None
+            view = NaamToggleView(channel.id) if interaction.user.guild_permissions.administrator else None
 
             await interaction.followup.send(embed=embed, ephemeral=True, view=view)
 
