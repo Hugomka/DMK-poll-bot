@@ -14,23 +14,23 @@ class TestPollBerichten(unittest.IsolatedAsyncioTestCase):
         reset_settings()
 
     async def test_pollbericht_zonder_stemmen(self):
-        bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False)
+        bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False, channel_id=123456)
         self.assertIn("vrijdag", bericht.lower())
         self.assertIn("0 stemmen", bericht)
 
     async def test_pollbericht_met_pauze(self):
-        bericht = await build_poll_message_for_day_async("zaterdag", hide_counts=False, pauze=True)
+        bericht = await build_poll_message_for_day_async("zaterdag", hide_counts=False, pauze=True, channel_id=123456)
         self.assertIn("gepauzeerd", bericht.lower())
 
     async def test_pollbericht_verbergt_aantallen(self):
-        bericht = await build_poll_message_for_day_async("zondag", hide_counts=True, pauze=False)
+        bericht = await build_poll_message_for_day_async("zondag", hide_counts=True, pauze=False, channel_id=123456)
         self.assertIn("stemmen verborgen", bericht.lower())
 
     async def test_pollbericht_met_geen_opties(self):
         from unittest.mock import patch
 
         with patch("apps.utils.message_builder.get_poll_options", return_value=[]):
-            bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False)
+            bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False, channel_id=123456)
             self.assertIn("geen opties gevonden", bericht.lower())
 
     async def test_pollbericht_met_namen_weergegeven(self):
@@ -48,12 +48,16 @@ class TestPollBerichten(unittest.IsolatedAsyncioTestCase):
         mock_guild.get_member.return_value = mock_member
         mock_guild.id = kanaal_id
 
-        bericht = await build_poll_message_for_day_async(
-            "vrijdag",
-            hide_counts=False,
-            pauze=False,
-            guild=mock_guild
-        )
+        with patch("apps.utils.message_builder.get_poll_options", return_value=[
+            MagicMock(dag="vrijdag", tijd="om 19:00 uur", label="🔴 Vrijdag om 19:00 uur")
+        ]):
+            bericht = await build_poll_message_for_day_async(
+                "vrijdag",
+                hide_counts=False,
+                pauze=False,
+                guild=mock_guild,
+                channel_id=mock_guild.id
+            )
 
         self.assertIn("om 19:00 uur", bericht)
         self.assertIn("@Goldway", bericht)
@@ -75,7 +79,8 @@ class TestPollBerichten(unittest.IsolatedAsyncioTestCase):
             "zaterdag",
             hide_counts=False,
             pauze=False,
-            guild=mock_guild
+            guild=mock_guild,
+            channel_id=mock_guild.id
         )
 
         self.assertIn("om 20:30 uur", bericht)

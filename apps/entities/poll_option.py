@@ -44,9 +44,14 @@ def _load_raw_options():
         return list(_DEFAULTS)
 
 def get_poll_options() -> list[PollOption]:
-    """Live inladen bij elke aanroep."""
-    items = _load_raw_options()
-    return [PollOption(o["dag"], o["tijd"], o["emoji"]) for o in items]
+    if not os.path.exists(OPTIONS_FILE):
+        return []
+    with open(OPTIONS_FILE, encoding="utf-8") as f:
+        data = json.load(f)
+    return [PollOption(**item) for item in data]
+
+def is_valid_option(dag: str, tijd: str) -> bool:
+    return any(o.dag == dag and o.tijd == tijd for o in get_poll_options())
 
 def list_days() -> list[str]:
     """Unieke dagen in JSON-volgorde."""

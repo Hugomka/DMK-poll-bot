@@ -41,7 +41,7 @@ class DMKPoll(commands.Cog):
         try:
             # 1) Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
             for dag in dagen:
-                content = await build_poll_message_for_day_async(dag, guild=channel.guild)
+                content = await build_poll_message_for_day_async(dag, guild=channel.guild, channel_id=channel.id)
                 mid = get_message_id(channel.id, dag)
 
                 if mid:
@@ -109,7 +109,7 @@ class DMKPoll(commands.Cog):
                 try:
                     msg = await channel.fetch_message(mid)
                     hide = should_hide_counts(channel.id, dag, now)
-                    content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused, guild=channel.guild)
+                    content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused, guild=channel.guild, channel_id=channel.id)
                     await msg.edit(content=content, view=None)  # ← knoppen worden niet opnieuw getoond
                 except Exception as e:
                     print(f"Fout bij resetten van poll voor {dag}: {e}")
