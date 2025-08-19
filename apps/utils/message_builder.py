@@ -23,10 +23,6 @@ async def build_poll_message_for_day_async(
         return message
 
     counts = {} if hide_counts else await get_counts_for_day(dag)
-    toon_namen = guild and is_name_display_enabled(guild.id)
-
-    if toon_namen:
-        alle_votes = await load_votes()
 
     for option in opties:
         if hide_counts:
@@ -34,22 +30,6 @@ async def build_poll_message_for_day_async(
         else:
             n = counts.get(option.tijd, 0)
             regel = f"{option.label} ({n} stemmen)"
-            
-            if toon_namen and n > 0:
-                stemmers = []
-                for user_id, dag_votes in alle_votes.items():
-                    if option.tijd in dag_votes.get(dag, []):
-                        member = guild.get_member(int(user_id))
-                        if member is None and guild is not None:
-                            try:
-                                member = await guild.fetch_member(int(user_id))
-                            except discord.NotFound:
-                                member = None
-                        if member:
-                            stemmers.append(member.mention)
-                if stemmers:
-                    regel += f": {', '.join(stemmers)}"
-            
             message += regel + "\n"
 
     return message

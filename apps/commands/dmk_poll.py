@@ -7,6 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from discord import app_commands, File
 from discord.ext import commands
+from apps.ui.name_toggle_view import NaamToggleView
 
 from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_message import (
@@ -360,26 +361,13 @@ class DMKPoll(commands.Cog):
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
                 embed.add_field(name=f"{dag.capitalize()} ({zicht_txt})", value=value, inline=False)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # ➕ View alleen voor beheerders
+            view = NaamToggleView() if interaction.user.guild_permissions.administrator else None
+
+            await interaction.followup.send(embed=embed, ephemeral=True, view=view)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
-
-    @app_commands.command(name="dmk-poll-namen", description="Wissel tussen anoniem stemmen of namen tonen (alleen tijdelijk)")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def toggle_namen(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        channel = interaction.channel
-        try:
-            enabled = toggle_name_display(channel.id)
-            status = "zichtbaar" if enabled else "anoniem"
-            for dag in ["vrijdag", "zaterdag", "zondag"]:
-                await update_poll_message(channel, dag)
-            await interaction.followup.send(f"🧑‍🤝‍🧑 Namen zijn nu **{status}** zichtbaar in de pollberichten.", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
-
-
 
 async def setup(bot):
     await bot.add_cog(DMKPoll(bot))
