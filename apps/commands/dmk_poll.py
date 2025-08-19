@@ -19,7 +19,7 @@ from apps.utils.poll_message import (
 from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
 from apps.utils.poll_storage import get_votes_for_option, load_votes, reset_votes
 from apps.utils.message_builder import build_poll_message_for_day_async
-from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, should_hide_counts, toggle_paused, toggle_visibility
+from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, set_visibility, should_hide_counts, toggle_paused
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
 from apps.utils.poll_settings import toggle_name_display
 
@@ -207,49 +207,60 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.command(
-        name="dmk-poll-stemmen-zichtbaar",
-        description="Wissel de weergave van stemaantallen tussen altijd en verbergen tot de deadline"
+        name="dmk-poll-stemmen",
+        description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline."
+    )
+    @app_commands.choices(
+        actie=[
+            app_commands.Choice(name="Zichtbaar maken", value="zichtbaar"),
+            app_commands.Choice(name="Verbergen tot deadline", value="verborgen"),
+        ],
+        dag=[
+            app_commands.Choice(name="Vrijdag", value="vrijdag"),
+            app_commands.Choice(name="Zaterdag", value="zaterdag"),
+            app_commands.Choice(name="Zondag", value="zondag"),
+        ],
     )
     @app_commands.describe(
-        dag="Vrijdag, zaterdag of zondag (leeg = alle avonden)",
-        tijd="Deadline in uu:mm (alleen gebruikt als je naar 'deadline' schakelt)"
+        tijd="Tijdstip in uu:mm (alleen nodig bij verborgen modus)"
     )
     @app_commands.checks.has_permissions(administrator=True)
-    async def stemmen_zichtbaar(
+    async def stemmen(
         self,
         interaction: discord.Interaction,
-        dag: str | None = None,
+        actie: app_commands.Choice[str],
+        dag: app_commands.Choice[str] | None = None,
         tijd: str | None = None,
     ):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
 
         try:
-            tijd = (tijd or "18:00").strip()
-            geldige = {"vrijdag", "zaterdag", "zondag"}
 
-            if dag:
-                dag = dag.lower().strip()
-                if dag not in geldige:
-                    raise ValueError("Ongeldige dag. Kies uit: vrijdag, zaterdag of zondag.")
-                doel_dagen = [dag]
+            if dag.value:
+                doel_dagen = [dag.value]
             else:
                 doel_dagen = ["vrijdag", "zaterdag", "zondag"]
 
             laatste = None
             for d in doel_dagen:
-                laatste = toggle_visibility(channel.id, d, tijd)
-                # Dagbericht direct verversen met verberg/tonen logica
+                if actie.value == "zichtbaar":
+                    laatste = set_visibility(channel.id, d, modus="altijd")
+                else:
+                    laatste = set_visibility(channel.id, d, modus="deadline", tijd=(tijd or "18:00"))
                 await update_poll_message(channel, d)
 
-            if dag:
+            tijd_txt = laatste["tijd"]
+            modus_txt = "altijd zichtbaar" if laatste["modus"] == "altijd" else f"verborgen tot {tijd_txt}"
+
+            if dag.value:
                 await interaction.followup.send(
-                    f"⚙️ Instelling voor {dag} gewijzigd naar: {laatste['modus']} (tijd {laatste['tijd']}).",
+                    f"⚙️ Instelling voor {dag.value} gewijzigd naar: **{modus_txt}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
                     ephemeral=True
                 )
             else:
                 await interaction.followup.send(
-                    "⚙️ Instellingen voor alle avonden zijn gewijzigd.",
+                    f"⚙️ Instellingen voor alle dagen gewijzigd naar: **{modus_txt}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
                     ephemeral=True
                 )
 

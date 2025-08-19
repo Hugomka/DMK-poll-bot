@@ -3,7 +3,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from apps.logic.visibility import is_vote_button_visible
-from apps.utils.poll_settings import reset_settings, toggle_visibility
+from apps.utils.poll_settings import reset_settings, set_visibility
 from tests.base import BaseTestCase
 
 
@@ -30,7 +30,7 @@ class TestStemknopZichtbaarheid(BaseTestCase):
 
     # ⛔ Bij zichtbaarheidstype "deadline" worden knoppen direct verborgen op deadline
     def test_alle_knoppen_verbergen_bij_zichtbaarheid_deadline(self):
-        toggle_visibility(self.channel_id, self.dag, tijd="18:00")
+        set_visibility(self.channel_id, self.dag, modus="deadline", tijd="18:00")
         now = datetime(2025, 8, 22, 18, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         zichtbaar = is_vote_button_visible(self.channel_id, self.dag, "om 20:30 uur", now)
         self.assertFalse(zichtbaar)

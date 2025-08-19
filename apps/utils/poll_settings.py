@@ -38,16 +38,14 @@ def get_setting(channel_id: int, dag: str):
             .get(dag, {'modus': 'altijd', 'tijd': '18:00'})
     )
 
-def toggle_visibility(channel_id: int, dag: str, tijd: str = '18:00'):
-    """Schakel tussen 'altijd' en 'deadline'. Bij omschakeling naar 'deadline'
-       wordt het tijdstip opgeslagen."""
+def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
+    """Zet expliciet 'altijd' of 'deadline' zichtbaarheid met tijd."""
     data = _load_data()
     kanaal = data.setdefault(str(channel_id), {})
-    instelling = kanaal.get(dag, {'modus': 'altijd', 'tijd': '18:00'})
-    if instelling['modus'] == 'altijd':
-        instelling = {'modus': 'deadline', 'tijd': tijd}
-    else:
+    if modus == "altijd":
         instelling = {'modus': 'altijd', 'tijd': '18:00'}
+    else:
+        instelling = {'modus': 'deadline', 'tijd': tijd}
     kanaal[dag] = instelling
     _save_data(data)
     return instelling
