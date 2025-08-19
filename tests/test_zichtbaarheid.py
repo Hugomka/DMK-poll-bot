@@ -5,10 +5,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from apps.utils.poll_settings import should_hide_counts, toggle_visibility, reset_settings
+from tests.base import BaseTestCase
 
-class TestZichtbaarheid(unittest.IsolatedAsyncioTestCase):
+class TestZichtbaarheid(BaseTestCase):
 
     async def asyncSetUp(self):
+        await super().asyncSetUp()
         reset_settings()
         self.channel_id = 123456789
         self.dag = "vrijdag"

@@ -1,11 +1,14 @@
 # tests\test_stemmen.py
 
+import os
 import unittest
 from apps.utils.poll_storage import toggle_vote, load_votes, reset_votes
+from tests.base import BaseTestCase
 
-class TestStemmen(unittest.IsolatedAsyncioTestCase):
+class TestStemmen(BaseTestCase):
 
     async def asyncSetUp(self):
+        await super().asyncSetUp()
         await reset_votes()
 
     async def test_stem_toevoegen(self):

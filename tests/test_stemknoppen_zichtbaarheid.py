@@ -5,11 +5,13 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_settings import reset_settings, toggle_visibility
+from tests.base import BaseTestCase
 
 
-class TestStemknopZichtbaarheid(unittest.TestCase):
+class TestStemknopZichtbaarheid(BaseTestCase):
 
-    def setUp(self):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
         reset_settings()
         self.channel_id = 123456
         self.dag = "vrijdag"

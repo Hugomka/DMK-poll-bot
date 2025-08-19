@@ -4,8 +4,7 @@ import json
 import os
 from datetime import datetime, time
 
-
-SETTINGS_FILE = "poll_settings.json"
+SETTINGS_FILE = os.getenv("SETTINGS_FILE", "poll_settings.json")
 
 DAYS_INDEX = {
     "maandag": 0,

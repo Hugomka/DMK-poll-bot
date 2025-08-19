@@ -4,7 +4,7 @@ import json, os, asyncio
 from typing import Dict, Any
 from apps.entities.poll_option import get_poll_options, is_valid_option
 
-VOTES_FILE = "votes.json"
+VOTES_FILE = os.getenv("VOTES_FILE", "votes.json")
 SPECIALS = {"misschien", "niet meedoen"}
 
 # 1 lock voor veilig schrijven/lezen

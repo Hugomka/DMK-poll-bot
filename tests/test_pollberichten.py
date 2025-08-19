@@ -1,15 +1,16 @@
 # tests/test_pollberichten.py
 
-import unittest
 from apps.utils.poll_message import build_poll_message_for_day_async
 from apps.utils.poll_settings import reset_settings
 from apps.utils.poll_storage import reset_votes, toggle_vote
 from apps.utils.poll_settings import toggle_name_display
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
+from tests.base import BaseTestCase
 
-class TestPollBerichten(unittest.IsolatedAsyncioTestCase):
+class TestPollBerichten(BaseTestCase):
 
     async def asyncSetUp(self):
+        await super().asyncSetUp()
         await reset_votes()
         reset_settings()
 

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
 
-POLL_MESSAGE_FILE = "poll_message.json"
+POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
 def _load():
     if os.path.exists(POLL_MESSAGE_FILE):

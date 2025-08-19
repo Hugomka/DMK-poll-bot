@@ -6,10 +6,12 @@ from apps.utils.poll_storage import toggle_vote, get_votes_for_option, reset_vot
 from apps.utils.archive import append_week_snapshot, delete_archive, archive_exists
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from tests.base import BaseTestCase
 
-class TestResetEnArchief(unittest.IsolatedAsyncioTestCase):
+class TestResetEnArchief(BaseTestCase):
 
     async def asyncSetUp(self):
+        await super().asyncSetUp()
         await reset_votes()
         delete_archive()
 

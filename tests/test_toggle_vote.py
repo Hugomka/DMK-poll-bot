@@ -1,13 +1,20 @@
 # tests\test_toggle_vote.py
 
+import os
 import unittest
 from apps.utils.poll_storage import toggle_vote, get_user_votes, reset_votes
+from tests.base import BaseTestCase
 
-class TestToggleVote(unittest.IsolatedAsyncioTestCase):
+class TestToggleVote(BaseTestCase):
 
     async def asyncSetUp(self):
+        await super().asyncSetUp()
         await reset_votes()
         self.user = "user123"
+
+    async def asyncTearDown(self):
+        if os.path.exists("votes_test.json"):
+            os.remove("votes_test.json")
 
     async def test_aanvinken_van_tijd(self):
         await toggle_vote(self.user, "vrijdag", "om 19:00 uur")
