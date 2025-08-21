@@ -5,6 +5,7 @@ import os
 import discord
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from apps.logic.decision import build_decision_line
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
 
@@ -62,6 +63,11 @@ async def update_poll_message(channel, dag: str | None = None):
                 hide_counts=hide,
                 guild=channel.guild
             )
+
+            # beslissingregel toevoegen (alleen relevante momenten)
+            decision = await build_decision_line(channel.id, d, now)
+            if decision:
+                content = content.rstrip() + "\n\n" + decision
 
             # publieke dag-berichten blijven knop-vrij
             await msg.edit(content=content, view=None)
