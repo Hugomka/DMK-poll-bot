@@ -1,13 +1,12 @@
 # tests\test_stemmen.py
 
-from apps.utils.poll_storage import toggle_vote, load_votes, reset_votes
+from apps.utils.poll_storage import toggle_vote, load_votes
 from tests.base import BaseTestCase
 
 class TestStemmen(BaseTestCase):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        await reset_votes()
 
     async def test_stem_toevoegen(self):
         user = "123"

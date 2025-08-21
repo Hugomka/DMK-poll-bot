@@ -1,16 +1,12 @@
 # tests\test_pollberichten.py
 
 from apps.utils.poll_message import build_poll_message_for_day_async
-from apps.utils.poll_settings import reset_settings
-from apps.utils.poll_storage import reset_votes
 from tests.base import BaseTestCase
 
 class TestPollBerichten(BaseTestCase):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        await reset_votes()
-        reset_settings()
 
     async def test_pollbericht_zonder_stemmen(self):
         bericht = await build_poll_message_for_day_async("vrijdag", hide_counts=False, pauze=False)

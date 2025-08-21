@@ -1,14 +1,13 @@
 # tests\test_toggle_vote.py
 
 import os
-from apps.utils.poll_storage import toggle_vote, get_user_votes, reset_votes
+from apps.utils.poll_storage import toggle_vote, get_user_votes
 from tests.base import BaseTestCase
 
 class TestToggleVote(BaseTestCase):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        await reset_votes()
         self.user = "user123"
 
     async def asyncTearDown(self):

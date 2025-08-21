@@ -11,7 +11,6 @@ class TestResetEnArchief(BaseTestCase):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        await reset_votes()
         delete_archive()
 
     async def test_reset_zet_stemmen_op_nul(self):

@@ -3,14 +3,13 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from apps.utils.poll_settings import should_hide_counts, set_visibility, reset_settings
+from apps.utils.poll_settings import should_hide_counts, set_visibility
 from tests.base import BaseTestCase
 
 class TestZichtbaarheid(BaseTestCase):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        reset_settings()
         self.channel_id = 123456789
         self.dag = "vrijdag"
 
