@@ -2,6 +2,7 @@
 
 import io
 import discord
+import re
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -17,8 +18,8 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
-from apps.utils.poll_storage import get_votes_for_option, load_votes, reset_votes
-from apps.utils.message_builder import build_poll_message_for_day_async
+from apps.utils.poll_storage import add_guest_votes, get_votes_for_option, load_votes, reset_votes
+from apps.utils.message_builder import build_grouped_names_for, build_poll_message_for_day_async
 from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, set_visibility, should_hide_counts, toggle_paused
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
 from apps.utils.poll_settings import toggle_name_display
@@ -366,23 +367,44 @@ class DMKPoll(commands.Cog):
                     if opt.dag != dag:
                         continue
 
-                    # aantal stemmers tellen
-                    stemmers = []
-                    for user_id, user_votes in all_votes.items():
-                        if opt.tijd in user_votes.get(dag, []):
-                            member = guild.get_member(int(user_id))
-                            if member is None:
-                                try:
-                                    member = await guild.fetch_member(int(user_id))
-                                except discord.NotFound:
-                                    member = None
-                            if member:
-                                stemmers.append(member.mention)
+                    # Bouw groepen: owner_id -> {"voted": bool, "guests": [namen], "mention": "@Owner"}
+                    groepen = {}
+                    for raw_id, user_votes in all_votes.items():
+                        if opt.tijd not in user_votes.get(dag, []):
+                            continue
 
-                    n = len(stemmers)
-                    regel = f"{opt.emoji} {opt.tijd} — **{n}** stemmen"
-                    if namen_aan and stemmers:
-                        regel += f":  {', '.join(stemmers)}"
+                        try:
+                            if "_guest::" in raw_id:
+                                owner_id, guest_name = raw_id.split("_guest::", 1)
+                                owner_member = guild.get_member(int(owner_id)) or await guild.fetch_member(int(owner_id))
+                                key = owner_id
+                                g = groepen.setdefault(key, {"voted": False, "guests": [], "mention": owner_member.mention if owner_member else "Gast"})
+                                g["guests"].append(guest_name.strip() or "Gast")
+                            else:
+                                member = guild.get_member(int(raw_id)) or await guild.fetch_member(int(raw_id))
+                                if member:
+                                    key = raw_id
+                                    g = groepen.setdefault(key, {"voted": False, "guests": [], "mention": member.mention})
+                                    g["voted"] = True
+                        except Exception as ex:
+                            print(f"⚠️ status: kon ID '{raw_id}' niet verwerken: {ex}")
+
+                    # totaal = owners die zelf stemmen + alle gasten
+                    n = sum(1 for g in groepen.values() if g["voted"]) + sum(len(g["guests"]) for g in groepen.values())
+
+                    def format_groep(g):
+                        if g["guests"] and g["voted"]:
+                            return f"{g['mention']} ({g['mention']}: {', '.join(g['guests'])})"
+                        elif g["guests"]:
+                            return f"({g['mention']}: {', '.join(g['guests'])})"
+                        else:
+                            return f"{g['mention']}"
+
+                    totaal, groepen_txt = await build_grouped_names_for(dag, opt.tijd, guild, all_votes)
+
+                    regel = f"{opt.emoji} {opt.tijd} — **{totaal}** stemmen"
+                    if namen_aan and groepen_txt:
+                        regel += f":  {groepen_txt}"
                     regels.append(regel)
 
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
@@ -395,6 +417,62 @@ class DMKPoll(commands.Cog):
 
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
+    @app_commands.default_permissions(administrator=False)  # iedereen mag gasten toevoegen
+    @app_commands.command(
+        name="gast-add",
+        description="Voeg gaststemmen toe voor een dag+tijd. Meerdere namen scheiden met , of ;"
+    )
+    @app_commands.choices(
+        slot=[
+            app_commands.Choice(name="Vrijdag 19:00",  value="vrijdag|om 19:00 uur"),
+            app_commands.Choice(name="Vrijdag 20:30",  value="vrijdag|om 20:30 uur"),
+            app_commands.Choice(name="Zaterdag 19:00", value="zaterdag|om 19:00 uur"),
+            app_commands.Choice(name="Zaterdag 20:30", value="zaterdag|om 20:30 uur"),
+            app_commands.Choice(name="Zondag 19:00",   value="zondag|om 19:00 uur"),
+            app_commands.Choice(name="Zondag 20:30",   value="zondag|om 20:30 uur"),
+        ],
+    )
+    @app_commands.describe(namen="Meerdere namen met komma, bv: Mario, Luigi, Peach")
+    async def gast_add(
+        self,
+        interaction: discord.Interaction,
+        slot: app_commands.Choice[str],
+        namen: str
+    ):
+        """Voorbeeld: /gast-add slot:'Vrijdag 20:30' namen:'Mario, Luigi, Peach'"""
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            dag, tijd = slot.value.split("|", 1)
+
+            # split op komma of puntkomma
+            ruwe = [p.strip() for p in re.split(r"[;,]", namen or "") if p.strip()]
+            if not ruwe:
+                await interaction.followup.send("⚠️ Geen geldige namen opgegeven.", ephemeral=True)
+                return
+
+            toegevoegd, overgeslagen = await add_guest_votes(interaction.user.id, dag, tijd, ruwe)
+
+            # Publieke pollbericht voor díe dag even updaten
+            await update_poll_message(interaction.channel, dag)
+
+            parts = []
+            if toegevoegd:
+                parts.append(f"✅ Toegevoegd: {', '.join(toegevoegd)}")
+            if overgeslagen:
+                parts.append(f"ℹ️ Overgeslagen (bestond al): {', '.join(overgeslagen)}")
+            if not parts:
+                parts = ["(niets gewijzigd)"]
+
+            await interaction.followup.send(
+                f"👥 Gaststemmen voor **{dag} {tijd}**\n" + "\n".join(parts),
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
 
 async def setup(bot):
     c = DMKPoll(bot)

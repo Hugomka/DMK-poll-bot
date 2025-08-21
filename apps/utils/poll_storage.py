@@ -116,3 +116,54 @@ async def get_votes_for_option(dag: str, tijd: str) -> int:
 
 async def reset_votes() -> None:
     await save_votes({})
+
+# === GASTEN ===============================================================
+
+def _sanitize_guest_name(name: str) -> str:
+    # trim + simpele sanitisatie: vervang scheidingstekens door spatie, collapse spaces
+    raw = name.strip().replace("_", " ").replace("|", " ").replace(";", " ").replace(",", " ")
+    # alleen zichtbare chars, kort houden
+    cleaned = " ".join(raw.split())
+    return cleaned[:40] if cleaned else "Gast"
+
+def _guest_id(owner_user_id: int | str, guest_name: str) -> str:
+    return f"{owner_user_id}_guest::{guest_name}"
+
+async def add_guest_votes(owner_user_id: int | str, dag: str, tijd: str, namen: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Maakt voor elke gastnaam een eigen 'virtuele user' key aan en zet daar de stem.
+    Return: (toegevoegd, overgeslagen)
+    - overgeslagen als die exacte gastnaam al bestond voor die eigenaar en dag/tijd.
+    """
+    from apps.entities.poll_option import is_valid_option
+    if not is_valid_option(dag, tijd):
+        return ([], namen or [])
+
+    # normaliseer en filter lege
+    norm = []
+    for n in (namen or []):
+        s = _sanitize_guest_name(n)
+        if s:
+            norm.append(s)
+
+    votes = await load_votes()
+    toegevoegd, overgeslagen = [], []
+
+    for naam in norm:
+        gid = _guest_id(owner_user_id, naam)
+        per_dag = votes.get(gid, {})
+        bestaande = per_dag.get(dag, [])
+
+        if tijd in bestaande:
+            overgeslagen.append(naam)
+            continue
+
+        nieuw = set(bestaande)
+        nieuw.add(tijd)
+        per_dag[dag] = sorted(nieuw)
+        votes[gid] = per_dag
+        toegevoegd.append(naam)
+
+    await save_votes(votes)
+    return (toegevoegd, overgeslagen)
+

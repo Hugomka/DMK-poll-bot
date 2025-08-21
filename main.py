@@ -3,9 +3,13 @@
 import os
 import discord
 import asyncio
+import logging
 from discord.ext import commands
 from dotenv import load_dotenv
 from apps.ui.poll_buttons import OneStemButtonView
+
+logging.basicConfig(level=logging.INFO)
+discord.utils.setup_logging(level=logging.INFO)
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
