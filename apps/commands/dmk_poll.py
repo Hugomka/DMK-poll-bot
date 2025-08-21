@@ -18,7 +18,7 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
-from apps.utils.poll_storage import add_guest_votes, get_votes_for_option, load_votes, reset_votes
+from apps.utils.poll_storage import add_guest_votes, get_votes_for_option, load_votes, remove_guest_votes, reset_votes
 from apps.utils.message_builder import build_grouped_names_for, build_poll_message_for_day_async
 from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, set_visibility, should_hide_counts, toggle_paused
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
@@ -470,6 +470,57 @@ class DMKPoll(commands.Cog):
                 ephemeral=True
             )
 
+        except Exception as e:
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
+    @app_commands.command(
+        name="gast-remove",
+        description="Verwijder gaststemmen voor een dag+tijd. Meerdere namen scheiden met , of ;"
+    )
+    @app_commands.choices(
+        slot=[
+            app_commands.Choice(name="Vrijdag 19:00",  value="vrijdag|om 19:00 uur"),
+            app_commands.Choice(name="Vrijdag 20:30",  value="vrijdag|om 20:30 uur"),
+            app_commands.Choice(name="Zaterdag 19:00", value="zaterdag|om 19:00 uur"),
+            app_commands.Choice(name="Zaterdag 20:30", value="zaterdag|om 20:30 uur"),
+            app_commands.Choice(name="Zondag 19:00",   value="zondag|om 19:00 uur"),
+            app_commands.Choice(name="Zondag 20:30",   value="zondag|om 20:30 uur"),
+        ],
+    )
+    @app_commands.describe(namen="Meerdere namen met komma, bv: Mario, Luigi, Peach")
+    async def gast_remove(
+        self,
+        interaction: discord.Interaction,
+        slot: app_commands.Choice[str],
+        namen: str
+    ):
+        """Voorbeeld: /gast-remove slot:'Vrijdag 20:30' namen:'Mario, Luigi'"""
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            dag, tijd = slot.value.split("|", 1)
+            ruwe = [p.strip() for p in re.split(r"[;,]", namen or "") if p.strip()]
+            if not ruwe:
+                await interaction.followup.send("⚠️ Geen geldige namen opgegeven.", ephemeral=True)
+                return
+
+            verwijderd, nietgevonden = await remove_guest_votes(interaction.user.id, dag, tijd, ruwe)
+
+            # Publieke pollbericht voor díe dag updaten
+            await update_poll_message(interaction.channel, dag)
+
+            parts = []
+            if verwijderd:
+                parts.append(f"✅ Verwijderd: {', '.join(verwijderd)}")
+            if nietgevonden:
+                parts.append(f"ℹ️ Niet gevonden: {', '.join(nietgevonden)}")
+            if not parts:
+                parts = ["(niets gewijzigd)"]
+
+            await interaction.followup.send(
+                f"👥 Gaststemmen verwijderd voor **{dag} {tijd}**\n" + "\n".join(parts),
+                ephemeral=True
+            )
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 

@@ -167,3 +167,35 @@ async def add_guest_votes(owner_user_id: int | str, dag: str, tijd: str, namen: 
     await save_votes(votes)
     return (toegevoegd, overgeslagen)
 
+async def remove_guest_votes(owner_id: int, dag: str, tijd: str, namen: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Verwijder gaststemmen voor een bepaalde owner, dag en tijd.
+    :param owner_id: Discord user ID van de eigenaar
+    :param dag: bv. 'vrijdag'
+    :param tijd: bv. 'om 20:30 uur'
+    :param namen: lijst van gastnamen die verwijderd moeten worden
+    :return: (verwijderd, nietgevonden)
+    """
+    votes = await load_votes()
+    verwijderd, nietgevonden = [], []
+
+    for naam in namen:
+        key = f"{owner_id}_guest::{naam}"
+        if key in votes and tijd in votes[key].get(dag, []):
+            # haal tijd uit de stemmenlijst van deze gast
+            try:
+                votes[key][dag].remove(tijd)
+                verwijderd.append(naam)
+            except ValueError:
+                nietgevonden.append(naam)
+
+            # als gast helemaal leeg is → opschonen
+            if not votes[key][dag]:
+                del votes[key][dag]
+            if not votes[key]:
+                del votes[key]
+        else:
+            nietgevonden.append(naam)
+
+    await save_votes(votes)
+    return verwijderd, nietgevonden
