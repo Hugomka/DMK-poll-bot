@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from apps.logic.decision import build_decision_line
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
+from apps.utils.discord_client import safe_call
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
@@ -52,7 +53,7 @@ async def update_poll_message(channel, dag: str | None = None):
         if not mid:
             continue
         try:
-            msg = await channel.fetch_message(mid)
+            msg = await safe_call(channel.fetch_message, mid)
 
             # bepaal of aantallen verborgen moeten worden
             hide = should_hide_counts(channel.id, d, now)
@@ -70,7 +71,7 @@ async def update_poll_message(channel, dag: str | None = None):
                 content = content.rstrip() + "\n\n" + decision
 
             # publieke dag-berichten blijven knop-vrij
-            await msg.edit(content=content, view=None)
+            await safe_call(msg.edit, content=content, view=None)
 
         except discord.NotFound:
             clear_message_id(channel.id, d)

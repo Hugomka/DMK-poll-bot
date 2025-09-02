@@ -11,6 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from apps.utils.poll_storage import load_votes, reset_votes
 from apps.utils.poll_message import get_message_id, update_poll_message, clear_message_id
+from apps.utils.discord_client import get_guilds, get_channels, safe_call
 
 scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Amsterdam"))
 
@@ -125,7 +126,7 @@ def setup_scheduler(bot):
 async def update_all_polls(bot):
     # update elk dagbericht in elk tekstkanaal
     for guild in bot.guilds:
-        for channel in guild.text_channels:
+        for channel in get_channels(guild):
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 await update_poll_message(channel, dag)
 
@@ -134,7 +135,7 @@ async def reset_polls(bot):
     # stemmen leegmaken en keys opruimen (nieuwe week)
     await reset_votes()
     for guild in bot.guilds:
-        for channel in guild.text_channels:
+        for channel in get_channels(guild):
             for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
                 mid = get_message_id(channel.id, key)
                 if mid:
@@ -180,7 +181,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
 
     # Verstuur mentions in elk kanaal waar de poll staat
     for guild in bot.guilds:
-        for channel in guild.text_channels:
+        for channel in get_channels(guild):
             # alleen kanalen waar onze poll-keys bestaan (minstens één dagbericht)
             if not any(get_message_id(channel.id, k) for k in ["vrijdag", "zaterdag", "zondag"]):
                 continue
@@ -193,8 +194,6 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
 
             if mentions:
                 try:
-                    await channel.send(
-                        f"📢 DMK op **{dag} {winnaar_txt}** gaat door!\n{' '.join(mentions)}"
-                    )
+                    await safe_call(channel.send, f"📢 DMK op **{dag} {winnaar_txt}** gaat door!\n{' '.join(mentions)}")
                 except Exception as e:
                     print(f"Fout bij notificeren in kanaal {channel.name}: {e}")

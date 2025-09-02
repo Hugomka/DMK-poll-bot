@@ -11,6 +11,7 @@ from discord.ext import commands
 from apps.ui.name_toggle_view import NaamToggleView
 
 from apps.entities.poll_option import get_poll_options
+from apps.utils.discord_client import safe_call
 from apps.utils.poll_message import (
     save_message_id,
     get_message_id,
@@ -60,33 +61,33 @@ class DMKPoll(commands.Cog):
                 content = await build_poll_message_for_day_async(dag, guild=channel.guild)
                 mid = get_message_id(channel.id, dag)
 
+            if mid:
+                try:
+                    msg = await safe_call(channel.fetch_message, mid)
+                    await safe_call(msg.edit, content=content, view=None)
+                except Exception:
+                    msg = await safe_call(channel.send, content=content, view=None)
+                    save_message_id(channel.id, dag, msg.id)
+            else:
+                msg = await safe_call(channel.send, content=content, view=None)
+                save_message_id(channel.id, dag, msg.id)
+
+                # 2) Vierde bericht: één knop “🗳️ Stemmen”
+                key = "stemmen"
+                tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+                mid = get_message_id(channel.id, key)
                 if mid:
                     try:
                         msg = await channel.fetch_message(mid)
-                        await msg.edit(content=content, view=None)
+                        await msg.edit(content=tekst, view=OneStemButtonView())
                     except Exception:
-                        msg = await channel.send(content=content, view=None)
-                        save_message_id(channel.id, dag, msg.id)
+                        msg = await channel.send(content=tekst, view=OneStemButtonView())
+                        save_message_id(channel.id, key, msg.id)
                 else:
-                    msg = await channel.send(content=content, view=None)
-                    save_message_id(channel.id, dag, msg.id)
-
-            # 2) Vierde bericht: één knop “🗳️ Stemmen”
-            key = "stemmen"
-            tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
-            mid = get_message_id(channel.id, key)
-            if mid:
-                try:
-                    msg = await channel.fetch_message(mid)
-                    await msg.edit(content=tekst, view=OneStemButtonView())
-                except Exception:
                     msg = await channel.send(content=tekst, view=OneStemButtonView())
                     save_message_id(channel.id, key, msg.id)
-            else:
-                msg = await channel.send(content=tekst, view=OneStemButtonView())
-                save_message_id(channel.id, key, msg.id)
 
-            await interaction.followup.send("✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True)
+                await interaction.followup.send("✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Fout bij plaatsen: {e}", ephemeral=True)
@@ -385,7 +386,7 @@ class DMKPoll(commands.Cog):
                                 g = groepen.setdefault(key, {"voted": False, "guests": [], "mention": owner_member.mention if owner_member else "Gast"})
                                 g["guests"].append(guest_name.strip() or "Gast")
                             else:
-                                member = guild.get_member(int(raw_id)) or await guild.fetch_member(int(raw_id))
+                                member = guild.get_member(int(raw_id)) or await safe_call(guild.fetch_member, int(raw_id))
                                 if member:
                                     key = raw_id
                                     g = groepen.setdefault(key, {"voted": False, "guests": [], "mention": member.mention})
