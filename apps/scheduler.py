@@ -12,6 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apps.utils.poll_storage import load_votes, reset_votes
 from apps.utils.poll_message import get_message_id, update_poll_message, clear_message_id
 from apps.utils.discord_client import get_guilds, get_channels, safe_call
+from apps.utils.logger import log_job, log_startup
 
 scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Amsterdam"))
 
@@ -50,6 +51,8 @@ async def _run_catch_up(bot) -> None:
             return True
         return last < scheduled_dt
 
+    missed: list[str] = []  # opgeslagen namen van jobs die zijn ingehaald
+
     # Dagelijkse update (18:00)
     last_update = state.get("update_all_polls")
     today_18 = now.replace(hour=18, minute=0, second=0, microsecond=0)
@@ -57,6 +60,10 @@ async def _run_catch_up(bot) -> None:
     if should_run(last_update, last_sched_update):
         await update_all_polls(bot)
         state["update_all_polls"] = now.isoformat()
+        missed.append("update_all_polls")
+        log_job("update_all_polls", status="executed")
+    else:
+        log_job("update_all_polls", status="skipped")
 
     # Wekelijkse reset (maandag 00:00)
     last_reset = state.get("reset_polls")
@@ -66,6 +73,10 @@ async def _run_catch_up(bot) -> None:
     if should_run(last_reset, last_sched_reset):
         await reset_polls(bot)
         state["reset_polls"] = now.isoformat()
+        missed.append("reset_polls")
+        log_job("reset_polls", status="executed")
+    else:
+        log_job("reset_polls", status="skipped")
 
     # Notificaties (vr/za/zo 18:00)
     weekday_map = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
@@ -80,8 +91,14 @@ async def _run_catch_up(bot) -> None:
         if should_run(last_notify, last_occurrence):
             await notify_voters_if_avond_gaat_door(bot, dag)
             state[key] = now.isoformat()
+            missed.append(f"notify_{dag}")
+            log_job("notify", dag=dag, status="executed")
+        else:
+            log_job("notify", dag=dag, status="skipped")
 
     _write_state(state)
+    # Log bij opstart welke jobs ingehaald zijn
+    log_startup(missed)
 
 
 async def _run_catch_up_with_lock(bot) -> None:
@@ -125,6 +142,7 @@ def setup_scheduler(bot):
 
 async def update_all_polls(bot):
     # update elk dagbericht in elk tekstkanaal
+    log_job("update_all_polls", status="executed")
     for guild in bot.guilds:
         for channel in get_channels(guild):
             for dag in ["vrijdag", "zaterdag", "zondag"]:
@@ -133,6 +151,7 @@ async def update_all_polls(bot):
 
 async def reset_polls(bot):
     # stemmen leegmaken en keys opruimen (nieuwe week)
+    log_job("reset_polls", status="executed")
     await reset_votes()
     for guild in bot.guilds:
         for channel in get_channels(guild):
@@ -151,6 +170,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
     Stuur om 18:00 een melding als één tijd >= 6 stemmen heeft.
     Bij gelijk → 20:30 wint (DMK-regel).
     """
+    log_job("notify", dag=dag, status="executed")
     stemmen = await load_votes()
     # Let op: jouw labels heten "om 19:00 uur" en "om 20:30 uur"
     keys = {"19": "om 19:00 uur", "2030": "om 20:30 uur"}
