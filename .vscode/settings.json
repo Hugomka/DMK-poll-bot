@@ -1,0 +1,7 @@
+// .vscode/settings.json
+{
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "ruff.enable": true,
+    "ruff.lintOnSave": true
+}
