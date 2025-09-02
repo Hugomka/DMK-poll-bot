@@ -29,22 +29,26 @@ try:
 except Exception:
     ArchiveDeleteView = None
 
+async def is_admin_of_moderator(interaction: discord.Interaction) -> bool:
+    perms = interaction.user.guild_permissions
+    return perms.administrator or perms.moderate_members
+
 class DMKPoll(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     async def on_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        if isinstance(error, app_commands.MissingPermissions):
+        if isinstance(error, (app_commands.MissingPermissions, app_commands.CheckFailure)):
             await interaction.response.send_message(
-                "🚫 Sorry, je bent geen beheerder. Je kunt deze commando niet gebruiken.",
+                "🚫 Sorry, je bent geen beheerder of moderator. Je kunt deze commando niet gebruiken.",
                 ephemeral=True
             )
         else:
-            raise error  # laat andere fouten gewoon door
+            raise error
 
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(name="dmk-poll-on", description="Plaats of update de polls per avond")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def on(self, interaction):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -87,9 +91,9 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Fout bij plaatsen: {e}", ephemeral=True)
             
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(name="dmk-poll-reset", description="Reset de polls naar een nieuwe week.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def reset(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -135,9 +139,9 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Reset mislukt: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(name="dmk-poll-pauze", description="Pauzeer of hervat alle polls")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def pauze(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -169,9 +173,9 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(name="dmk-poll-verwijderen", description="Verwijder alle pollberichten uit het kanaal en uit het systeem.")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def verwijderbericht(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -220,7 +224,7 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
         description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline."
@@ -239,7 +243,7 @@ class DMKPoll(commands.Cog):
     @app_commands.describe(
         tijd="Tijdstip in uu:mm (alleen nodig bij verborgen modus)"
     )
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def stemmen(
         self,
         interaction: discord.Interaction,
@@ -282,12 +286,12 @@ class DMKPoll(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-download",
         description="(Admin) Download het CSV-archief met weekresultaten."
     )
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def archief_download(self, interaction: discord.Interaction):
         # NIET-ephemeral defer, want we willen de file publiek kunnen sturen
         await interaction.response.defer(ephemeral=False)
@@ -320,12 +324,12 @@ class DMKPoll(commands.Cog):
             # Altijd afronden met feedback
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
         description="(Admin) Verwijder het volledige archief."
     )
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.check(is_admin_of_moderator)
     async def archief_verwijderen(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         try:
