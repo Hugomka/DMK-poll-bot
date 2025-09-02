@@ -26,9 +26,20 @@ async def _read_json(path: str = None) -> Dict[str, Any]:
         return {}
 
 async def _write_json(path: str, data: Dict[str, Any]) -> None:
+    """
+    Schrijf de stemmen veilig weg door eerst naar een tijdelijk bestand te schrijven.
+    Daarna vervang je het oude bestand in één stap.
+    """
     def _write():
-        with open(path, "w", encoding="utf-8") as f:
+        # schrijf naar een tijdelijke file
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())  # zorg dat alles op schijf staat
+        # vervang de oude file atomisch
+        os.replace(tmp_path, path)
+
     await asyncio.to_thread(_write)
 
 # Publiek async API
