@@ -1,5 +1,6 @@
 # apps/scheduler.py
 
+import asyncio
 import os
 import json
 from datetime import datetime, timedelta, time as dt_time
@@ -118,7 +119,7 @@ def setup_scheduler(bot):
     scheduler.start()
 
     # Catch-up kort na start, maar niet blokkerend
-    bot.loop.create_task(_run_catch_up_with_lock(bot))
+    asyncio.create_task(_run_catch_up_with_lock(bot))
 
 
 async def update_all_polls(bot):
