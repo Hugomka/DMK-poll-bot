@@ -31,3 +31,9 @@ poll_message.json
 poll_settings.json
 votes.json
 archive/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

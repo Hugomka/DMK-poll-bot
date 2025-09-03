@@ -8,25 +8,28 @@ _CACHE_TTL_SECONDS = 300  # 5 minuten
 _guild_cache: Dict[str, Any] = {}
 _channel_cache: Dict[int, Any] = {}
 
-async def safe_call(func: Callable, *args, retries: int = 5, base_delay: float = 1.0, jitter: float = 0.3):
+async def safe_call(func, *args, retries=3, base_delay=0.5, jitter=0.1, **kwargs):
     """
-    Roep een Discord‑API functie aan met exponential backoff bij 429 (rate limit) of netwerkfouten.
+    Roep een async func aan met retries. Ondersteunt zowel args als kwargs.
+    Retries bij HTTP 429 of netwerkfouten (TimeoutError/OSError).
     """
-    delay = base_delay
-    for _ in range(retries):
+    attempt = 0
+    while True:
         try:
-            return await func(*args)
-        except discord.HTTPException as e:
-            if e.status == 429:
-                await asyncio.sleep(delay + random.uniform(0, jitter))
-                delay *= 2
-                continue
-            raise
-        except Exception:
-            await asyncio.sleep(delay + random.uniform(0, jitter))
-            delay *= 2
-            continue
-    raise Exception("safe_call: maximum retries exceeded")
+            return await func(*args, **kwargs)
+        except Exception as e:
+            status = getattr(e, "status", None)
+            # 429 of netwerkfouten: retry met exponentiële backoff + jitter
+            if status == 429 or isinstance(e, (OSError, TimeoutError)):
+                attempt += 1
+                if attempt > retries:
+                    raise
+                delay = base_delay * (2 ** (attempt - 1))
+                if jitter:
+                    delay += random.uniform(0, jitter)
+                await asyncio.sleep(delay)
+            else:
+                raise
 
 def get_guilds(bot: discord.Client):
     """Cache de lijst van guilds (servers) zodat we niet telkens bot.guilds hoeven te lopen."""
