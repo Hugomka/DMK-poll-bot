@@ -1,5 +1,6 @@
-# apps\utils\poll_settings.py
+# apps/utils/poll_settings.py
 
+from enum import Enum
 import json
 import os
 from datetime import datetime, time
@@ -76,7 +77,7 @@ def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
         return False
 
     # zelfde dag: verbergen tot de deadline-tijd
-    deadline = time(uur, minuut)  # gebruik datetime.time-klasse die we importeerden
+    deadline = time(uur, minuut)
     return now.time() < deadline
 
 def is_paused(channel_id: int) -> bool:

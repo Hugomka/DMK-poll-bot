@@ -1,4 +1,4 @@
-# apps\commands\dmk_poll.py
+# apps/commands/dmk_poll.py
 
 import io
 import discord
@@ -18,12 +18,11 @@ from apps.utils.poll_message import (
     clear_message_id,
     update_poll_message,
 )
-from apps.ui.poll_buttons import OneStemButtonView, PollButtonView
-from apps.utils.poll_storage import add_guest_votes, get_votes_for_option, load_votes, remove_guest_votes, reset_votes
+from apps.ui.poll_buttons import OneStemButtonView
+from apps.utils.poll_storage import add_guest_votes, load_votes, remove_guest_votes, reset_votes
 from apps.utils.message_builder import build_grouped_names_for, build_poll_message_for_day_async
-from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, set_visibility, should_hide_counts, toggle_paused
+from apps.utils.poll_settings import get_setting, is_name_display_enabled, is_paused, set_visibility, should_hide_counts, toggle_name_display, toggle_paused
 from apps.utils.archive import append_week_snapshot, archive_exists, open_archive_bytes, delete_archive
-from apps.utils.poll_settings import toggle_name_display
 
 try:
     from apps.ui.archive_view import ArchiveDeleteView
@@ -50,7 +49,7 @@ class DMKPoll(commands.Cog):
     @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.command(name="dmk-poll-on", description="Plaats of update de polls per avond")
     @app_commands.check(is_admin_of_moderator)
-    async def on(self, interaction):
+    async def on(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         dagen = ["vrijdag", "zaterdag", "zondag"]
@@ -61,33 +60,37 @@ class DMKPoll(commands.Cog):
                 content = await build_poll_message_for_day_async(dag, guild=channel.guild)
                 mid = get_message_id(channel.id, dag)
 
-            if mid:
-                try:
-                    msg = await safe_call(channel.fetch_message, mid)
-                    await safe_call(msg.edit, content=content, view=None)
-                except Exception:
-                    msg = await safe_call(channel.send, content=content, view=None)
-                    save_message_id(channel.id, dag, msg.id)
-            else:
-                msg = await safe_call(channel.send, content=content, view=None)
-                save_message_id(channel.id, dag, msg.id)
-
-                # 2) Vierde bericht: één knop “🗳️ Stemmen”
-                key = "stemmen"
-                tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
-                mid = get_message_id(channel.id, key)
                 if mid:
                     try:
-                        msg = await channel.fetch_message(mid)
-                        await msg.edit(content=tekst, view=OneStemButtonView())
+                        msg = await safe_call(channel.fetch_message, mid)
+                        await safe_call(msg.edit, content=content, view=None)
                     except Exception:
-                        msg = await channel.send(content=tekst, view=OneStemButtonView())
-                        save_message_id(channel.id, key, msg.id)
+                        # Als ophalen/edit mislukt: maak nieuw bericht en vervang id
+                        msg = await safe_call(channel.send, content=content, view=None)
+                        save_message_id(channel.id, dag, msg.id)
                 else:
-                    msg = await channel.send(content=tekst, view=OneStemButtonView())
-                    save_message_id(channel.id, key, msg.id)
+                    # Bestond nog niet → aanmaken en id opslaan
+                    msg = await safe_call(channel.send, content=content, view=None)
+                    save_message_id(channel.id, dag, msg.id)
 
-                await interaction.followup.send("✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True)
+            # 2) Vierde bericht: één vaste knop “🗳️ Stemmen”
+            key = "stemmen"
+            tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+            s_mid = get_message_id(channel.id, key)
+            paused = is_paused(channel.id)
+
+            if s_mid:
+                try:
+                    s_msg = await safe_call(channel.fetch_message, s_mid)
+                    await safe_call(s_msg.edit, content=tekst, view=OneStemButtonView(paused=paused))
+                except Exception:
+                    s_msg = await safe_call(channel.send, content=tekst, view=OneStemButtonView(paused=paused))
+                    save_message_id(channel.id, key, s_msg.id)
+            else:
+                s_msg = await safe_call(channel.send, content=tekst, view=OneStemButtonView(paused=paused))
+                save_message_id(channel.id, key, s_msg.id)
+
+            await interaction.followup.send("✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Fout bij plaatsen: {e}", ephemeral=True)
@@ -107,12 +110,16 @@ class DMKPoll(commands.Cog):
             except Exception as e:
                 print(f"⚠️ append_week_snapshot mislukte: {e}")
 
-            # 2) Alle stemmen wissen (async!)
+            # 2) Alle stemmen wissen
             await reset_votes()
 
-            # 3) Namen direct uitschakelen
-            from apps.utils.poll_settings import set_name_display
-            set_name_display(channel.id, False)
+            # 3) Namen direct uitschakelen (alleen als ze aan staan)
+            try:
+                if is_name_display_enabled(channel.id):
+                    toggle_name_display(channel.id)  # uitzetten
+            except Exception as e:
+                # Niet fataal voor reset
+                print(f"⚠️ namen uitschakelen mislukte: {e}")
 
             # 4) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
@@ -127,11 +134,29 @@ class DMKPoll(commands.Cog):
                 try:
                     msg = await channel.fetch_message(mid)
                     hide = should_hide_counts(channel.id, dag, now)
-                    content = await build_poll_message_for_day_async(dag, hide_counts=hide, pauze=paused, guild=channel.guild)
-                    await msg.edit(content=content, view=None)  # ← knoppen worden niet opnieuw getoond
+                    content = await build_poll_message_for_day_async(
+                        dag,
+                        hide_counts=hide,
+                        pauze=paused,
+                        guild=channel.guild
+                    )
+                    await msg.edit(content=content, view=None)  # geen knoppen tonen
                 except Exception as e:
                     print(f"Fout bij resetten van poll voor {dag}: {e}")
 
+            # 5) (Optioneel) Stemmen-bericht tekst + knop updaten als het bestaat
+            key = "stemmen"
+            s_mid = get_message_id(channel.id, key)
+            if s_mid:
+                try:
+                    s_msg = await channel.fetch_message(s_mid)
+                    tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+                    view = OneStemButtonView(paused=paused)
+                    await s_msg.edit(content=tekst, view=view)
+                except Exception as e:
+                    print(f"⚠️ kon stemmen-bericht niet updaten: {e}")
+
+            # 6) Terugkoppeling
             if gevonden:
                 await interaction.followup.send("🔄 De stemmen zijn gereset voor een nieuwe week.", ephemeral=True)
             else:
