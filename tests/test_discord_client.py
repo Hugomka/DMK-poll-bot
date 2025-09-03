@@ -1,15 +1,14 @@
 # tests/test_discord_client.py
 
-import asyncio
-import time
 from unittest.mock import patch
-from tests.base import BaseTestCase
 
-from apps.utils.discord_client import safe_call, get_guilds, get_channels
+from apps.utils.discord_client import get_channels, get_guilds, safe_call
+from tests.base import BaseTestCase
 
 
 class FakeHTTPException(Exception):
     """Simuleer een HTTP-exception met een statuscode, bv. 429."""
+
     def __init__(self, status):
         super().__init__(f"http {status}")
         self.status = status
@@ -40,8 +39,9 @@ class TestDiscordClient(BaseTestCase):
             counter = {"n": 0}
 
             # base_delay=0 en jitter=0: direct opnieuw proberen
-            res = await safe_call(lambda: _fails_twice_then_ok(counter),
-                                  retries=5, base_delay=0, jitter=0)
+            res = await safe_call(
+                lambda: _fails_twice_then_ok(counter), retries=5, base_delay=0, jitter=0
+            )
 
             assert res == "OK"
             assert counter["n"] == 2  # precies 2 keer gefaald -> 2 retries gedaan
@@ -70,17 +70,21 @@ class TestDiscordClient(BaseTestCase):
             bot = FakeBot([g1])
 
             # eerste call -> cache fill
-            v1 = get_guilds(bot); v1_id = id(v1)
-            ch1 = get_channels(g1); ch1_id = id(ch1)
+            v1 = get_guilds(bot)
+            v1_id = id(v1)
+            ch1 = get_channels(g1)
+            ch1_id = id(ch1)
 
             # zelfde tijd -> cache hit (object-id blijft gelijk)
-            v2 = get_guilds(bot); ch2 = get_channels(g1)
+            v2 = get_guilds(bot)
+            ch2 = get_channels(g1)
             assert id(v2) == v1_id
             assert id(ch2) == ch1_id
 
             # TTL laten verlopen
             current["t"] = 500.0
 
-            v3 = get_guilds(bot); ch3 = get_channels(g1)
-            assert id(v3) != v1_id   # nieuw gecachte lijst
+            v3 = get_guilds(bot)
+            ch3 = get_channels(g1)
+            assert id(v3) != v1_id  # nieuw gecachte lijst
             assert id(ch3) != ch1_id  # nieuw gecachte kanalen

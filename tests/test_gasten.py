@@ -2,18 +2,16 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from tests.base import BaseTestCase
-
-from apps.utils.poll_storage import (
-    add_guest_votes,
-    remove_guest_votes,
-    get_votes_for_option,
-    toggle_vote,
-    load_votes,
-)
 from apps.commands.dmk_poll import DMKPoll
 from apps.utils.poll_settings import toggle_name_display
-
+from apps.utils.poll_storage import (
+    add_guest_votes,
+    get_votes_for_option,
+    load_votes,
+    remove_guest_votes,
+    toggle_vote,
+)
+from tests.base import BaseTestCase
 
 DAG = "vrijdag"
 TIJD = "om 20:30 uur"
@@ -31,7 +29,9 @@ class TestGasten(BaseTestCase):
     # --- /gast-add: gasten worden toegevoegd en tellen mee ---
     async def test_gast_add_telt_mee(self):
         # Voeg 2 gasten toe
-        toegevoegd, overgeslagen = await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi"])
+        toegevoegd, overgeslagen = await add_guest_votes(
+            OWNER, DAG, TIJD, ["Toad", "Luigi"]
+        )
 
         self.assertEqual(sorted(toegevoegd), ["Luigi", "Toad"])
         self.assertEqual(overgeslagen, [])
@@ -53,15 +53,17 @@ class TestGasten(BaseTestCase):
         await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi", "Peach"])
 
         # Verwijder er twee
-        verwijderd, nietgevonden = await remove_guest_votes(int(OWNER), DAG, TIJD, ["Toad", "Peach"])
+        verwijderd, nietgevonden = await remove_guest_votes(
+            int(OWNER), DAG, TIJD, ["Toad", "Peach"]
+        )
 
         self.assertCountEqual(verwijderd, ["Toad", "Peach"])
         self.assertEqual(nietgevonden, [])
 
         # Overgebleven: alleen Luigi
         votes = await load_votes()
-        self.assertNotIn(f"{OWNER}_guest::Toad", votes)   # helemaal opgeruimd
-        self.assertNotIn(f"{OWNER}_guest::Peach", votes) # helemaal opgeruimd
+        self.assertNotIn(f"{OWNER}_guest::Toad", votes)  # helemaal opgeruimd
+        self.assertNotIn(f"{OWNER}_guest::Peach", votes)  # helemaal opgeruimd
         self.assertIn(f"{OWNER}_guest::Luigi", votes)
 
         # Count is nu 1
@@ -100,13 +102,14 @@ class TestGasten(BaseTestCase):
         interaction.followup.send = AsyncMock()
 
         # Run: /dmk-poll-status
-        await self.cog.status.callback(self.cog, interaction)
+        await self.cog._status_impl(interaction)
 
         # Controleer dat embed is verstuurd
         interaction.followup.send.assert_called()
         kwargs = interaction.followup.send.call_args.kwargs
         embed = kwargs.get("embed")
         self.assertIsNotNone(embed)
+        assert embed is not None
 
         # Embed zou 3 stemmen moeten bevatten
         all_text = str(embed.description) + "".join(f.value for f in embed.fields)
@@ -141,17 +144,16 @@ class TestGasten(BaseTestCase):
         interaction.response.defer = AsyncMock()
         interaction.followup.send = AsyncMock()
 
-        await self.cog.status.callback(self.cog, interaction)
+        await self.cog._status_impl(interaction)
 
         interaction.followup.send.assert_called()
         kwargs = interaction.followup.send.call_args.kwargs
         embed = kwargs.get("embed")
         self.assertIsNotNone(embed)
+        assert embed is not None
 
         all_text = str(embed.description) + "".join(f.value for f in embed.fields)
-        # 2 stemmen (alleen gasten)
         self.assertIn("**2** stemmen", all_text)
-        # Compacte guests-only notatie: (@Mario: Anna, Maria)
         self.assertIn("(@Mario: Anna, Maria)", all_text)
 
 

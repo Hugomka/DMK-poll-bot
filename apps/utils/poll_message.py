@@ -1,18 +1,22 @@
-#apps/utils/poll_message.py
+# apps/utils/poll_message.py
 
 import json
 import os
-import discord
 from datetime import datetime
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
+
+import discord
+
 from apps.logic.decision import build_decision_line
+from apps.utils.discord_client import safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
-from apps.utils.discord_client import safe_call
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
-def _load():
+
+def _load() -> dict[str, Any]:
     if os.path.exists(POLL_MESSAGE_FILE):
         try:
             with open(POLL_MESSAGE_FILE, "r", encoding="utf-8") as f:
@@ -21,26 +25,31 @@ def _load():
             pass
     return {}
 
-def _save(data):
+
+def _save(data: dict[str, Any]) -> None:
     with open(POLL_MESSAGE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-def save_message_id(channel_id, key, message_id):
+
+def save_message_id(channel_id: int, key: str, message_id: int) -> None:
     data = _load()
     data.setdefault("per_channel", {}).setdefault(str(channel_id), {})[key] = message_id
     _save(data)
 
-def get_message_id(channel_id, key):
+
+def get_message_id(channel_id: int, key: str) -> Optional[int]:
     data = _load()
     return data.get("per_channel", {}).get(str(channel_id), {}).get(key)
 
-def clear_message_id(channel_id, key):
+
+def clear_message_id(channel_id: int, key: str) -> None:
     data = _load()
     per = data.setdefault("per_channel", {}).setdefault(str(channel_id), {})
     per.pop(key, None)
     _save(data)
 
-async def update_poll_message(channel, dag: str | None = None):
+
+async def update_poll_message(channel: Any, dag: str | None = None) -> None:
     """
     Update (of maak aan) de dag-berichten.
     Toont/verbergt aantallen per dag via should_hide_counts(...).
@@ -58,7 +67,7 @@ async def update_poll_message(channel, dag: str | None = None):
         content = await build_poll_message_for_day_async(
             d,
             hide_counts=hide,
-            guild=channel.guild,  # voor namen
+            guild=getattr(channel, "guild", None),  # voor namen
         )
 
         decision = await build_decision_line(channel.id, d, now)
@@ -68,9 +77,14 @@ async def update_poll_message(channel, dag: str | None = None):
         if mid:
             try:
                 # Probeer te editen als het bericht bestaat
-                msg = await safe_call(channel.fetch_message, mid)
-                await safe_call(msg.edit, content=content, view=None)
-                continue  # klaar voor deze dag
+                fetch = getattr(channel, "fetch_message", None)
+                msg = await safe_call(fetch, mid) if fetch else None
+                if msg is not None:
+                    await safe_call(msg.edit, content=content, view=None)
+                    continue  # klaar voor deze dag
+                else:
+                    # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
+                    clear_message_id(channel.id, d)
             except discord.NotFound:
                 # Bestond niet meer → id opruimen en hierna aanmaken
                 clear_message_id(channel.id, d)
@@ -84,7 +98,11 @@ async def update_poll_message(channel, dag: str | None = None):
 
         # Create-pad: geen mid óf net opgeschoond na NotFound → nieuw sturen
         try:
-            new_msg = await safe_call(channel.send, content=content, view=None)
-            save_message_id(channel.id, d, new_msg.id)
-        except Exception as e:
+            send = getattr(channel, "send", None)
+            new_msg = (
+                await safe_call(send, content=content, view=None) if send else None
+            )
+            if new_msg is not None:
+                save_message_id(channel.id, d, new_msg.id)
+        except Exception as e:  # pragma: no cover
             print(f"❌ Fout bij aanmaken bericht voor {d}: {e}")

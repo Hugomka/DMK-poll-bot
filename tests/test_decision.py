@@ -3,11 +3,10 @@ import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from tests.base import BaseTestCase
-
 from apps.logic.decision import build_decision_line
-from apps.utils.poll_storage import save_votes
 from apps.utils.poll_settings import set_visibility
+from apps.utils.poll_storage import save_votes
+from tests.base import BaseTestCase
 
 AMS = ZoneInfo("Europe/Amsterdam")
 FRI = "vrijdag"
@@ -18,9 +17,7 @@ T2030 = "om 20:30 uur"
 class TestDecision(BaseTestCase):
 
     async def asyncSetUp(self):
-        # Zet env en testbestanden via BaseTestCase en schone start voor elke test
         await super().asyncSetUp()
-
 
     async def _set_votes(self, mapping: dict):
         """
@@ -34,17 +31,16 @@ class TestDecision(BaseTestCase):
         return datetime(y, m, d, hh, mm, tzinfo=AMS)
 
     async def test_before_deadline_shows_announcement(self):
-        # Vrijdag 2025-08-22 17:00 (vóór 18:00), deadline-modus actief
         set_visibility(12345, FRI, modus="deadline", tijd="18:00")
         now = self._dt(2025, 8, 22, 17, 0)
 
         await self._set_votes({})
         line = await build_decision_line(12345, FRI, now)
         self.assertIsNotNone(line)
+        assert line is not None
         self.assertIn("18:00", line)
 
     async def test_after_deadline_winner_2030(self):
-        # Vrijdag 2025-08-22 19:00 (ná 18:00)
         set_visibility(12345, FRI, modus="deadline", tijd="18:00")
         now = self._dt(2025, 8, 22, 19, 0)
 
@@ -58,6 +54,7 @@ class TestDecision(BaseTestCase):
         await self._set_votes(votes)
         line = await build_decision_line(12345, FRI, now)
         self.assertIsNotNone(line)
+        assert line is not None
         self.assertIn("20:30", line)
         self.assertIn("6 stemmen", line)
 
@@ -75,6 +72,7 @@ class TestDecision(BaseTestCase):
         await self._set_votes(votes)
         line = await build_decision_line(12345, FRI, now)
         self.assertIsNotNone(line)
+        assert line is not None
         self.assertIn("19:00", line)
         self.assertIn("7 stemmen", line)
 
@@ -92,6 +90,7 @@ class TestDecision(BaseTestCase):
         await self._set_votes(votes)
         line = await build_decision_line(12345, FRI, now)
         self.assertIsNotNone(line)
+        assert line is not None
         self.assertIn("20:30", line)
         self.assertIn("6", line)
 
@@ -109,6 +108,7 @@ class TestDecision(BaseTestCase):
         await self._set_votes(votes)
         line = await build_decision_line(12345, FRI, now)
         self.assertIsNotNone(line)
+        assert line is not None
         self.assertIn("Gaat niet door", line)
 
     async def test_other_day_returns_none(self):

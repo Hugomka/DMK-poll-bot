@@ -1,9 +1,10 @@
 # tests/test_status.py
 
 from unittest.mock import AsyncMock, MagicMock
+
 from apps.commands.dmk_poll import DMKPoll
-from apps.utils.poll_storage import toggle_vote
 from apps.utils.poll_settings import toggle_name_display
+from apps.utils.poll_storage import toggle_vote
 from tests.base import BaseTestCase
 
 
@@ -44,7 +45,7 @@ class TestStatusCommand(BaseTestCase):
         interaction.followup.send = AsyncMock()
 
         # ⏯️ Aanroepen van status
-        await self.cog.status.callback(self.cog, interaction)
+        await self.cog._status_impl(interaction)
 
         # 🔍 Controleer dat een embed is gestuurd
         interaction.followup.send.assert_called()
