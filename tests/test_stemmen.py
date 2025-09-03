@@ -1,4 +1,4 @@
-# tests\test_stemmen.py
+# tests/test_stemmen.py
 
 from apps.utils.poll_storage import toggle_vote, load_votes
 from tests.base import BaseTestCase

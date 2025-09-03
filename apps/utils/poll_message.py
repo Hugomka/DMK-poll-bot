@@ -1,4 +1,4 @@
-#apps\utils\poll_message.py
+#apps/utils/poll_message.py
 
 import json
 import os

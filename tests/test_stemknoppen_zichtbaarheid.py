@@ -1,4 +1,4 @@
-# tests\test_stemknoppen_zichtbaarheid.py
+# tests/test_stemknoppen_zichtbaarheid.py
 
 from datetime import datetime
 from zoneinfo import ZoneInfo

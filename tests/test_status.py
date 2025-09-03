@@ -1,4 +1,4 @@
-# tests\test_status.py
+# tests/test_status.py
 
 from unittest.mock import AsyncMock, MagicMock
 from apps.commands.dmk_poll import DMKPoll

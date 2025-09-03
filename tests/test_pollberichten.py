@@ -1,4 +1,4 @@
-# tests\test_pollberichten.py
+# tests/test_pollberichten.py
 
 from apps.utils.poll_message import build_poll_message_for_day_async
 from tests.base import BaseTestCase

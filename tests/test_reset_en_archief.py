@@ -1,4 +1,4 @@
-# tests\test_reset_en_archief.py
+# tests/test_reset_en_archief.py
 
 import os
 from apps.utils.poll_storage import toggle_vote, get_votes_for_option, reset_votes

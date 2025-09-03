@@ -1,4 +1,4 @@
-# tests\test_toggle_vote.py
+# tests/test_toggle_vote.py
 
 import os
 from apps.utils.poll_storage import toggle_vote, get_user_votes
