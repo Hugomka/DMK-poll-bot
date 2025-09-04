@@ -11,7 +11,13 @@ from dotenv import load_dotenv
 
 from apps.ui.poll_buttons import OneStemButtonView
 
+
+def _hide_pynacl_warning(record: logging.LogRecord) -> bool:
+    return "PyNaCl is not installed" not in record.getMessage()
+
+
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("discord.client").addFilter(_hide_pynacl_warning)
 discord.utils.setup_logging(level=logging.INFO)
 
 load_dotenv()
