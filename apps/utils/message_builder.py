@@ -1,19 +1,29 @@
 # apps/utils/message_builder.py
 
 import discord
+
 from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_storage import get_counts_for_day
 
+
 async def build_poll_message_for_day_async(
     dag: str,
+    guild_id: int | str,
+    channel_id: int | str,
     hide_counts: bool = False,
     pauze: bool = False,
-    guild: discord.Guild | None = None
+    guild: discord.Guild | None = None,
 ) -> str:
     """
-    Bouwt de tekst van het pollbericht voor één dag.
-    - Als hide_counts=True, toon je geen aantallen.
-    - 'pauze' voegt alleen een marker in de titel toe.
+    Bouwt de tekst van het pollbericht voor één dag, GESCOPED per guild+channel.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild_id: Discord guild ID (server)
+    - channel_id: Discord channel ID (tekstkanaal)
+    - hide_counts: verberg aantallen (True/False)
+    - pauze: voeg marker toe in de titel
+    - guild: optioneel, voor mentions in andere helpers
     """
     title = f"**DMK-poll voor {dag.capitalize()}**"
     if pauze:
@@ -26,11 +36,10 @@ async def build_poll_message_for_day_async(
         message += "_(geen opties gevonden)_"
         return message
 
-    # Aantallen per tijd (1 call voor performance), tenzij verborgen
-    counts = {} if hide_counts else await get_counts_for_day(dag)
+    # Aantallen per tijd (scoped), tenzij verborgen
+    counts = {} if hide_counts else await get_counts_for_day(dag, guild_id, channel_id)
 
     for opt in opties:
-        # Label altijd expliciet opbouwen (robuuster dan opt.label)
         label = f"{opt.emoji} {opt.tijd}"
 
         if hide_counts:
@@ -44,10 +53,7 @@ async def build_poll_message_for_day_async(
 
 # --- Helper: groepeer leden en gasten (voor status + toggle) ---
 async def build_grouped_names_for(
-    dag: str,
-    tijd: str,
-    guild: discord.Guild | None,
-    all_votes: dict
+    dag: str, tijd: str, guild: discord.Guild | None, all_votes: dict
 ) -> tuple[int, str]:
     """
     Retourneert (totaal_stemmen, tekst) waarbij tekst bv. is:
@@ -77,13 +83,17 @@ async def build_grouped_names_for(
                 mention = "Gast"
                 if guild:
                     try:
-                        owner_member = guild.get_member(int(owner_id)) or await guild.fetch_member(int(owner_id))
+                        owner_member = guild.get_member(
+                            int(owner_id)
+                        ) or await guild.fetch_member(int(owner_id))
                         if owner_member:
                             mention = owner_member.mention
                     except Exception:
                         pass
 
-                g = groepen.setdefault(owner_id, {"voted": False, "guests": [], "mention": mention})
+                g = groepen.setdefault(
+                    owner_id, {"voted": False, "guests": [], "mention": mention}
+                )
                 g["guests"].append(guest_name)
 
             else:
@@ -91,14 +101,18 @@ async def build_grouped_names_for(
                 mention = None
                 if guild:
                     try:
-                        member = guild.get_member(int(raw_id)) or await guild.fetch_member(int(raw_id))
+                        member = guild.get_member(
+                            int(raw_id)
+                        ) or await guild.fetch_member(int(raw_id))
                         if member:
                             mention = member.mention
                     except Exception:
                         pass
 
                 key = str(raw_id)
-                g = groepen.setdefault(key, {"voted": False, "guests": [], "mention": mention or "Lid"})
+                g = groepen.setdefault(
+                    key, {"voted": False, "guests": [], "mention": mention or "Lid"}
+                )
                 g["voted"] = True
 
         except Exception:
@@ -106,7 +120,9 @@ async def build_grouped_names_for(
             continue
 
     # Totaal = leden die stemden + alle gasten
-    totaal = sum(1 for g in groepen.values() if g["voted"]) + sum(len(g["guests"]) for g in groepen.values())
+    totaal = sum(1 for g in groepen.values() if g["voted"]) + sum(
+        len(g["guests"]) for g in groepen.values()
+    )
 
     def fmt(g: dict) -> str:
         mention = g.get("mention") or "Lid"

@@ -40,6 +40,9 @@ class PollButton(Button):
                 return
 
             user_id = str(interaction.user.id)
+            guild_id: int = int(
+                interaction.guild_id or getattr(interaction.guild, "id", 0) or 0
+            )
 
             # ✅ Check of stemmen nog open is
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
@@ -51,10 +54,14 @@ class PollButton(Button):
                 return
 
             # ✅ Toggle stem
-            await toggle_vote(user_id, self.dag, self.tijd)
+            await toggle_vote(
+                user_id, self.dag, self.tijd, (interaction.guild_id or 0), channel_id
+            )
 
             # ✅ Vernieuw eigen ephemeral view (alleen voor deze gebruiker)
-            new_view = await create_poll_button_view(user_id, channel_id, dag=self.dag)
+            new_view = await create_poll_button_view(
+                user_id, guild_id, channel_id, dag=self.dag
+            )
             if interaction.response.is_done():
                 await interaction.edit_original_response(view=new_view)
             else:
@@ -81,7 +88,7 @@ class PollButton(Button):
                     return
 
                 views_per_dag = await create_poll_button_views_per_day(
-                    str(interaction.user.id), channel_id
+                    str(interaction.user.id), guild_id, channel_id
                 )
 
                 if not views_per_dag:
@@ -147,17 +154,17 @@ class PollButtonView(View):
 
 
 async def create_poll_button_view(
-    user_id: str, channel_id: int, dag: str | None = None
+    user_id: str, guild_id: int, channel_id: int, dag: str | None = None
 ) -> PollButtonView:
-    votes = await get_user_votes(user_id)
+    votes = await get_user_votes(user_id, guild_id, channel_id)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     return PollButtonView(votes, channel_id, filter_dag=dag, now=now)
 
 
 async def create_poll_button_views_per_day(
-    user_id: str, channel_id: int
+    user_id: str, guild_id: int, channel_id: int
 ) -> list[tuple[str, PollButtonView]]:
-    votes = await get_user_votes(user_id)
+    votes = await get_user_votes(user_id, guild_id, channel_id)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     views: list[tuple[str, PollButtonView]] = []
 
@@ -196,7 +203,9 @@ class OpenStemmenButton(Button):
             return
 
         user_id = str(interaction.user.id)
-        views_per_dag = await create_poll_button_views_per_day(user_id, channel_id)
+        views_per_dag = await create_poll_button_views_per_day(
+            user_id, (interaction.guild_id or 0), channel_id
+        )
 
         if not views_per_dag:
             await interaction.response.send_message(

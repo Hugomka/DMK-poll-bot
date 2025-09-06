@@ -30,44 +30,44 @@ class TestGasten(BaseTestCase):
     async def test_gast_add_telt_mee(self):
         # Voeg 2 gasten toe
         toegevoegd, overgeslagen = await add_guest_votes(
-            OWNER, DAG, TIJD, ["Toad", "Luigi"]
+            OWNER, DAG, TIJD, ["Toad", "Luigi"], 1, 123
         )
 
         self.assertEqual(sorted(toegevoegd), ["Luigi", "Toad"])
         self.assertEqual(overgeslagen, [])
 
         # Controleren dat ze in votes zitten
-        votes = await load_votes()
+        votes = await load_votes(1, 123)
         self.assertIn(f"{OWNER}_guest::Toad", votes)
         self.assertIn(f"{OWNER}_guest::Luigi", votes)
         self.assertIn(TIJD, votes[f"{OWNER}_guest::Toad"][DAG])
         self.assertIn(TIJD, votes[f"{OWNER}_guest::Luigi"][DAG])
 
         # Aantal stemmen voor dit slot = 2 (alleen gasten)
-        count = await get_votes_for_option(DAG, TIJD)
+        count = await get_votes_for_option(DAG, TIJD, 1, 123)
         self.assertEqual(count, 2)
 
     # --- /gast-remove: specifieke namen worden verwijderd ---
     async def test_gast_remove_verwijdert_correct(self):
         # Start met drie gasten
-        await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi", "Peach"])
+        await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi", "Peach"], 1, 123)
 
         # Verwijder er twee
         verwijderd, nietgevonden = await remove_guest_votes(
-            int(OWNER), DAG, TIJD, ["Toad", "Peach"]
+            int(OWNER), DAG, TIJD, ["Toad", "Peach"], 1, 123
         )
 
         self.assertCountEqual(verwijderd, ["Toad", "Peach"])
         self.assertEqual(nietgevonden, [])
 
         # Overgebleven: alleen Luigi
-        votes = await load_votes()
+        votes = await load_votes(1, 123)
         self.assertNotIn(f"{OWNER}_guest::Toad", votes)  # helemaal opgeruimd
         self.assertNotIn(f"{OWNER}_guest::Peach", votes)  # helemaal opgeruimd
         self.assertIn(f"{OWNER}_guest::Luigi", votes)
 
         # Count is nu 1
-        count = await get_votes_for_option(DAG, TIJD)
+        count = await get_votes_for_option(DAG, TIJD, 1, 123)
         self.assertEqual(count, 1)
 
     # --- Status: owner stemt + 2 gasten -> gegroepeerde tekst + juiste count ---
@@ -77,12 +77,13 @@ class TestGasten(BaseTestCase):
         toggle_name_display(kanaal_id)
 
         # Owner stemt zelf ook
-        await toggle_vote(OWNER, DAG, TIJD)
+        await toggle_vote(OWNER, DAG, TIJD, 0, kanaal_id)
         # Voeg 2 gasten toe
-        await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi"])
+        await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi"], 0, kanaal_id)
 
         # Mock guild & member
         mock_guild = MagicMock()
+        mock_guild.id = 0
         mock_member = MagicMock()
         mock_member.mention = "@Mario"
         mock_guild.get_member.return_value = mock_member
@@ -96,6 +97,7 @@ class TestGasten(BaseTestCase):
         mock_user.guild_permissions.administrator = True
 
         interaction = MagicMock()
+        interaction.guild = mock_guild
         interaction.channel = mock_channel
         interaction.user = mock_user
         interaction.response.defer = AsyncMock()
@@ -123,9 +125,10 @@ class TestGasten(BaseTestCase):
         toggle_name_display(kanaal_id)
 
         # Owner stemt NIET, maar heeft 2 gasten
-        await add_guest_votes(OWNER, DAG, TIJD, ["Anna", "Maria"])
+        await add_guest_votes(OWNER, DAG, TIJD, ["Anna", "Maria"], 0, kanaal_id)
 
         mock_guild = MagicMock()
+        mock_guild.id = 0
         mock_member = MagicMock()
         mock_member.mention = "@Mario"
         mock_guild.get_member.return_value = mock_member
@@ -139,6 +142,7 @@ class TestGasten(BaseTestCase):
         mock_user.guild_permissions.administrator = True
 
         interaction = MagicMock()
+        interaction.guild = mock_guild
         interaction.channel = mock_channel
         interaction.user = mock_user
         interaction.response.defer = AsyncMock()

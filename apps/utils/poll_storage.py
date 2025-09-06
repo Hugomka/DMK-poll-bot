@@ -1,19 +1,30 @@
 # apps/utils/poll_storage.py
+#
+# Scoped opslag van stemmen: per guild_id → per channel_id → per user_id.
+# Geen legacy, geen migratie: dit bestand verwacht alleen de nieuwe structuur.
+#
+# Publieke API (async):
+# - load_votes(guild_id: int|str | None = None, channel_id: int|str | None = None) -> dict
+# - save_votes_scoped(guild_id, channel_id, scoped: dict) -> None
+# - get_user_votes(user_id, guild_id, channel_id) -> dict
+# - add_vote(user_id, dag, tijd, guild_id, channel_id) -> None
+# - toggle_vote(user_id, dag, tijd, guild_id, channel_id) -> list
+# - remove_vote(user_id, dag, tijd, guild_id, channel_id) -> None
+# - get_counts_for_day(dag, guild_id, channel_id) -> dict[str, int]
+# - get_votes_for_option(dag, tijd, guild_id, channel_id) -> int
+# - reset_votes() -> None
+# - add_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
+# - remove_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
 
 import asyncio
 import json
 import os
-from typing import (
-    Any,
-    Dict,
-    Optional,
-)  # Optional alleen nodig als je < Python 3.10 draait
+from typing import Any, Dict, Optional
 
 from apps.entities.poll_option import get_poll_options, is_valid_option
 
 SPECIALS = {"misschien", "niet meedoen"}
 
-# 1 lock voor veilig schrijven/lezen
 _VOTES_LOCK = asyncio.Lock()
 
 
@@ -21,7 +32,11 @@ def get_votes_path() -> str:
     return os.getenv("VOTES_FILE", "votes.json")
 
 
-# Gebruik Optional[str] (of str | None op 3.10+)
+# -----------------------------
+# Interne I/O helpers
+# -----------------------------
+
+
 async def _read_json(path: Optional[str] = None) -> Dict[str, Any]:
     path = path or get_votes_path()
     if not os.path.exists(path):
@@ -39,33 +54,49 @@ async def _read_json(path: Optional[str] = None) -> Dict[str, Any]:
 
 
 async def _write_json(path: str, data: Dict[str, Any]) -> None:
-    """
-    Schrijf de stemmen veilig weg door eerst naar een tijdelijk bestand te schrijven.
-    Daarna vervang je het oude bestand in één stap.
-    """
-
     def _write():
-        # schrijf naar een tijdelijke file
         tmp_path = f"{path}.tmp"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
             f.flush()
-            os.fsync(f.fileno())  # zorg dat alles op schijf staat
-        # vervang de oude file atomisch
+            os.fsync(f.fileno())
         os.replace(tmp_path, path)
 
     await asyncio.to_thread(_write)
 
 
-# Publiek async API
-async def load_votes() -> Dict[str, Any]:
-    async with _VOTES_LOCK:
-        return await _read_json(get_votes_path())
+def _ensure_root_structure(root: Dict[str, Any]) -> Dict[str, Any]:
+    if "guilds" not in root or not isinstance(root.get("guilds"), dict):
+        root["guilds"] = {}
+    return root
 
 
-async def save_votes(data: Dict[str, Any]) -> None:
-    async with _VOTES_LOCK:
-        await _write_json(get_votes_path(), data)
+def _ensure_guild_channel(root: Dict[str, Any], guild_id: str, channel_id: str) -> None:
+    _ensure_root_structure(root)
+    g = root["guilds"].setdefault(guild_id, {})
+    g.setdefault("channels", {})
+    g["channels"].setdefault(channel_id, {})
+
+
+def _get_scoped(root: Dict[str, Any], guild_id: str, channel_id: str) -> Dict[str, Any]:
+    g = root.get("guilds", {}).get(guild_id, {})
+    ch = g.get("channels", {}).get(channel_id, {})
+    return dict(ch) if isinstance(ch, dict) else {}
+
+
+def _set_scoped(
+    root: Dict[str, Any], guild_id: str, channel_id: str, scoped_dict: Dict[str, Any]
+) -> None:
+    _ensure_guild_channel(root, guild_id, channel_id)
+    root["guilds"][guild_id]["channels"][channel_id] = dict(scoped_dict)
+
+
+async def _get_root() -> Dict[str, Any]:
+    return await _read_json(get_votes_path())
+
+
+async def _save_root(root: Dict[str, Any]) -> None:
+    await _write_json(get_votes_path(), root)
 
 
 def _empty_days() -> Dict[str, list]:
@@ -73,27 +104,66 @@ def _empty_days() -> Dict[str, list]:
     return {dag: [] for dag in unieke_dagen}
 
 
-async def get_user_votes(user_id: str) -> Dict[str, list]:
-    votes = await load_votes()
-    return votes.get(str(user_id), _empty_days())
+# -----------------------------
+# Publieke API (scoped)
+# -----------------------------
 
 
-async def add_vote(user_id: str, dag: str, tijd: str) -> None:
+async def load_votes(
+    guild_id: Optional[int | str] = None, channel_id: Optional[int | str] = None
+) -> Dict[str, Any]:
+    """
+    Zonder scope → volledige root (met 'guilds').
+    Met scope → map {user_id -> {dag: [tijden]}} in die guild+channel.
+    """
+    async with _VOTES_LOCK:
+        root = await _get_root()
+        if guild_id is None or channel_id is None:
+            return root
+        gid, cid = str(guild_id), str(channel_id)
+        return _get_scoped(root, gid, cid)
+
+
+async def save_votes_scoped(
+    guild_id: int | str, channel_id: int | str, scoped: Dict[str, Any]
+) -> None:
+    async with _VOTES_LOCK:
+        gid, cid = str(guild_id), str(channel_id)
+        root = await _get_root()
+        _set_scoped(root, gid, cid, scoped)
+        await _save_root(root)
+
+
+async def get_user_votes(
+    user_id: str, guild_id: int | str, channel_id: int | str
+) -> Dict[str, list]:
+    scoped = await load_votes(guild_id, channel_id)
+    return scoped.get(str(user_id), _empty_days())
+
+
+async def add_vote(
+    user_id: str, dag: str, tijd: str, guild_id: int | str, channel_id: int | str
+) -> None:
     if not is_valid_option(dag, tijd):
         print(f"⚠️ Ongeldige combinatie in add_vote: {dag}, {tijd}")
         return
-    user_id = str(user_id)
-    votes = await load_votes()
-    if user_id not in votes:
-        votes[user_id] = _empty_days()
-    if tijd not in votes[user_id].get(dag, []):
-        votes[user_id][dag].append(tijd)
-    await save_votes(votes)
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+    uid = str(user_id)
+    user = scoped.setdefault(uid, _empty_days())
+    if tijd not in user.get(dag, []):
+        user.setdefault(dag, []).append(tijd)
+    scoped[uid] = user
+    await save_votes_scoped(gid, cid, scoped)
 
 
-async def toggle_vote(user_id: str, dag: str, tijd: str) -> list:
-    votes = await load_votes()
-    user = votes.setdefault(user_id, _empty_days())
+async def toggle_vote(
+    user_id: str, dag: str, tijd: str, guild_id: int | str, channel_id: int | str
+) -> list:
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+    uid = str(user_id)
+    user = scoped.setdefault(uid, _empty_days())
     if not is_valid_option(dag, tijd):
         return user.get(dag, [])
 
@@ -112,30 +182,36 @@ async def toggle_vote(user_id: str, dag: str, tijd: str) -> list:
             day_votes.append(tijd)
 
     user[dag] = day_votes
-    await save_votes(votes)
+    scoped[uid] = user
+    await save_votes_scoped(gid, cid, scoped)
     return day_votes
 
 
-async def remove_vote(user_id: str, dag: str, tijd: str) -> None:
+async def remove_vote(
+    user_id: str, dag: str, tijd: str, guild_id: int | str, channel_id: int | str
+) -> None:
     if not is_valid_option(dag, tijd):
         print(f"⚠️ Ongeldige combinatie in remove_vote: {dag}, {tijd}")
         return
-    user_id = str(user_id)
-    votes = await load_votes()
-    if user_id in votes and tijd in votes[user_id].get(dag, []):
-        votes[user_id][dag].remove(tijd)
-        await save_votes(votes)
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+    uid = str(user_id)
+    if uid in scoped and tijd in scoped[uid].get(dag, []):
+        scoped[uid][dag].remove(tijd)
+        await save_votes_scoped(gid, cid, scoped)
 
 
-async def get_counts_for_day(dag: str) -> Dict[str, int]:
-    """Telt in 1 keer alle opties van deze dag (minder I/O)."""
-    votes = await load_votes()
+async def get_counts_for_day(
+    dag: str, guild_id: int | str, channel_id: int | str
+) -> Dict[str, int]:
+    """Telt alle opties voor deze dag in de gegeven scope."""
+    scoped = await load_votes(guild_id, channel_id)
     counts: Dict[str, int] = {}
     for o in get_poll_options():
         if o.dag != dag:
             continue
         c = 0
-        for per_user in votes.values():
+        for per_user in scoped.values():
             tijden = per_user.get(dag, [])
             if isinstance(tijden, list) and o.tijd in tijden:
                 c += 1
@@ -143,21 +219,23 @@ async def get_counts_for_day(dag: str) -> Dict[str, int]:
     return counts
 
 
-async def get_votes_for_option(dag: str, tijd: str) -> int:
-    # optioneel, maar we gebruiken liever get_counts_for_day in 1 I/O
-    counts = await get_counts_for_day(dag)
+async def get_votes_for_option(
+    dag: str, tijd: str, guild_id: int | str, channel_id: int | str
+) -> int:
+    counts = await get_counts_for_day(dag, guild_id, channel_id)
     return counts.get(tijd, 0)
 
 
 async def reset_votes() -> None:
-    await save_votes({})
+    """Reset ALLE stemmen van alle guilds/channels."""
+    async with _VOTES_LOCK:
+        await _write_json(get_votes_path(), {})
 
 
 # === GASTEN ===============================================================
 
 
 def _sanitize_guest_name(name: str) -> str:
-    # trim + simpele sanitisatie: vervang scheidingstekens door spatie, collapse spaces
     raw = (
         name.strip()
         .replace("_", " ")
@@ -165,7 +243,6 @@ def _sanitize_guest_name(name: str) -> str:
         .replace(";", " ")
         .replace(",", " ")
     )
-    # alleen zichtbare chars, kort houden
     cleaned = " ".join(raw.split())
     return cleaned[:40] if cleaned else "Gast"
 
@@ -175,31 +252,29 @@ def _guest_id(owner_user_id: int | str, guest_name: str) -> str:
 
 
 async def add_guest_votes(
-    owner_user_id: int | str, dag: str, tijd: str, namen: list[str]
+    owner_user_id: int | str,
+    dag: str,
+    tijd: str,
+    namen: list[str],
+    guild_id: int | str,
+    channel_id: int | str,
 ) -> tuple[list[str], list[str]]:
-    """
-    Maakt voor elke gastnaam een eigen 'virtuele user' key aan en zet daar de stem.
-    Return: (toegevoegd, overgeslagen)
-    - overgeslagen als die exacte gastnaam al bestond voor die eigenaar en dag/tijd.
-    """
-    from apps.entities.poll_option import is_valid_option
-
     if not is_valid_option(dag, tijd):
         return ([], namen or [])
 
-    # normaliseer en filter lege
     norm = []
     for n in namen or []:
         s = _sanitize_guest_name(n)
         if s:
             norm.append(s)
 
-    votes = await load_votes()
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
     toegevoegd, overgeslagen = [], []
 
     for naam in norm:
-        gid = _guest_id(owner_user_id, naam)
-        per_dag = votes.get(gid, {})
+        key = _guest_id(owner_user_id, naam)
+        per_dag = scoped.get(key, {})
         bestaande = per_dag.get(dag, [])
 
         if tijd in bestaande:
@@ -208,45 +283,41 @@ async def add_guest_votes(
 
         nieuw = set(bestaande)
         nieuw.add(tijd)
-        per_dag[dag] = sorted(nieuw)
-        votes[gid] = per_dag
+        per_dag[dag] = sorted(list(nieuw))
+        scoped[key] = per_dag
         toegevoegd.append(naam)
 
-    await save_votes(votes)
+    await save_votes_scoped(gid, cid, scoped)
     return (toegevoegd, overgeslagen)
 
 
 async def remove_guest_votes(
-    owner_id: int, dag: str, tijd: str, namen: list[str]
+    owner_id: int | str,
+    dag: str,
+    tijd: str,
+    namen: list[str],
+    guild_id: int | str,
+    channel_id: int | str,
 ) -> tuple[list[str], list[str]]:
-    """
-    Verwijder gaststemmen voor een bepaalde owner, dag en tijd.
-    :param owner_id: Discord user ID van de eigenaar
-    :param dag: bv. 'vrijdag'
-    :param tijd: bv. 'om 20:30 uur'
-    :param namen: lijst van gastnamen die verwijderd moeten worden
-    :return: (verwijderd, nietgevonden)
-    """
-    votes = await load_votes()
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
     verwijderd, nietgevonden = [], []
 
-    for naam in namen:
+    for naam in namen or []:
         key = f"{owner_id}_guest::{naam}"
-        if key in votes and tijd in votes[key].get(dag, []):
-            # haal tijd uit de stemmenlijst van deze gast
+        if key in scoped and tijd in scoped[key].get(dag, []):
             try:
-                votes[key][dag].remove(tijd)
+                scoped[key][dag].remove(tijd)
                 verwijderd.append(naam)
             except ValueError:
                 nietgevonden.append(naam)
 
-            # als gast helemaal leeg is → opschonen
-            if not votes[key][dag]:
-                del votes[key][dag]
-            if not votes[key]:
-                del votes[key]
+            if not scoped[key][dag]:
+                del scoped[key][dag]
+            if not scoped[key]:
+                del scoped[key]
         else:
             nietgevonden.append(naam)
 
-    await save_votes(votes)
+    await save_votes_scoped(gid, cid, scoped)
     return verwijderd, nietgevonden

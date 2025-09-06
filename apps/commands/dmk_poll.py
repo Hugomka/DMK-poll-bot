@@ -109,7 +109,11 @@ class DMKPoll(commands.Cog):
             # 1) Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
             guild = _get_attr(channel, "guild")
             for dag in dagen:
-                content = await build_poll_message_for_day_async(dag, guild=guild)
+                gid_val = getattr(guild, "id", "0") if guild is not None else "0"
+                cid_val = getattr(channel, "id", "0") or "0"
+                content = await build_poll_message_for_day_async(
+                    dag, gid_val, cid_val, guild=guild
+                )
                 mid = get_message_id(channel.id, dag)
 
                 if mid:
@@ -222,8 +226,16 @@ class DMKPoll(commands.Cog):
                 if msg is None:
                     continue
                 hide = should_hide_counts(channel.id, dag, now)
+                gid_val = (
+                    getattr(_get_attr(channel, "guild"), "id", "0")
+                    if _get_attr(channel, "guild") is not None
+                    else "0"
+                )
+                cid_val = getattr(channel, "id", "0") or "0"
                 content = await build_poll_message_for_day_async(
                     dag,
+                    gid_val,
+                    cid_val,
                     hide_counts=hide,
                     pauze=paused,
                     guild=_get_attr(channel, "guild"),
@@ -526,11 +538,25 @@ class DMKPoll(commands.Cog):
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
-        guild = getattr(channel, "guild", None)
+
+        # Guild ophalen (uit interaction of uit channel), en IDs veilig casten naar int
+        guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
+
+        gid_raw = getattr(guild, "id", 0) if guild is not None else 0
+        try:
+            gid_val: int = int(gid_raw)
+        except Exception:
+            gid_val = 0
+
+        cid_raw = getattr(channel, "id", 0)
+        try:
+            cid_val: int = int(cid_raw)
+        except Exception:
+            cid_val = 0
 
         try:
-            pauze_txt = "Ja" if is_paused(channel.id) else "Nee"
-            namen_aan = is_name_display_enabled(channel.id)
+            pauze_txt = "Ja" if is_paused(cid_val) else "Nee"
+            namen_aan = is_name_display_enabled(cid_val)
             namen_txt = "zichtbaar" if namen_aan else "anoniem"
 
             embed = discord.Embed(
@@ -539,10 +565,11 @@ class DMKPoll(commands.Cog):
                 color=discord.Color.blurple(),
             )
 
-            all_votes = await load_votes()
+            # Gescopeerde stemmen voor dit guild+kanaal
+            scoped = await load_votes(gid_val, cid_val)
 
             for dag in ["vrijdag", "zaterdag", "zondag"]:
-                instelling = get_setting(channel.id, dag)
+                instelling = get_setting(cid_val, dag)
                 zicht_txt = (
                     "altijd zichtbaar"
                     if (instelling or {}).get("modus") == "altijd"
@@ -555,7 +582,7 @@ class DMKPoll(commands.Cog):
                         continue
 
                     totaal, groepen_txt = await build_grouped_names_for(
-                        dag, opt.tijd, guild, all_votes
+                        dag, opt.tijd, guild, scoped
                     )
 
                     regel = f"{opt.emoji} {opt.tijd} — **{totaal}** stemmen"
@@ -575,7 +602,7 @@ class DMKPoll(commands.Cog):
             is_admin = bool(getattr(perms, "administrator", False))
             if is_admin:
                 await interaction.followup.send(
-                    embed=embed, ephemeral=True, view=NaamToggleView(channel.id)
+                    embed=embed, ephemeral=True, view=NaamToggleView(cid_val)
                 )
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -625,7 +652,16 @@ class DMKPoll(commands.Cog):
                 return
 
             toegevoegd, overgeslagen = await add_guest_votes(
-                interaction.user.id, dag, tijd, ruwe
+                interaction.user.id,
+                dag,
+                tijd,
+                ruwe,
+                (
+                    getattr(interaction.guild, "id", "0")
+                    if interaction.guild is not None
+                    else "0"
+                ),
+                getattr(interaction.channel, "id", "0") or "0",
             )
 
             # Publieke pollbericht voor díe dag even updaten
@@ -681,7 +717,16 @@ class DMKPoll(commands.Cog):
                 return
 
             verwijderd, nietgevonden = await remove_guest_votes(
-                interaction.user.id, dag, tijd, ruwe
+                interaction.user.id,
+                dag,
+                tijd,
+                ruwe,
+                (
+                    getattr(interaction.guild, "id", "0")
+                    if interaction.guild is not None
+                    else "0"
+                ),
+                getattr(interaction.channel, "id", "0") or "0",
             )
 
             # Publieke pollbericht voor díe dag updaten

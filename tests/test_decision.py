@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from apps.logic.decision import build_decision_line
 from apps.utils.poll_settings import set_visibility
-from apps.utils.poll_storage import save_votes
+from apps.utils.poll_storage import save_votes_scoped
 from tests.base import BaseTestCase
 
 AMS = ZoneInfo("Europe/Amsterdam")
@@ -22,10 +22,8 @@ class TestDecision(BaseTestCase):
     async def _set_votes(self, mapping: dict):
         """
         mapping: dict[str_user_id] -> {"vrijdag": [tijd, ...]}
-        Voorbeeld:
-          {"1": {"vrijdag": ["om 20:30 uur"]}, ...}
         """
-        await save_votes(mapping)
+        await save_votes_scoped(1, 12345, mapping)
 
     def _dt(self, y, m, d, hh=12, mm=0):
         return datetime(y, m, d, hh, mm, tzinfo=AMS)
@@ -35,7 +33,7 @@ class TestDecision(BaseTestCase):
         now = self._dt(2025, 8, 22, 17, 0)
 
         await self._set_votes({})
-        line = await build_decision_line(12345, FRI, now)
+        line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNotNone(line)
         assert line is not None
         self.assertIn("18:00", line)
@@ -52,7 +50,7 @@ class TestDecision(BaseTestCase):
             votes[str(i)] = {FRI: [T19]}
 
         await self._set_votes(votes)
-        line = await build_decision_line(12345, FRI, now)
+        line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNotNone(line)
         assert line is not None
         self.assertIn("20:30", line)
@@ -70,7 +68,7 @@ class TestDecision(BaseTestCase):
             votes[str(i)] = {FRI: [T2030]}
 
         await self._set_votes(votes)
-        line = await build_decision_line(12345, FRI, now)
+        line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNotNone(line)
         assert line is not None
         self.assertIn("19:00", line)
@@ -88,7 +86,7 @@ class TestDecision(BaseTestCase):
             votes[str(i)] = {FRI: [T2030]}
 
         await self._set_votes(votes)
-        line = await build_decision_line(12345, FRI, now)
+        line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNotNone(line)
         assert line is not None
         self.assertIn("20:30", line)
@@ -106,7 +104,7 @@ class TestDecision(BaseTestCase):
             votes[str(i)] = {FRI: [T2030]}
 
         await self._set_votes(votes)
-        line = await build_decision_line(12345, FRI, now)
+        line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNotNone(line)
         assert line is not None
         self.assertIn("Gaat niet door", line)
@@ -117,7 +115,7 @@ class TestDecision(BaseTestCase):
         now = self._dt(2025, 8, 21, 12, 0)
 
         await self._set_votes({})
-        line = await build_decision_line(12345, FRI, now)
+        line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNone(line)
 
 

@@ -58,19 +58,24 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
     """
     keys = [dag] if dag else ["vrijdag", "zaterdag", "zondag"]
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+    guild_obj = getattr(channel, "guild", None)
+    gid_val: int | str = int(getattr(guild_obj, "id", 0))
+    cid_val: int | str = int(getattr(channel, "id", 0))
 
     for d in keys:
-        mid = get_message_id(channel.id, d)
+        mid = get_message_id(cid_val, d)
 
         # Bepaal content (zowel voor edit als create)
-        hide = should_hide_counts(channel.id, d, now)
+        hide = should_hide_counts(cid_val, d, now)
         content = await build_poll_message_for_day_async(
             d,
+            guild_id=gid_val,
+            channel_id=cid_val,
             hide_counts=hide,
             guild=getattr(channel, "guild", None),  # voor namen
         )
 
-        decision = await build_decision_line(channel.id, d, now)
+        decision = await build_decision_line(gid_val, cid_val, d, now)
         if decision:
             content = content.rstrip() + "\n\n" + decision
 
@@ -84,10 +89,10 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                     continue  # klaar voor deze dag
                 else:
                     # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
-                    clear_message_id(channel.id, d)
+                    clear_message_id(cid_val, d)
             except discord.NotFound:
                 # Bestond niet meer → id opruimen en hierna aanmaken
-                clear_message_id(channel.id, d)
+                clear_message_id(cid_val, d)
             except discord.HTTPException as e:
                 if getattr(e, "code", None) == 30046:
                     # Maximum edits voor oud bericht → niets doen (stil negeren)
@@ -103,6 +108,6 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                 await safe_call(send, content=content, view=None) if send else None
             )
             if new_msg is not None:
-                save_message_id(channel.id, d, new_msg.id)
+                save_message_id(cid_val, d, new_msg.id)
         except Exception as e:  # pragma: no cover
             print(f"❌ Fout bij aanmaken bericht voor {d}: {e}")

@@ -21,10 +21,11 @@ class TestStatusCommand(BaseTestCase):
         toggle_name_display(kanaal_id)
 
         # Simuleer stem
-        await toggle_vote("111", "vrijdag", "om 19:00 uur")
+        await toggle_vote("111", "vrijdag", "om 19:00 uur", kanaal_id, kanaal_id)
 
         # Maak nep-interaction met guild en user
         mock_guild = MagicMock()
+        mock_guild.id = 0
         mock_member = MagicMock()
         mock_member.mention = "@Goldway"
         mock_guild.get_member.return_value = mock_member
@@ -39,6 +40,7 @@ class TestStatusCommand(BaseTestCase):
         mock_user.guild_permissions.administrator = True
 
         interaction = MagicMock()
+        interaction.guild = mock_guild
         interaction.channel = mock_channel
         interaction.user = mock_user
         interaction.response.defer = AsyncMock()

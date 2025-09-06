@@ -1,11 +1,13 @@
 # tests/test_reset_en_archief.py
 
 import os
-from apps.utils.poll_storage import toggle_vote, get_votes_for_option, reset_votes
-from apps.utils.archive import append_week_snapshot, delete_archive, archive_exists
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from apps.utils.archive import append_week_snapshot, archive_exists, delete_archive
+from apps.utils.poll_storage import get_votes_for_option, reset_votes, toggle_vote
 from tests.base import BaseTestCase
+
 
 class TestResetEnArchief(BaseTestCase):
 
@@ -15,13 +17,13 @@ class TestResetEnArchief(BaseTestCase):
 
     async def test_reset_zet_stemmen_op_nul(self):
         user = "999"
-        await toggle_vote(user, "vrijdag", "om 19:00 uur")
+        await toggle_vote(user, "vrijdag", "om 19:00 uur", 1, 123)
         await reset_votes()
-        aantal = await get_votes_for_option("vrijdag", "om 19:00 uur")
+        aantal = await get_votes_for_option("vrijdag", "om 19:00 uur", 1, 123)
         self.assertEqual(aantal, 0)
 
     async def test_append_week_snapshot_maakt_csv(self):
-        await toggle_vote("abc", "vrijdag", "om 19:00 uur")
+        await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
         await append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
         self.assertTrue(archive_exists())
         self.assertTrue(os.path.exists("archive/dmk_archive.csv"))
@@ -34,4 +36,3 @@ class TestResetEnArchief(BaseTestCase):
         await append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
         delete_archive()
         self.assertFalse(os.path.exists("archive/dmk_archive.csv"))
-

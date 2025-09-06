@@ -1,7 +1,8 @@
 # tests/test_stemmen.py
 
-from apps.utils.poll_storage import toggle_vote, load_votes
+from apps.utils.poll_storage import load_votes, toggle_vote
 from tests.base import BaseTestCase
+
 
 class TestStemmen(BaseTestCase):
 
@@ -13,8 +14,8 @@ class TestStemmen(BaseTestCase):
         dag = "vrijdag"
         tijd = "om 19:00 uur"
 
-        await toggle_vote(user, dag, tijd)
-        votes = await load_votes()
+        await toggle_vote(user, dag, tijd, 1, 123)
+        votes = await load_votes(1, 123)
 
         self.assertIn(tijd, votes[user][dag])
 
@@ -23,26 +24,25 @@ class TestStemmen(BaseTestCase):
         dag = "zaterdag"
         tijd = "om 20:30 uur"
 
-        await toggle_vote(user, dag, tijd)  # Voeg toe
-        await toggle_vote(user, dag, tijd)  # Verwijder weer
+        await toggle_vote(user, dag, tijd, 1, 123)  # Voeg toe
+        await toggle_vote(user, dag, tijd, 1, 123)  # Verwijder weer
 
-        votes = await load_votes()
+        votes = await load_votes(1, 123)
         self.assertNotIn(tijd, votes[user][dag])
 
     async def test_meerdere_stemmen_op_1_dag(self):
         user = "222"
         dag = "zaterdag"
-        await toggle_vote(user, dag, "om 19:00 uur")
-        await toggle_vote(user, dag, "om 20:30 uur")
-        votes = await load_votes()
+        await toggle_vote(user, dag, "om 19:00 uur", 1, 123)
+        await toggle_vote(user, dag, "om 20:30 uur", 1, 123)
+        votes = await load_votes(1, 123)
         self.assertIn("om 19:00 uur", votes[user][dag])
         self.assertIn("om 20:30 uur", votes[user][dag])
 
     async def test_speciale_opties_vervangen_anderen(self):
         user = "333"
         dag = "zondag"
-        await toggle_vote(user, dag, "om 19:00 uur")
-        await toggle_vote(user, dag, "misschien")
-        votes = await load_votes()
+        await toggle_vote(user, dag, "om 19:00 uur", 1, 123)
+        await toggle_vote(user, dag, "misschien", 1, 123)
+        votes = await load_votes(1, 123)
         self.assertEqual(votes[user][dag], ["misschien"])
-

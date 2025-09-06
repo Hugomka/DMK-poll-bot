@@ -201,46 +201,71 @@ async def reset_polls(bot):
 
 async def notify_voters_if_avond_gaat_door(bot, dag: str):
     """
-    Stuur om 18:00 een melding als één tijd >= 6 stemmen heeft.
-    Bij gelijk → 20:30 wint (DMK-regel).
-    Stuurt altijd een bericht naar elk tekstkanaal van de guild(s).
+    Stuur om 18:00 een melding **per kanaal** als één tijd >= 6 stemmen heeft in dát kanaal.
+    Bij gelijk → 20:30 wint (DMK‑regel).
     """
     log_job("notify", dag=dag, status="executed")
-    stemmen = await load_votes()
-    keys = {"19": "om 19:00 uur", "2030": "om 20:30 uur"}
+    KEY_19 = "om 19:00 uur"
+    KEY_2030 = "om 20:30 uur"
 
-    voters_19 = {uid for uid, d in stemmen.items() if keys["19"] in d.get(dag, [])}
-    voters_2030 = {uid for uid, d in stemmen.items() if keys["2030"] in d.get(dag, [])}
-
-    c19, c2030 = len(voters_19), len(voters_2030)
-
-    # Geen doorgang → geen melding
-    if c19 < 6 and c2030 < 6:
-        return
-
-    # winnaar (gelijk → 20:30)
-    if c2030 >= c19:
-        winnaar_txt = "20:30"
-        winnaar_set = voters_2030
-    else:
-        winnaar_txt = "19:00"
-        winnaar_set = voters_19
-
-    # Bericht naar elk tekstkanaal; mentions optioneel (mag leeg zijn)
     for guild in bot.guilds:
         for channel in get_channels(guild):
             try:
+                # Scoped stemmen voor dit kanaal
+                scoped = await load_votes(
+                    getattr(guild, "id", "0"), getattr(channel, "id", "0")
+                )
+                # Verzamel stemmers per tijd voor de gevraagde dag
+                voters_19 = set()
+                voters_2030 = set()
+                for uid, per_dag in (scoped or {}).items():
+                    # sla gast-keys over voor mentions; tellen we wel mee via owner-id?
+                    # In DMK tellen gasten als losse stemmen, maar mentions gaan naar de eigenaren.
+                    tijden = (per_dag or {}).get(dag, [])
+                    if not isinstance(tijden, list):
+                        continue
+                    if KEY_19 in tijden:
+                        # mention alleen echte gebruikers, niet guest-keys
+                        if isinstance(uid, str) and "_guest::" in uid:
+                            owner_id = uid.split("_guest::", 1)[0]
+                            voters_19.add(owner_id)
+                        else:
+                            voters_19.add(str(uid))
+                    if KEY_2030 in tijden:
+                        if isinstance(uid, str) and "_guest::" in uid:
+                            owner_id = uid.split("_guest::", 1)[0]
+                            voters_2030.add(owner_id)
+                        else:
+                            voters_2030.add(str(uid))
+
+                c19, c2030 = len(voters_19), len(voters_2030)
+
+                # Geen doorgang → geen melding voor dit kanaal
+                if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
+                    continue
+
+                # winnaar (gelijk → 20:30)
+                if c2030 >= c19:
+                    winnaar_txt = "20:30"
+                    winnaar_set = voters_2030
+                else:
+                    winnaar_txt = "19:00"
+                    winnaar_set = voters_19
+
                 mentions = []
                 for uid in winnaar_set:
-                    m = (
-                        guild.get_member(int(uid))
-                        if hasattr(guild, "get_member")
-                        else None
-                    )
-                    if m is not None and getattr(m, "mention", None):
-                        mentions.append(m.mention)
+                    try:
+                        member = (
+                            guild.get_member(int(uid))
+                            if hasattr(guild, "get_member")
+                            else None
+                        )
+                        if member and getattr(member, "mention", None):
+                            mentions.append(member.mention)
+                    except Exception:
+                        continue
 
-                suffix = f"\n{' '.join(mentions)}" if mentions else ""
+                suffix = f"{' '.join(mentions)}" if mentions else ""
                 await safe_call(
                     channel.send,
                     f"📢 DMK op **{dag} {winnaar_txt}** gaat door!{suffix}",
