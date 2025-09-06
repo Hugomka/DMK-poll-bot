@@ -1,0 +1,5 @@
+# runtime dependencies
+discord.py==2.3.2
+python-dotenv
+apscheduler
+pytz

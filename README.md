@@ -6,15 +6,24 @@
   <img src="https://img.shields.io/github/last-commit/Hugomka/DMK-poll-bot" alt="Last Commit">
   <img src="https://img.shields.io/github/issues/Hugomka/DMK-poll-bot" alt="Issues">
   <img src="https://img.shields.io/github/stars/Hugomka/DMK-poll-bot?style=social" alt="Stars">
+  <a href="https://codecov.io/gh/Hugomka/DMK-poll-bot"><img src="https://img.shields.io/codecov/c/github/Hugomka/DMK-poll-bot?label=Coverage" alt="Coverage"></a>
 </p>
 
-**DMK-poll-bot** is een slimme, volledig automatische Discord-bot om weekenden te plannen voor **Deaf Mario Kart (DMK)**. Deze bot is speciaal gemaakt voor de DMK-community, zodat het organiseren van game-avonden soepel en eerlijk gaat. Je hoeft niet langer te puzzelen met reacties: de bot regelt de poll, verzamelt stemmen en communiceert duidelijk de uitkomst.
+**DMK-poll-bot** is een slimme, volledig automatische Discord-bot om weekenden te plannen voor **Deaf Mario Kart (DMK)**.  
+Deze bot is speciaal gemaakt voor de DMK-community, zodat het organiseren van game-avonden soepel en eerlijk gaat.  
+Je hoeft niet langer te puzzelen met reacties: de bot regelt de poll, verzamelt stemmen en communiceert duidelijk de uitkomst.
+
+---
 
 ## 🔰 Introductie
 
-DMK-poll-bot helpt de **DMK club** bij het plannen van races in het weekend. Elke week start de bot een nieuwe poll voor **vrijdag**, **zaterdag** en **zondag**. Leden stemmen met knopjes, de stemmen blijven tot de deadline verborgen, en de bot beslist automatisch of er genoeg animo is. Ook is er ondersteuning voor **gaststemmen** en een **CSV-archief** van resultaten. Kortom: een toegankelijke, gebruiksvriendelijke poll die past bij onze Discord-community 😊.
+DMK-poll-bot helpt de **DMK club** bij het plannen van races in het weekend. Elke week start de bot een nieuwe poll voor **vrijdag**, **zaterdag** en **zondag**.  
+Leden stemmen met knopjes, de stemmen blijven tot de deadline verborgen, en de bot beslist automatisch of er genoeg animo is.  
+Ook is er ondersteuning voor **gaststemmen** en een **CSV-archief** van resultaten. Kortom: een toegankelijke, gebruiksvriendelijke poll die past bij onze Discord-community 😊.
 
-**Waarom deze bot?** Vroeger deden we dit met handmatige polls of reacties. Dat was onoverzichtelijk en kostte tijd. Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met één klik stemmen, resultaten komen precies op tijd, en de beslissing volgt vaste DMK-regels.
+**Waarom deze bot?**  
+Vroeger deden we dit met handmatige polls of reacties. Dat was onoverzichtelijk en kostte tijd.  
+Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met één klik stemmen, resultaten komen precies op tijd, en de beslissing volgt vaste DMK-regels.
 
 ---
 
@@ -41,14 +50,14 @@ DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
 
 | Commando | Uitleg |
 |---|---|
-| **`/dmk-poll-on`** *(admin)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
-| **`/dmk-poll-reset`** *(admin)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
-| **`/dmk-poll-pauze`** *(admin)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
-| **`/dmk-poll-verwijderen`** *(admin)* | Sluit en verwijder alle pollberichten in het kanaal en ruim interne referenties op. |
-| **`/dmk-poll-stemmen`** *(admin)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
+| **`/dmk-poll-on`** *(admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
+| **`/dmk-poll-reset`** *(admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
+| **`/dmk-poll-pauze`** *(admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
+| **`/dmk-poll-verwijderen`** *(aadmin/mod)* | Sluit en verwijder alle pollberichten in het kanaal en ruim interne referenties op. |
+| **`/dmk-poll-stemmen`** *(admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-status`** | Ephemeral embed: pauze/namen-status en per dag de aantallen (optioneel met namen). |
-| **`/dmk-poll-archief-download`** *(admin)* | Download `archive/dmk_archive.csv` met weekresultaten. |
-| **`/dmk-poll-archief-verwijderen`** *(admin)* | Verwijder het volledige CSV-archief. |
+| **`/dmk-poll-archief-download`** *(admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |
+| **`/dmk-poll-archief-verwijderen`** *(admin/mod)* | Verwijder het volledige CSV-archief. |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
 
@@ -104,44 +113,52 @@ De stemopties staan in **`poll_options.json`**. Standaard:
 
 ---
 
-## 🛠️ Installatie
+## ⚙️ Installatie
 
 > Vereist: **Python 3.10+** en een **Discord Bot Token**.
 
 1. **Code klonen**
-
 ```bash
 git clone https://github.com/Hugomka/DMK-poll-bot.git
 cd DMK-poll-bot
 ```
 
-2. **Virtuele omgeving & packages**
+2. **Virtuele omgeving**
+- Linux/macOS:
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  ```
+- Windows PowerShell:
+  ```powershell
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+  ```
 
-```bash
-# (indien nodig) venv installeren
-sudo apt update && sudo apt install -y python3.12-venv
+3. **Afhankelijkheden**
+- Minimale runtime:
+  ```bash
+  pip install -r requirements.txt
+  ```
+- Ontwikkeling (incl. tests/lint/coverage):
+  ```bash
+  pip install -r dev-requirements.txt
+  ```
+  > Tip Windows: als `pip` niet werkt, gebruik `python -m pip install -r dev-requirements.txt`.
 
-# venv maken en activeren
-python3 -m venv venv
-source venv/bin/activate
-
-# afhankelijkheden
-pip install discord.py python-dotenv apscheduler pytz
-```
-
-3. **.env aanmaken**
-
+4. **.env maken**
 ```env
 DISCORD_TOKEN=je_bot_token_hier
 ```
 
-4. **Bot starten (test)**
-
+5. **Bot starten (test)**
 ```bash
 python main.py
 ```
 
-5. **Als service draaien (systemd, Linux)**
+---
+
+6. **Als service draaien (systemd, Linux)**
    Maak `/etc/systemd/system/dmk-bot.service`:
 
 ```ini
@@ -236,6 +253,30 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 * **Download:** `/dmk-poll-archief-download` → bot uploadt `dmk_archive.csv`.
 * **Verwijderen:** `/dmk-poll-archief-verwijderen` → wist het CSV-archief.
 * Archief groeit met 1 regel per week (na reset).
+
+---
+
+## 🧪 Testen en dekking
+
+Alle unittests draaien met:
+```bash
+python -m unittest discover -v
+```
+
+Dekking genereren:
+```bash
+coverage run -m unittest discover -v
+coverage report
+coverage xml
+```
+
+> De coverage‑badge bovenaan werkt zodra de CI een `coverage.xml` heeft geüpload naar Codecov.
+
+---
+
+## 📁 Technische details
+
+(dit deel blijft zoals in je oorspronkelijke README – mapstructuur, archief, beslissingsregels, tijdzone, enz.)
 
 ---
 

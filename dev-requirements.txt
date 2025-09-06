@@ -1,0 +1,10 @@
+# test & coverage
+coverage
+pytest
+
+# lint & format
+black
+ruff
+
+# eventueel extra helpers
+pytest-asyncio
