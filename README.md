@@ -53,7 +53,7 @@ DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
 | **`/dmk-poll-on`** *(admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
 | **`/dmk-poll-reset`** *(admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
 | **`/dmk-poll-pauze`** *(admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
-| **`/dmk-poll-verwijderen`** *(aadmin/mod)* | Sluit en verwijder alle pollberichten in het kanaal en ruim interne referenties op. |
+| **`/dmk-poll-verwijderen`** *(admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
 | **`/dmk-poll-stemmen`** *(admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-status`** | Ephemeral embed: pauze/namen-status en per dag de aantallen (optioneel met namen). |
 | **`/dmk-poll-archief-download`** *(admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |

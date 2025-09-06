@@ -30,6 +30,7 @@ from apps.utils.poll_message import (
     clear_message_id,
     get_message_id,
     save_message_id,
+    set_channel_disabled,
     update_poll_message,
 )
 from apps.utils.poll_settings import (
@@ -103,10 +104,18 @@ class DMKPoll(commands.Cog):
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
+
         dagen = ["vrijdag", "zaterdag", "zondag"]
 
         try:
-            # 1) Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
+            # Kanaal opnieuw activeren voor de scheduler
+            try:
+                set_channel_disabled(getattr(channel, "id", 0), False)
+            except Exception:
+                # niet hard falen als togglen mislukt; we gaan verder met plaatsen
+                pass
+
+            # Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
             guild = _get_attr(channel, "guild")
             for dag in dagen:
                 gid_val = getattr(guild, "id", "0") if guild is not None else "0"
@@ -114,8 +123,8 @@ class DMKPoll(commands.Cog):
                 content = await build_poll_message_for_day_async(
                     dag, gid_val, cid_val, guild=guild
                 )
-                mid = get_message_id(channel.id, dag)
 
+                mid = get_message_id(channel.id, dag)
                 if mid:
                     fetch = _get_attr(channel, "fetch_message")
                     msg = await safe_call(fetch, mid) if fetch else None
@@ -140,7 +149,10 @@ class DMKPoll(commands.Cog):
                     if msg is not None:
                         save_message_id(channel.id, dag, msg.id)
 
-            # 2) Vierde bericht: één vaste knop “🗳️ Stemmen”
+                # Direct updaten volgens zichtbaarheid + beslissingsregel
+                await update_poll_message(channel, dag)
+
+            # Vierde bericht: één vaste knop “🗳️ Stemmen”
             key = "stemmen"
             tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
             s_mid = get_message_id(channel.id, key)
@@ -170,7 +182,8 @@ class DMKPoll(commands.Cog):
                     save_message_id(channel.id, key, s_msg.id)
 
             await interaction.followup.send(
-                "✅ De polls zijn geplaatst of bijgewerkt.", ephemeral=True
+                "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
+                ephemeral=True,
             )
 
         except Exception as e:  # pragma: no cover
@@ -373,14 +386,22 @@ class DMKPoll(commands.Cog):
                         )
                 clear_message_id(channel.id, "stemmen")
 
-            # 3) Terugkoppeling
+            # 3) Kanaal permanent uitzetten voor scheduler (altijd doen)
+            try:
+                set_channel_disabled(getattr(channel, "id", 0), True)
+            except Exception:
+                pass
+
+            # 4) Terugkoppeling
             if gevonden:
                 await interaction.followup.send(
-                    "✅ De polls zijn verwijderd en afgesloten.", ephemeral=True
+                    "✅ Polls verwijderd. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
+                    ephemeral=True,
                 )
             else:
                 await interaction.followup.send(
-                    "⚠️ Geen polls gevonden om te verwijderen.", ephemeral=True
+                    "ℹ️ Er stonden geen poll-berichten meer in dit kanaal. De scheduler is nu uitgezet zodat ze niet terugkomen. Gebruik /dmk-poll-on om later opnieuw te starten.",
+                    ephemeral=True,
                 )
 
         except Exception as e:  # pragma: no cover

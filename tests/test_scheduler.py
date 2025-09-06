@@ -1,10 +1,9 @@
 # tests/test_scheduler.py
 
-import asyncio
-import os
 import json
-from datetime import datetime
+import os
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 import pytz
@@ -24,17 +23,22 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
         temporary .tmp file should not remain on disk after the write.
         """
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             state_file = os.path.join(tmpdir, "state.json")
             with patch.object(scheduler, "STATE_PATH", state_file):
                 data = {"foo": "bar", "number": 42}
                 scheduler._write_state(data)
                 tmp_path = f"{state_file}.tmp"
-                self.assertFalse(os.path.exists(tmp_path), "Temporary file not cleaned up")
+                self.assertFalse(
+                    os.path.exists(tmp_path), "Temporary file not cleaned up"
+                )
                 self.assertTrue(os.path.exists(state_file), "State file not created")
                 with open(state_file, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
-                self.assertEqual(loaded, data, "Written state does not match expected data")
+                self.assertEqual(
+                    loaded, data, "Written state does not match expected data"
+                )
 
     async def test_catch_up_idempotent(self):
         """
@@ -49,6 +53,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             @classmethod
             def now(cls, tz=None):  # type: ignore[override]
                 return fixed_now
+
             @classmethod
             def fromisoformat(cls, s):  # type: ignore[override]
                 return datetime.fromisoformat(s)
@@ -80,17 +85,31 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "datetime", FixedDateTime),
-            patch.object(scheduler, "update_all_polls", dummy_update_all_polls, create=True),
+            patch.object(
+                scheduler, "update_all_polls", dummy_update_all_polls, create=True
+            ),
             patch.object(scheduler, "reset_polls", dummy_reset_polls, create=True),
-            patch.object(scheduler, "notify_voters_if_avond_gaat_door", dummy_notify, create=True),
+            patch.object(
+                scheduler, "notify_voters_if_avond_gaat_door", dummy_notify, create=True
+            ),
             patch.object(scheduler, "_read_state", side_effect=fake_read_state),
             patch.object(scheduler, "_write_state", side_effect=fake_write_state),
         ):
             await scheduler._run_catch_up(bot)
-            self.assertEqual(calls["update_all_polls"], 1, "update_all_polls should run once on first call")
-            self.assertEqual(calls["reset_polls"], 1, "reset_polls should run once on first call")
+            self.assertEqual(
+                calls["update_all_polls"],
+                1,
+                "update_all_polls should run once on first call",
+            )
+            self.assertEqual(
+                calls["reset_polls"], 1, "reset_polls should run once on first call"
+            )
             self.assertCountEqual(calls["notify"], ["vrijdag", "zaterdag", "zondag"])
             await scheduler._run_catch_up(bot)
-            self.assertEqual(calls["update_all_polls"], 1, "update_all_polls should not run again")
-            self.assertEqual(calls["reset_polls"], 1, "reset_polls should not run again")
+            self.assertEqual(
+                calls["update_all_polls"], 1, "update_all_polls should not run again"
+            )
+            self.assertEqual(
+                calls["reset_polls"], 1, "reset_polls should not run again"
+            )
             self.assertEqual(len(calls["notify"]), 3, "notify should not run again")

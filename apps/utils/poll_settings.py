@@ -1,6 +1,5 @@
 # apps/utils/poll_settings.py
 
-from enum import Enum
 import json
 import os
 from datetime import datetime, time
@@ -17,39 +16,41 @@ DAYS_INDEX = {
     "zondag": 6,
 }
 
+
 def _load_data():
     if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
             try:
                 return json.load(f)
             except json.JSONDecodeError:
                 pass
     return {}
 
+
 def _save_data(data):
-    with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
 
 def get_setting(channel_id: int, dag: str):
     """Geef de instelling voor zichtbaarheid en tijdstip terug.
-       Standaard: {'modus': 'altijd', 'tijd': '18:00'}."""
+    Standaard: {'modus': 'altijd', 'tijd': '18:00'}."""
     data = _load_data()
-    return (
-        data.get(str(channel_id), {})
-            .get(dag, {'modus': 'altijd', 'tijd': '18:00'})
-    )
+    return data.get(str(channel_id), {}).get(dag, {"modus": "altijd", "tijd": "18:00"})
+
 
 def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
     """Zet expliciet 'altijd' of 'deadline' zichtbaarheid met tijd."""
     data = _load_data()
     kanaal = data.setdefault(str(channel_id), {})
     if modus == "altijd":
-        instelling = {'modus': 'altijd', 'tijd': '18:00'}
+        instelling = {"modus": "altijd", "tijd": "18:00"}
     else:
-        instelling = {'modus': 'deadline', 'tijd': tijd}
+        instelling = {"modus": "deadline", "tijd": tijd}
     kanaal[dag] = instelling
     _save_data(data)
     return instelling
+
 
 def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     instelling = get_setting(channel_id, dag)
@@ -80,9 +81,11 @@ def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     deadline = time(uur, minuut)
     return now.time() < deadline
 
+
 def is_paused(channel_id: int) -> bool:
     data = _load_data()
     return bool(data.get(str(channel_id), {}).get("__paused__", False))
+
 
 def set_paused(channel_id: int, value: bool) -> bool:
     data = _load_data()
@@ -91,17 +94,21 @@ def set_paused(channel_id: int, value: bool) -> bool:
     _save_data(data)
     return ch["__paused__"]
 
+
 def toggle_paused(channel_id: int) -> bool:
     return set_paused(channel_id, not is_paused(channel_id))
+
 
 def reset_settings() -> None:
     """Verwijdert alle zichtbaarheid- en pauze-instellingen."""
     if os.path.exists(SETTINGS_FILE):
         os.remove(SETTINGS_FILE)
 
+
 def is_name_display_enabled(channel_id: int) -> bool:
     data = _load_data()
     return bool(data.get(str(channel_id), {}).get("__toon_namen__", False))
+
 
 def toggle_name_display(channel_id: int) -> bool:
     data = _load_data()

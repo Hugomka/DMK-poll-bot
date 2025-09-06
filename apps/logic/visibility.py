@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, time
-from zoneinfo import ZoneInfo
-from apps.utils.poll_settings import get_setting, should_hide_counts
+from datetime import datetime, time
+
 from apps.entities.poll_option import get_poll_options
+from apps.utils.poll_settings import get_setting, should_hide_counts
 
 WEEKDAG_INDEX = {
     "maandag": 0,
@@ -10,7 +10,7 @@ WEEKDAG_INDEX = {
     "donderdag": 3,
     "vrijdag": 4,
     "zaterdag": 5,
-    "zondag": 6
+    "zondag": 6,
 }
 
 TIJD_LABELS = {
@@ -47,8 +47,11 @@ def is_vote_button_visible(channel_id: int, dag: str, tijd: str, now: datetime) 
             uur, minuut = TIJD_LABELS[tijd]
         else:
             # specials → check of ENIG TIJD nog in de toekomst is
-            tijden = [TIJD_LABELS[o.tijd] for o in get_poll_options()
-                      if o.dag == dag and o.tijd in TIJD_LABELS]
+            tijden = [
+                TIJD_LABELS[o.tijd]
+                for o in get_poll_options()
+                if o.dag == dag and o.tijd in TIJD_LABELS
+            ]
             if not tijden:
                 return False
             return any(now.time() < time(u, m) for u, m in tijden)

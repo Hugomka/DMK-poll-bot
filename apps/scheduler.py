@@ -15,6 +15,7 @@ from apps.utils.logger import log_job, log_startup
 from apps.utils.poll_message import (
     clear_message_id,
     get_message_id,
+    is_channel_disabled,
     update_poll_message,
 )
 from apps.utils.poll_storage import load_votes, reset_votes
@@ -179,6 +180,12 @@ async def update_all_polls(bot):
     log_job("update_all_polls", status="executed")
     for guild in bot.guilds:
         for channel in get_channels(guild):
+            # sla uitgeschakelde kanalen over
+            try:
+                if is_channel_disabled(getattr(channel, "id", 0)):
+                    continue
+            except Exception:
+                pass
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 await update_poll_message(channel, dag)
 
@@ -211,6 +218,9 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
     for guild in bot.guilds:
         for channel in get_channels(guild):
             try:
+                # sla uitgeschakelde kanalen over
+                if is_channel_disabled(getattr(channel, "id", 0)):
+                    continue
                 # Scoped stemmen voor dit kanaal
                 scoped = await load_votes(
                     getattr(guild, "id", "0"), getattr(channel, "id", "0")

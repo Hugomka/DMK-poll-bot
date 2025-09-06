@@ -16,6 +16,52 @@ from apps.utils.poll_settings import should_hide_counts
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
 
+def is_channel_disabled(channel_id: int) -> bool:
+    """Controleer of dit kanaal uitgeschakeld is voor polls.
+
+    We gebruiken strings als keys, net zoals bij per_channel.
+    Als het kanaal in de lijst staat, worden polls niet opnieuw aangemaakt.
+
+    Args:
+        channel_id: Het numerieke ID van het kanaal.
+
+    Returns:
+        True als het kanaal uitgeschakeld is, anders False.
+    """
+    data = _load()
+    disabled = data.get("disabled_channels", [])
+    # Ondersteun zowel string- als int-representaties in de lijst
+    cid_str = str(channel_id)
+    return cid_str in disabled or channel_id in disabled
+
+
+def set_channel_disabled(channel_id: int, disabled: bool) -> None:
+    """Zet of verwijder de uitgeschakelde status voor een kanaal.
+
+    Wanneer `disabled` True is, voegen we het kanaal toe aan de lijst.
+    Wanneer `disabled` False is, verwijderen we het kanaal uit de lijst.
+    De lijst wordt opgeslagen in hetzelfde JSON-bestand als de berichten-IDs.
+
+    Args:
+        channel_id: Het numerieke ID van het kanaal.
+        disabled: True om uit te schakelen, False om weer in te schakelen.
+    """
+    data = _load()
+    disabled_channels = data.get("disabled_channels", [])
+    cid_str = str(channel_id)
+    # Normaliseer naar strings voor opslag
+    if disabled:
+        if cid_str not in disabled_channels:
+            disabled_channels.append(cid_str)
+    else:
+        # Verwijder zowel string- als int-representaties als ze bestaan
+        disabled_channels = [
+            c for c in disabled_channels if c != cid_str and c != channel_id
+        ]
+    data["disabled_channels"] = disabled_channels
+    _save(data)
+
+
 def _load() -> dict[str, Any]:
     if os.path.exists(POLL_MESSAGE_FILE):
         try:
@@ -61,6 +107,10 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
     guild_obj = getattr(channel, "guild", None)
     gid_val: int | str = int(getattr(guild_obj, "id", 0))
     cid_val: int | str = int(getattr(channel, "id", 0))
+
+    # Als dit kanaal uitgeschakeld is (via /dmk-poll-verwijderen), niets doen.
+    if is_channel_disabled(cid_val):
+        return
 
     for d in keys:
         mid = get_message_id(cid_val, d)
