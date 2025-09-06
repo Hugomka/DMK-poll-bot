@@ -4,18 +4,22 @@ import inspect
 from tests.base import BaseTestCase
 from apps.commands.dmk_poll import is_admin_of_moderator
 
+
 class Perms:
     def __init__(self, admin=False, mod=False):
         self.administrator = admin
         self.moderate_members = mod
 
+
 class FakeUser:
     def __init__(self, admin=False, mod=False):
         self.guild_permissions = Perms(admin, mod)
 
+
 class FakeInteraction:
     def __init__(self, admin=False, mod=False):
         self.user = FakeUser(admin, mod)
+
 
 class TestPermission(BaseTestCase):
     async def asyncSetUp(self):

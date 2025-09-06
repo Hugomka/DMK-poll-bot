@@ -70,16 +70,40 @@ async def append_week_snapshot(now=None) -> None:
     week, vr, za, zo = _week_dates_eu(now)
 
     header = [
-        "week", "datum_vrijdag", "datum_zaterdag", "datum_zondag",
-        "vr_19", "vr_2030", "vr_misschien", "vr_niet",
-        "za_19", "za_2030", "za_misschien", "za_niet",
-        "zo_19", "zo_2030", "zo_misschien", "zo_niet",
+        "week",
+        "datum_vrijdag",
+        "datum_zaterdag",
+        "datum_zondag",
+        "vr_19",
+        "vr_2030",
+        "vr_misschien",
+        "vr_niet",
+        "za_19",
+        "za_2030",
+        "za_misschien",
+        "za_niet",
+        "zo_19",
+        "zo_2030",
+        "zo_misschien",
+        "zo_niet",
     ]
     row = [
-        week, vr, za, zo,
-        telling["vrijdag"]["om 19:00 uur"], telling["vrijdag"]["om 20:30 uur"], telling["vrijdag"]["misschien"], telling["vrijdag"]["niet meedoen"],
-        telling["zaterdag"]["om 19:00 uur"], telling["zaterdag"]["om 20:30 uur"], telling["zaterdag"]["misschien"], telling["zaterdag"]["niet meedoen"],
-        telling["zondag"]["om 19:00 uur"], telling["zondag"]["om 20:30 uur"], telling["zondag"]["misschien"], telling["zondag"]["niet meedoen"],
+        week,
+        vr,
+        za,
+        zo,
+        telling["vrijdag"]["om 19:00 uur"],
+        telling["vrijdag"]["om 20:30 uur"],
+        telling["vrijdag"]["misschien"],
+        telling["vrijdag"]["niet meedoen"],
+        telling["zaterdag"]["om 19:00 uur"],
+        telling["zaterdag"]["om 20:30 uur"],
+        telling["zaterdag"]["misschien"],
+        telling["zaterdag"]["niet meedoen"],
+        telling["zondag"]["om 19:00 uur"],
+        telling["zondag"]["om 20:30 uur"],
+        telling["zondag"]["misschien"],
+        telling["zondag"]["niet meedoen"],
     ]
 
     write_header = not os.path.exists(ARCHIVE_CSV)

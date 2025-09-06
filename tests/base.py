@@ -6,6 +6,7 @@ import unittest
 from apps.utils.poll_settings import reset_settings
 from apps.utils.poll_storage import reset_votes
 
+
 class BaseTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         os.environ["VOTES_FILE"] = "votes_test.json"
@@ -15,6 +16,10 @@ class BaseTestCase(unittest.IsolatedAsyncioTestCase):
         reset_settings()
 
     async def asyncTearDown(self):
-        for bestand in ["votes_test.json", "poll_message_test.json", "poll_settings_test.json"]:
+        for bestand in [
+            "votes_test.json",
+            "poll_message_test.json",
+            "poll_settings_test.json",
+        ]:
             if os.path.exists(bestand):
                 os.remove(bestand)

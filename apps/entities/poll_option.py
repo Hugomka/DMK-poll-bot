@@ -7,21 +7,20 @@ OPTIONS_FILE = "poll_options.json"
 
 # Fallback (als JSON ontbreekt of stuk is)
 _DEFAULTS = [
-    {"dag": "vrijdag",  "tijd": "om 19:00 uur", "emoji": "🔴"},
-    {"dag": "vrijdag",  "tijd": "om 20:30 uur", "emoji": "🟠"},
-    {"dag": "vrijdag",  "tijd": "misschien",    "emoji": "Ⓜ️"},
-    {"dag": "vrijdag",  "tijd": "niet meedoen", "emoji": "❌"},
-
+    {"dag": "vrijdag", "tijd": "om 19:00 uur", "emoji": "🔴"},
+    {"dag": "vrijdag", "tijd": "om 20:30 uur", "emoji": "🟠"},
+    {"dag": "vrijdag", "tijd": "misschien", "emoji": "Ⓜ️"},
+    {"dag": "vrijdag", "tijd": "niet meedoen", "emoji": "❌"},
     {"dag": "zaterdag", "tijd": "om 19:00 uur", "emoji": "🟡"},
     {"dag": "zaterdag", "tijd": "om 20:30 uur", "emoji": "⚪"},
-    {"dag": "zaterdag", "tijd": "misschien",    "emoji": "Ⓜ️"},
+    {"dag": "zaterdag", "tijd": "misschien", "emoji": "Ⓜ️"},
     {"dag": "zaterdag", "tijd": "niet meedoen", "emoji": "❌"},
-
-    {"dag": "zondag",   "tijd": "om 19:00 uur", "emoji": "🟢"},
-    {"dag": "zondag",   "tijd": "om 20:30 uur", "emoji": "🔵"},
-    {"dag": "zondag",   "tijd": "misschien",    "emoji": "Ⓜ️"},
-    {"dag": "zondag",   "tijd": "niet meedoen", "emoji": "❌"},
+    {"dag": "zondag", "tijd": "om 19:00 uur", "emoji": "🟢"},
+    {"dag": "zondag", "tijd": "om 20:30 uur", "emoji": "🔵"},
+    {"dag": "zondag", "tijd": "misschien", "emoji": "Ⓜ️"},
+    {"dag": "zondag", "tijd": "niet meedoen", "emoji": "❌"},
 ]
+
 
 class PollOption:
     def __init__(self, dag: str, tijd: str, emoji: str, stijl=ButtonStyle.secondary):
@@ -31,6 +30,7 @@ class PollOption:
         self.stijl = stijl
         self.label = f"{emoji} {dag.capitalize()} {tijd}"
 
+
 def _load_raw_options():
     if not os.path.exists(OPTIONS_FILE):
         return list(_DEFAULTS)
@@ -38,15 +38,21 @@ def _load_raw_options():
         with open(OPTIONS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         # eenvoudige validatie
-        ok = [o for o in data if isinstance(o, dict) and "dag" in o and "tijd" in o and "emoji" in o]
+        ok = [
+            o
+            for o in data
+            if isinstance(o, dict) and "dag" in o and "tijd" in o and "emoji" in o
+        ]
         return ok if ok else list(_DEFAULTS)
     except Exception:
         return list(_DEFAULTS)
+
 
 def get_poll_options() -> list[PollOption]:
     """Live inladen bij elke aanroep."""
     items = _load_raw_options()
     return [PollOption(o["dag"], o["tijd"], o["emoji"]) for o in items]
+
 
 def list_days() -> list[str]:
     """Unieke dagen in JSON-volgorde."""
@@ -58,6 +64,7 @@ def list_days() -> list[str]:
             seen.add(d)
             days.append(d)
     return days
+
 
 def is_valid_option(dag: str, tijd: str) -> bool:
     for o in _load_raw_options():

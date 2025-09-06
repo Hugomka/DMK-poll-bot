@@ -10,6 +10,7 @@ _metrics = {
     "jobs_failed": 0,
 }
 
+
 def log_job(
     job: str,
     guild_id: int | None = None,
@@ -47,15 +48,21 @@ def log_job(
     elif status == "failed":
         _metrics["jobs_failed"] += 1
 
+
 def log_startup(missed: list[str]) -> None:
     """
     Log een opstartmelding met een lijst van ingehaalde jobs.
     """
-    print(json.dumps({
-        "timestamp": datetime.now().isoformat(),
-        "event": "startup",
-        "missed_jobs": missed,
-    }))
+    print(
+        json.dumps(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "event": "startup",
+                "missed_jobs": missed,
+            }
+        )
+    )
+
 
 def get_metrics() -> dict:
     """

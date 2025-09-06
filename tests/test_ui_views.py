@@ -5,6 +5,7 @@ from tests.base import BaseTestCase
 from apps.ui.poll_buttons import OneStemButtonView
 from apps.ui.name_toggle_view import NaamToggleView
 
+
 class TestUIViews(BaseTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
