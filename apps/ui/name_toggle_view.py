@@ -1,5 +1,4 @@
 # apps/ui/name_toggle_view.py
-
 from typing import Optional
 
 import discord
@@ -40,11 +39,14 @@ class ToggleNamenButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         try:
-            # Gebruik de veilige property; kan None zijn
+            # Gebruik de veilige properties; kunnen None zijn
             channel_id = interaction.channel_id
             guild = interaction.guild
+            guild_id = int(
+                getattr(interaction, "guild_id", 0) or getattr(guild, "id", 0) or 0
+            )
 
-            if channel_id is None or guild is None:
+            if channel_id is None or guild is None or guild_id == 0:
                 # Geen geldige server/kanalencontext -> netjes melden
                 if interaction.response.is_done():
                     await interaction.followup.send(
@@ -68,8 +70,8 @@ class ToggleNamenButton(Button):
                 color=discord.Color.blurple(),
             )
 
-            # 3) Haal alle stemmen en bouw per dag de regels
-            all_votes = await load_votes()
+            # 3) Haal ALLEEN gescopeerde stemmen (guild+channel) en bouw per dag de regels
+            all_votes = await load_votes(guild_id, channel_id)
 
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 instelling = get_setting(channel_id, dag)
@@ -109,7 +111,6 @@ class ToggleNamenButton(Button):
             await interaction.response.edit_message(embed=embed, view=new_view)
 
         except Exception as e:
-            print(f"❌ Toggle-namen fout: {type(e).__name__}: {e}")
             if interaction.response.is_done():
                 await interaction.followup.send(
                     f"❌ Kon de status niet bijwerken: **{type(e).__name__}** — {e}",
