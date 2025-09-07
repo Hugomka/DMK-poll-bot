@@ -10,7 +10,7 @@ async def build_poll_message_for_day_async(
     dag: str,
     guild_id: int | str,
     channel_id: int | str,
-    hide_counts: bool = False,
+    hide_counts: bool = True,
     pauze: bool = False,
     guild: discord.Guild | None = None,
 ) -> str:

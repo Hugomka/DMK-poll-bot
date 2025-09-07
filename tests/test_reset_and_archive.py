@@ -1,4 +1,4 @@
-# tests/test_reset_en_archief.py
+# tests/test_reset_and_archive.py
 
 import os
 from datetime import datetime

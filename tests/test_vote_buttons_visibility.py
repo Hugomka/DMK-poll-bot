@@ -1,7 +1,8 @@
-# tests/test_stemknoppen_zichtbaarheid.py
+# tests/test_vote_buttons_visibility.py
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_settings import set_visibility
 from tests.base import BaseTestCase

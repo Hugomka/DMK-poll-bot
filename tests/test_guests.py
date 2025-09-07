@@ -1,4 +1,4 @@
-# tests/test_gasten.py
+# tests/test_guests.py
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 

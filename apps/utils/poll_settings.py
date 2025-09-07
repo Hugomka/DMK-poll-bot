@@ -34,9 +34,11 @@ def _save_data(data):
 
 def get_setting(channel_id: int, dag: str):
     """Geef de instelling voor zichtbaarheid en tijdstip terug.
-    Standaard: {'modus': 'altijd', 'tijd': '18:00'}."""
+    Standaard: {'modus': 'deadline', 'tijd': '18:00'}."""
     data = _load_data()
-    return data.get(str(channel_id), {}).get(dag, {"modus": "altijd", "tijd": "18:00"})
+    return data.get(str(channel_id), {}).get(
+        dag, {"modus": "deadline", "tijd": "18:00"}
+    )
 
 
 def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
