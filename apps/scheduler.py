@@ -176,21 +176,24 @@ def setup_scheduler(bot):
 
 
 async def update_all_polls(bot):
-    # update elk dagbericht in elk tekstkanaal (gecoalesced via schedule_poll_update)
     log_job("update_all_polls", status="executed")
     tasks = []
     for guild in bot.guilds:
         for channel in get_channels(guild):
-            # sla uitgeschakelde kanalen over
-            try:
-                if is_channel_disabled(getattr(channel, "id", 0)):
-                    continue
-            except Exception:
-                pass
+            cid = int(getattr(channel, "id", 0))
+            if is_channel_disabled(cid):
+                continue
+            # check of er al poll‑berichten zijn voor dit kanaal
+            has_poll = any(
+                get_message_id(cid, key)
+                for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
+            )
+            if not has_poll:
+                # geen actieve poll → sla dit kanaal over
+                continue
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 tasks.append(schedule_poll_update(channel, dag, delay=0.0))
     if tasks:
-        # Wacht tot alle geplande updates afgerond zijn
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
