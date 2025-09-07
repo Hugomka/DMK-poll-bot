@@ -178,21 +178,50 @@ def setup_scheduler(bot):
 async def update_all_polls(bot):
     log_job("update_all_polls", status="executed")
     tasks = []
+
+    # ENV: lijst met verboden kanaalnamen (komma-gescheiden)
+    deny_names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    # optioneel guard (true = update alleen kanalen waar al een poll- of stemmen-bericht is)
+    allow_from_per_channel_only = os.getenv(
+        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+    ).lower() in {"1", "true", "yes", "y"}
+
     for guild in bot.guilds:
         for channel in get_channels(guild):
-            cid = int(getattr(channel, "id", 0))
+            try:
+                cid = int(getattr(channel, "id", 0))
+            except Exception:
+                cid = 0
+
+            # skip: disabled channels
             if is_channel_disabled(cid):
                 continue
-            # check of er al poll‑berichten zijn voor dit kanaal
-            has_poll = any(
-                get_message_id(cid, key)
-                for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
-            )
-            if not has_poll:
-                # geen actieve poll → sla dit kanaal over
+
+            # ❌ skip: kanaalnamen die je nooit wilt (algemeen/general/etc.)
+            ch_name = (getattr(channel, "name", "") or "").lower()
+            if ch_name in deny_names:
                 continue
+
+            # ✅ alleen bestaande polls updaten (veilig)
+            has_poll = False
+            try:
+                for key in ("vrijdag", "zaterdag", "zondag", "stemmen"):
+                    if get_message_id(cid, key):
+                        has_poll = True
+                        break
+            except Exception:
+                has_poll = False
+
+            if allow_from_per_channel_only and not has_poll:
+                continue
+
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 tasks.append(schedule_poll_update(channel, dag, delay=0.0))
+
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
 
