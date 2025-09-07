@@ -1,5 +1,8 @@
 # apps/ui/poll_buttons.py
 
+from __future__ import annotations
+
+import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -12,6 +15,8 @@ from apps.utils.poll_message import update_poll_message
 from apps.utils.poll_settings import is_paused
 from apps.utils.poll_storage import get_user_votes, toggle_vote
 
+HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
+
 
 class PollButton(Button):
     def __init__(self, dag: str, tijd: str, label: str, stijl: ButtonStyle):
@@ -23,6 +28,7 @@ class PollButton(Button):
         try:
             channel_id = interaction.channel_id
             if channel_id is None:
+                # Alleen in serverkanaal te gebruiken
                 if interaction.response.is_done():
                     await interaction.followup.send(
                         "⚠️ Deze knop werkt alleen in een serverkanaal.", ephemeral=True
@@ -34,97 +40,113 @@ class PollButton(Button):
                 return
 
             if is_paused(channel_id):
-                await interaction.response.send_message(
-                    "⏸️ Stemmen is gepauzeerd.", ephemeral=True
-                )
+                if interaction.response.is_done():
+                    await interaction.followup.send(
+                        "⏸️ Stemmen is gepauzeerd.", ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        "⏸️ Stemmen is gepauzeerd.", ephemeral=True
+                    )
                 return
 
             user_id = str(interaction.user.id)
             guild_id: int = int(
                 interaction.guild_id or getattr(interaction.guild, "id", 0) or 0
             )
-
-            # ✅ Check of stemmen nog open is
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+
+            # ✅ Snelle ACK: bewerk meteen hetzelfde ephemere bericht (geen nieuw bericht)
+            header = HEADER_TMPL.format(dag=self.dag.capitalize())
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.edit_message(
+                        content=f"{header}\n🔄 Je stem wordt verwerkt…"
+                    )
+                except Exception:
+                    # Als het niet lukt, val later terug op message.edit
+                    pass
+
+            # ✅ Check zichtbaarheid
             if not is_vote_button_visible(channel_id, self.dag, self.tijd, now):
-                await interaction.response.send_message(
-                    f"❌ De stemmogelijkheid voor **{self.dag} {self.tijd}** is gesloten.",
-                    ephemeral=True,
-                )
+                # Bewerk hetzelfde bericht en stop
+                try:
+                    if interaction.message is not None:
+                        await interaction.message.edit(
+                            content=f"{header}\n❌ De stemmogelijkheid is gesloten.",
+                            view=None,
+                        )
+                    else:
+                        await interaction.edit_original_response(
+                            content=f"{header}\n❌ De stemmogelijkheid is gesloten.",
+                            view=None,
+                        )
+                except Exception:
+                    pass
                 return
 
-            # ✅ Toggle stem
+            # ✅ Toggle stem (onder lock in poll_storage)
             await toggle_vote(
                 user_id, self.dag, self.tijd, (interaction.guild_id or 0), channel_id
             )
 
-            # ✅ Vernieuw eigen ephemeral view (alleen voor deze gebruiker)
+            # ✅ Vernieuw eigen ephemeral view (zelfde bericht)
             new_view = await create_poll_button_view(
                 user_id, guild_id, channel_id, dag=self.dag
             )
-            if interaction.response.is_done():
-                await interaction.edit_original_response(view=new_view)
-            else:
-                await interaction.response.edit_message(view=new_view)
 
-            # ✅ Update publieke poll (als er een kanaal is)
+            # Toon korte status in hetzelfde bericht (geen followup-spam)
+            status = "✅ Je stem is verwerkt."
+            try:
+                if interaction.message is not None:
+                    await interaction.message.edit(
+                        content=f"{header}\n{status}",
+                        view=new_view,
+                    )
+                else:
+                    await interaction.edit_original_response(
+                        content=f"{header}\n{status}",
+                        view=new_view,
+                    )
+            except Exception:
+                # Als bewerken mislukt, probeer nog één keer via edit_original_response
+                try:
+                    await interaction.edit_original_response(
+                        content=f"{header}\n{status}",
+                        view=new_view,
+                    )
+                except Exception:
+                    pass
+
+            # ✅ Update publieke poll (achtergrond, alleen deze dag)
             if interaction.channel is not None:
-                await update_poll_message(interaction.channel)
+                asyncio.create_task(update_poll_message(interaction.channel, self.dag))
 
         except Exception as e:
             print(f"⚠️ Fout bij verwerken stemknop: {e}")
-            # Probeer alsnog nieuwe knoppen te tonen
+            # Probeer alsnog knoppen te herstellen in hetzelfde bericht
             try:
-                channel_id = interaction.channel_id
-                if channel_id is None:
-                    if interaction.response.is_done():
-                        await interaction.followup.send(
-                            "⚠️ Geen geldig kanaal.", ephemeral=True
-                        )
-                    else:
-                        await interaction.response.send_message(
-                            "⚠️ Geen geldig kanaal.", ephemeral=True
-                        )
-                    return
-
-                views_per_dag = await create_poll_button_views_per_day(
-                    str(interaction.user.id), guild_id, channel_id
+                user_id = str(interaction.user.id)
+                guild_id: int = int(
+                    interaction.guild_id or getattr(interaction.guild, "id", 0) or 0
                 )
-
-                if not views_per_dag:
-                    if interaction.response.is_done():
-                        await interaction.followup.send(
-                            "🔄 De stemknoppen zijn verlopen en alle dagen zijn gesloten.",
-                            ephemeral=True,
-                        )
-                    else:
-                        await interaction.response.send_message(
-                            "🔄 De stemknoppen zijn verlopen en alle dagen zijn gesloten.",
-                            ephemeral=True,
-                        )
-                    return
-
-                # Begin met uitlegbericht
-                if interaction.response.is_done():
-                    await interaction.followup.send(
-                        "🔄 De stemknoppen zijn opnieuw geladen, bijvoorbeeld na een reset.",
-                        ephemeral=True,
+                channel_id = int(interaction.channel_id or 0)
+                new_view = await create_poll_button_view(
+                    user_id, guild_id, channel_id, dag=self.dag
+                )
+                msg = "⚠️ Er ging iets mis, probeer opnieuw."
+                if interaction.message is not None:
+                    await interaction.message.edit(
+                        content=f"{HEADER_TMPL.format(dag=self.dag.capitalize())}\n{msg}",
+                        view=new_view,
                     )
                 else:
-                    await interaction.response.send_message(
-                        "🔄 De stemknoppen zijn opnieuw geladen, bijvoorbeeld na een reset.",
-                        ephemeral=True,
-                    )
-
-                # Toon aparte views per dag
-                for dag, view in views_per_dag:
-                    await interaction.followup.send(
-                        f"📅 **{dag.capitalize()}** — kies jouw tijden 👇",
-                        view=view,
-                        ephemeral=True,
+                    await interaction.edit_original_response(
+                        content=f"{HEADER_TMPL.format(dag=self.dag.capitalize())}\n{msg}",
+                        view=new_view,
                     )
             except Exception as inner:
-                print(f"❌ Kon geen nieuwe view tonen: {inner}")
+                print(f"❌ Kon geen fallback tonen: {inner}")
 
 
 class PollButtonView(View):
@@ -137,7 +159,7 @@ class PollButtonView(View):
         filter_dag: str | None = None,
         now: datetime | None = None,
     ):
-        super().__init__(timeout=60)
+        super().__init__(timeout=180)  # iets ruimer
         now = now or datetime.now(ZoneInfo("Europe/Amsterdam"))
 
         for option in get_poll_options():
@@ -163,15 +185,16 @@ async def create_poll_button_view(
 
 async def create_poll_button_views_per_day(
     user_id: str, guild_id: int, channel_id: int
-) -> list[tuple[str, PollButtonView]]:
+) -> list[tuple[str, str, PollButtonView]]:
     votes = await get_user_votes(user_id, guild_id, channel_id)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
-    views: list[tuple[str, PollButtonView]] = []
+    views: list[tuple[str, str, PollButtonView]] = []
 
     for dag in list_days():
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
         if view.children:  # alleen tonen als er knoppen zijn
-            views.append((dag, view))
+            header = HEADER_TMPL.format(dag=dag.capitalize())
+            views.append((dag, header, view))
     return views
 
 
@@ -213,19 +236,14 @@ class OpenStemmenButton(Button):
             )
             return
 
-        # ✅ Start met uitleg
+        # ✅ Eén ephemere instructie en per dag één bericht (latere klikken bewerken *ditzelfde* bericht)
         await interaction.response.send_message(
             "Kies jouw tijden hieronder 👇 per dag (alleen jij ziet dit).",
             ephemeral=True,
         )
 
-        # ✅ Toon stemknoppen per dag
-        for dag, view in views_per_dag:
-            await interaction.followup.send(
-                f"📅 **{dag.capitalize()}** — kies jouw tijden 👇",
-                view=view,
-                ephemeral=True,
-            )
+        for dag, header, view in views_per_dag:
+            await interaction.followup.send(header, view=view, ephemeral=True)
 
 
 class OneStemButtonView(View):
@@ -234,7 +252,3 @@ class OneStemButtonView(View):
     def __init__(self, paused: bool = False):
         super().__init__(timeout=None)
         self.add_item(OpenStemmenButton(paused))
-
-    @classmethod
-    def is_persistent(cls) -> bool:
-        return True

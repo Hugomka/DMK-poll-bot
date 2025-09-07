@@ -16,7 +16,7 @@ from apps.utils.poll_message import (
     clear_message_id,
     get_message_id,
     is_channel_disabled,
-    update_poll_message,
+    schedule_poll_update,
 )
 from apps.utils.poll_storage import load_votes, reset_votes
 
@@ -176,8 +176,9 @@ def setup_scheduler(bot):
 
 
 async def update_all_polls(bot):
-    # update elk dagbericht in elk tekstkanaal
+    # update elk dagbericht in elk tekstkanaal (gecoalesced via schedule_poll_update)
     log_job("update_all_polls", status="executed")
+    tasks = []
     for guild in bot.guilds:
         for channel in get_channels(guild):
             # sla uitgeschakelde kanalen over
@@ -187,7 +188,10 @@ async def update_all_polls(bot):
             except Exception:
                 pass
             for dag in ["vrijdag", "zaterdag", "zondag"]:
-                await update_poll_message(channel, dag)
+                tasks.append(schedule_poll_update(channel, dag, delay=0.0))
+    if tasks:
+        # Wacht tot alle geplande updates afgerond zijn
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def reset_polls(bot):
@@ -207,10 +211,8 @@ async def reset_polls(bot):
 
 
 async def notify_voters_if_avond_gaat_door(bot, dag: str):
-    """
-    Stuur om 18:00 een melding **per kanaal** als één tijd >= 6 stemmen heeft in dát kanaal.
-    Bij gelijk → 20:30 wint (DMK‑regel).
-    """
+    """Stuur om 18:00 een melding per kanaal als één tijd >= 6 stemmen heeft.
+    Bij gelijk → 20:30 wint (DMK‑regel)."""
     log_job("notify", dag=dag, status="executed")
     KEY_19 = "om 19:00 uur"
     KEY_2030 = "om 20:30 uur"
@@ -229,13 +231,10 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
                 voters_19 = set()
                 voters_2030 = set()
                 for uid, per_dag in (scoped or {}).items():
-                    # sla gast-keys over voor mentions; tellen we wel mee via owner-id?
-                    # In DMK tellen gasten als losse stemmen, maar mentions gaan naar de eigenaren.
                     tijden = (per_dag or {}).get(dag, [])
                     if not isinstance(tijden, list):
                         continue
                     if KEY_19 in tijden:
-                        # mention alleen echte gebruikers, niet guest-keys
                         if isinstance(uid, str) and "_guest::" in uid:
                             owner_id = uid.split("_guest::", 1)[0]
                             voters_19.add(owner_id)
@@ -251,7 +250,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
                 c19, c2030 = len(voters_19), len(voters_2030)
 
                 # Geen doorgang → geen melding voor dit kanaal
-                if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
+                if c19 < 6 and c2030 < 6:
                     continue
 
                 # winnaar (gelijk → 20:30)
