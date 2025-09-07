@@ -1,5 +1,6 @@
 # apps/utils/poll_message.py
 
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -14,6 +15,10 @@ from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
+
+# Interne locks & pending-taken om dubbele updates te voorkomen
+_update_locks: dict[tuple[int, str], asyncio.Lock] = {}
+_pending_tasks: dict[tuple[int, str], asyncio.Task] = {}
 
 
 def is_channel_disabled(channel_id: int) -> bool:
@@ -95,9 +100,37 @@ def clear_message_id(channel_id: int, key: str) -> None:
     _save(data)
 
 
-async def update_poll_message(channel: Any, dag: str | None = None) -> None:
+def schedule_poll_update(channel: Any, dag: str, delay: float = 0.3) -> asyncio.Task:
+    """Plan een update voor (kanaal, dag) op de achtergrond met kleine debounce.
+
+    - Als er al een pending taak bestaat voor dezelfde key, vervangen we die (reset de debounce).
+    - Retourneert de asyncio.Task, zodat een aanroeper eventueel kan awaiten in batch (scheduler).
     """
-    Update (of maak aan) de dag-berichten.
+    cid = int(getattr(channel, "id", 0))
+    key = (cid, dag)
+
+    # Als er al een pending taak is, annuleer die (debounce)
+    old = _pending_tasks.get(key)
+    if old is not None and not old.done():
+        old.cancel()
+
+    async def _runner():
+        try:
+            if delay and delay > 0:
+                await asyncio.sleep(delay)
+            await update_poll_message(channel, dag)
+        except asyncio.CancelledError:
+            # Debounced; niets aan de hand
+            return
+
+    task = asyncio.create_task(_runner())
+    _pending_tasks[key] = task
+    return task
+
+
+async def update_poll_message(channel: Any, dag: str | None = None) -> None:
+    """Update (of maak aan) de dag-berichten.
+
     Toont/verbergt aantallen per dag via should_hide_counts(...).
     Als er geen message_id is of het bericht bestaat niet meer,
     wordt het bericht opnieuw aangemaakt en opgeslagen.
@@ -113,51 +146,58 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
         return
 
     for d in keys:
-        mid = get_message_id(cid_val, d)
+        # Per (kanaal, dag) lock om overlap te voorkomen
+        lock_key = (int(cid_val), d)
+        lock = _update_locks.get(lock_key)
+        if lock is None:
+            lock = _update_locks[lock_key] = asyncio.Lock()
 
-        # Bepaal content (zowel voor edit als create)
-        hide = should_hide_counts(cid_val, d, now)
-        content = await build_poll_message_for_day_async(
-            d,
-            guild_id=gid_val,
-            channel_id=cid_val,
-            hide_counts=hide,
-            guild=getattr(channel, "guild", None),  # voor namen
-        )
+        async with lock:
+            mid = get_message_id(cid_val, d)
 
-        decision = await build_decision_line(gid_val, cid_val, d, now)
-        if decision:
-            content = content.rstrip() + "\n\n" + decision
-
-        if mid:
-            try:
-                # Probeer te editen als het bericht bestaat
-                fetch = getattr(channel, "fetch_message", None)
-                msg = await safe_call(fetch, mid) if fetch else None
-                if msg is not None:
-                    await safe_call(msg.edit, content=content, view=None)
-                    continue  # klaar voor deze dag
-                else:
-                    # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
-                    clear_message_id(cid_val, d)
-            except discord.NotFound:
-                # Bestond niet meer → id opruimen en hierna aanmaken
-                clear_message_id(cid_val, d)
-            except discord.HTTPException as e:
-                if getattr(e, "code", None) == 30046:
-                    # Maximum edits voor oud bericht → niets doen (stil negeren)
-                    continue
-                else:
-                    print(f"❌ Fout bij updaten voor {d}: {e}")
-                    continue  # geen create proberen in dit pad
-
-        # Create-pad: geen mid óf net opgeschoond na NotFound → nieuw sturen
-        try:
-            send = getattr(channel, "send", None)
-            new_msg = (
-                await safe_call(send, content=content, view=None) if send else None
+            # Bepaal content (zowel voor edit als create)
+            hide = should_hide_counts(cid_val, d, now)
+            content = await build_poll_message_for_day_async(
+                d,
+                guild_id=gid_val,
+                channel_id=cid_val,
+                hide_counts=hide,
+                guild=getattr(channel, "guild", None),  # voor namen
             )
-            if new_msg is not None:
-                save_message_id(cid_val, d, new_msg.id)
-        except Exception as e:  # pragma: no cover
-            print(f"❌ Fout bij aanmaken bericht voor {d}: {e}")
+
+            decision = await build_decision_line(gid_val, cid_val, d, now)
+            if decision:
+                content = content.rstrip() + "\n\n" + decision
+
+            if mid:
+                try:
+                    # Probeer te editen als het bericht bestaat
+                    fetch = getattr(channel, "fetch_message", None)
+                    msg = await safe_call(fetch, mid) if fetch else None
+                    if msg is not None:
+                        await safe_call(msg.edit, content=content, view=None)
+                        continue  # klaar voor deze dag
+                    else:
+                        # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
+                        clear_message_id(cid_val, d)
+                except discord.NotFound:
+                    # Bestond niet meer → id opruimen en hierna aanmaken
+                    clear_message_id(cid_val, d)
+                except discord.HTTPException as e:
+                    if getattr(e, "code", None) == 30046:
+                        # Maximum edits voor oud bericht → niets doen (stil negeren)
+                        continue
+                    else:
+                        print(f"❌ Fout bij updaten voor {d}: {e}")
+                        continue  # geen create proberen in dit pad
+
+            # Create-pad: geen mid óf net opgeschoond na NotFound → nieuw sturen
+            try:
+                send = getattr(channel, "send", None)
+                new_msg = (
+                    await safe_call(send, content=content, view=None) if send else None
+                )
+                if new_msg is not None:
+                    save_message_id(cid_val, d, new_msg.id)
+            except Exception as e:  # pragma: no cover
+                print(f"❌ Fout bij aanmaken bericht voor {d}: {e}")
