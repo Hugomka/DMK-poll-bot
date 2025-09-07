@@ -93,9 +93,10 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-on
     # -----------------------------
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
-        name="dmk-poll-on", description="Plaats of update de polls per avond"
+        name="dmk-poll-on",
+        description="(Admin/mod) Plaats of update de polls per avond",
     )
     @app_commands.check(is_admin_of_moderator)
     async def on(self, interaction: discord.Interaction) -> None:
@@ -194,9 +195,10 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-reset
     # -----------------------------
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
-        name="dmk-poll-reset", description="Reset de polls naar een nieuwe week."
+        name="dmk-poll-reset",
+        description="(Admin/mod) Reset de polls naar een nieuwe week.",
     )
     @app_commands.check(is_admin_of_moderator)
     async def reset(self, interaction: discord.Interaction) -> None:
@@ -283,9 +285,9 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-pauze
     # -----------------------------
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
-        name="dmk-poll-pauze", description="Pauzeer of hervat alle polls"
+        name="dmk-poll-pauze", description="(Admin/mod) Pauzeer of hervat alle polls"
     )
     @app_commands.check(is_admin_of_moderator)
     async def pauze(self, interaction: discord.Interaction) -> None:
@@ -341,10 +343,10 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-verwijderen
     # -----------------------------
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
-        description="Verwijder alle pollberichten uit het kanaal en uit het systeem.",
+        description="(Admin/mod) Verwijder alle pollberichten uit het kanaal en uit het systeem.",
     )
     @app_commands.check(is_admin_of_moderator)
     async def verwijderbericht(self, interaction: discord.Interaction) -> None:
@@ -410,10 +412,10 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-stemmen
     # -----------------------------
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
-        description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline.",
+        description="(Admin/mod) Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline.",
     )
     @app_commands.choices(
         actie=[
@@ -481,10 +483,10 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # Archief
     # -----------------------------
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-download",
-        description="(Admin) Download het CSV-archief met weekresultaten.",
+        description="(Admin/mod) Download het CSV-archief met weekresultaten.",
     )
     @app_commands.check(is_admin_of_moderator)
     async def archief_download(self, interaction: discord.Interaction) -> None:
@@ -523,10 +525,10 @@ class DMKPoll(commands.Cog):
             # Altijd afronden met feedback
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
-        description="(Admin) Verwijder het volledige archief.",
+        description="(Admin/mod) Verwijder het volledige archief.",
     )
     @app_commands.check(is_admin_of_moderator)
     async def archief_verwijderen(self, interaction: discord.Interaction) -> None:
