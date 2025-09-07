@@ -1,8 +1,9 @@
 # tests/test_permissions.py
 
 import inspect
+
+from apps.commands.dmk_poll import is_admin_or_moderator_role
 from tests.base import BaseTestCase
-from apps.commands.dmk_poll import is_admin_of_moderator
 
 
 class Perms:
@@ -26,9 +27,9 @@ class TestPermission(BaseTestCase):
         await super().asyncSetUp()
 
     async def _call_check(self, itx):
-        if inspect.iscoroutinefunction(is_admin_of_moderator):
-            return await is_admin_of_moderator(itx)
-        return is_admin_of_moderator(itx)
+        if inspect.iscoroutinefunction(is_admin_or_moderator_role):
+            return await is_admin_or_moderator_role(itx)
+        return is_admin_or_moderator_role(itx)
 
     async def test_is_admin_true(self):
         itx = FakeInteraction(admin=True, mod=False)

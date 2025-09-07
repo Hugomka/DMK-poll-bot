@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 from datetime import datetime
 from typing import Any, Optional
@@ -60,15 +61,32 @@ def _get_attr(obj: Any, name: str) -> Any:
     return getattr(obj, name, None)
 
 
-async def is_admin_of_moderator(interaction: discord.Interaction) -> bool:
-    """
-    Check voor app_commands.check. In DMs kan interaction.user een User zijn (geen guild_perms).
-    We lezen permissies via getattr om typechecker gerust te stellen.
-    """
+MODERATOR_ROLE_ID = int(os.getenv("MODERATOR_ROLE_ID", "0")) or None
+
+
+def is_admin_or_moderator_role(interaction: discord.Interaction) -> bool:
+    """Sta admins, leden met Moderate Members, of leden met de Moderator-rol toe.
+    Werkt met MODERATOR_ROLE_ID (env) of anders op rolnaam 'Moderator'/'Mod'."""
     perms = _get_attr(interaction.user, "guild_permissions")
     is_admin = bool(_get_attr(perms, "administrator"))
-    is_mod = bool(_get_attr(perms, "moderate_members"))
-    return is_admin or is_mod
+    is_mod_bit = bool(_get_attr(perms, "moderate_members"))
+    if is_admin or is_mod_bit:
+        return True
+
+    roles = getattr(interaction.user, "roles", []) or []
+    # Eerst op ID (stabieler)
+    if MODERATOR_ROLE_ID and any(
+        getattr(r, "id", 0) == MODERATOR_ROLE_ID for r in roles
+    ):
+        return True
+    # Fallback op naam
+    if any(
+        str(getattr(r, "name", "")).strip().lower() in ("moderator", "mod")
+        for r in roles
+    ):
+        return True
+
+    return False
 
 
 class DMKPoll(commands.Cog):
@@ -98,7 +116,7 @@ class DMKPoll(commands.Cog):
         name="dmk-poll-on",
         description="(Admin/mod) Plaats of update de polls per avond",
     )
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def on(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -200,7 +218,7 @@ class DMKPoll(commands.Cog):
         name="dmk-poll-reset",
         description="(Admin/mod) Reset de polls naar een nieuwe week.",
     )
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def reset(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -289,7 +307,7 @@ class DMKPoll(commands.Cog):
     @app_commands.command(
         name="dmk-poll-pauze", description="(Admin/mod) Pauzeer of hervat alle polls"
     )
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def pauze(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -348,7 +366,7 @@ class DMKPoll(commands.Cog):
         name="dmk-poll-verwijderen",
         description="(Admin/mod) Verwijder alle pollberichten uit het kanaal en uit het systeem.",
     )
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def verwijderbericht(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -429,7 +447,7 @@ class DMKPoll(commands.Cog):
         ],
     )
     @app_commands.describe(tijd="Tijdstip in uu:mm (alleen nodig bij verborgen modus)")
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def stemmen(
         self,
         interaction: discord.Interaction,
@@ -488,7 +506,7 @@ class DMKPoll(commands.Cog):
         name="dmk-poll-archief-download",
         description="(Admin/mod) Download het CSV-archief met weekresultaten.",
     )
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def archief_download(self, interaction: discord.Interaction) -> None:
         # NIET-ephemeral defer, want we willen de file publiek kunnen sturen
         await interaction.response.defer(ephemeral=False)
@@ -530,7 +548,7 @@ class DMKPoll(commands.Cog):
         name="dmk-poll-archief-verwijderen",
         description="(Admin/mod) Verwijder het volledige archief.",
     )
-    @app_commands.check(is_admin_of_moderator)
+    @app_commands.check(is_admin_or_moderator_role)
     async def archief_verwijderen(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
