@@ -93,7 +93,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-on
     # -----------------------------
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-on", description="Plaats of update de polls per avond"
     )
@@ -194,7 +194,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-reset
     # -----------------------------
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-reset", description="Reset de polls naar een nieuwe week."
     )
@@ -283,7 +283,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-pauze
     # -----------------------------
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-pauze", description="Pauzeer of hervat alle polls"
     )
@@ -341,7 +341,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-verwijderen
     # -----------------------------
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
         description="Verwijder alle pollberichten uit het kanaal en uit het systeem.",
@@ -410,7 +410,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-stemmen
     # -----------------------------
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
         description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline.",
@@ -481,7 +481,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # Archief
     # -----------------------------
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-download",
         description="(Admin) Download het CSV-archief met weekresultaten.",
@@ -523,7 +523,7 @@ class DMKPoll(commands.Cog):
             # Altijd afronden met feedback
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
         description="(Admin) Verwijder het volledige archief.",
