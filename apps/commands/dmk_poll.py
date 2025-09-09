@@ -2,7 +2,7 @@
 
 # Richtlijn:
 # - Standaard mogen *alle leden* commands gebruiken (geen decorator nodig).
-# - Voor admin-only als default gebruik je @app_commands.default_permissions(administrator=True).
+# - Voor admin en moderator als default gebruik je @app_commands.default_permissions(moderate_members=True).
 # - Alle DMK-commands zijn server-only (geen DM's): @app_commands.guild_only()
 #
 # Beheerders kunnen deze defaults later aanpassen per server via:
@@ -92,7 +92,7 @@ class DMKPoll(commands.Cog):
     # /dmk-poll-on
     # -----------------------------
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-on",
         description="Plaats of update de polls per avond (default: admin)",
@@ -194,7 +194,7 @@ class DMKPoll(commands.Cog):
     # /dmk-poll-reset
     # -----------------------------
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-reset",
         description="Reset alle stemmen en data (default: admin)",
@@ -284,7 +284,7 @@ class DMKPoll(commands.Cog):
     # /dmk-poll-pauze
     # -----------------------------
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-pauze", description="Pauzeer of hervat de poll (default: admin)"
     )
@@ -342,7 +342,7 @@ class DMKPoll(commands.Cog):
     # /dmk-poll-verwijderen
     # -----------------------------
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
         description="Verwijder de pollberichten uit huidige kanaal (default: admin)",
@@ -411,7 +411,7 @@ class DMKPoll(commands.Cog):
     # /dmk-poll-stemmen
     # -----------------------------
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
         description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline. (default: admin)",
@@ -482,7 +482,7 @@ class DMKPoll(commands.Cog):
     # Archief
     # -----------------------------
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-download",
         description="Download het CSV-archief met weekresultaten. (default: admin)",
@@ -524,7 +524,7 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.guild_only()
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
         description="Verwijder het volledige archief. (default: admin)",

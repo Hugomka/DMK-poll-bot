@@ -22,9 +22,9 @@ def _get_cmd(attr_name):
 
 
 class TestCommandDefaults(unittest.TestCase):
-    def test_admin_default_commands(self):
-        admin_cmds = {
-            # attr_name: (expected_slash_name)
+    def test_admin_mod_default_commands(self):
+        admin_mod_cmds = {
+            # attr_name: expected_slash_name
             "on": "dmk-poll-on",
             "reset": "dmk-poll-reset",
             "pauze": "dmk-poll-pauze",
@@ -33,7 +33,7 @@ class TestCommandDefaults(unittest.TestCase):
             "archief_download": "dmk-poll-archief-download",
             "archief_verwijderen": "dmk-poll-archief-verwijderen",
         }
-        for attr, expected_name in admin_cmds.items():
+        for attr, expected_name in admin_mod_cmds.items():
             cmd = _get_cmd(attr)
             # naam
             self.assertEqual(cmd.name, expected_name, f"Naam mismatch bij {attr}")
@@ -41,16 +41,27 @@ class TestCommandDefaults(unittest.TestCase):
             self.assertTrue(
                 getattr(cmd, "guild_only", False), f"{attr} moet guild_only=True zijn"
             )
-            # default permissions moeten admin bevatten
+            # default permissions moeten admin of moderate_members bevatten
             dp = getattr(cmd, "default_permissions", None)
             self.assertIsNotNone(dp, f"{attr} moet default_permissions hebben")
+            has_admin = getattr(dp, "administrator", False)
+            has_moderate = getattr(dp, "moderate_members", False)
             self.assertTrue(
-                getattr(dp, "administrator", False), f"{attr} moet admin default hebben"
+                has_admin or has_moderate,
+                f"{attr} moet admin of moderate_members default hebben",
             )
-            # description hint
+            # description hint: accepteer zowel (default: admin/mod) als de losse varianten
             desc = getattr(cmd, "description", "") or ""
-            self.assertIn(
-                "(default: admin)", desc, f"{attr} description mist '(default: admin)'"
+            self.assertTrue(
+                any(
+                    tag in desc
+                    for tag in (
+                        "(default: admin/mod)",
+                        "(default: admin)",
+                        "(default: moderator)",
+                    )
+                ),
+                f"{attr} description mist '(default: admin/mod)' of '(default: admin)' of '(default: moderator)'",
             )
 
     def test_public_default_commands(self):
@@ -69,7 +80,7 @@ class TestCommandDefaults(unittest.TestCase):
             dp = getattr(cmd, "default_permissions", None)
             self.assertTrue(
                 dp is None or getattr(dp, "value", 0) == 0,
-                f"{attr} moet géén admin default hebben",
+                f"{attr} moet géén default_permissions hebben",
             )
 
 

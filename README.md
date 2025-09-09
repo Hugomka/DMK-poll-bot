@@ -49,13 +49,13 @@ DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
 
 | Commando | Uitleg |
 |---|---|
-| **`/dmk-poll-on`** *(default: admin)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
-| **`/dmk-poll-reset`** *(default: admin)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
-| **`/dmk-poll-pauze`** *(default: admin)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
-| **`/dmk-poll-verwijderen`** *(default: admin)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
-| **`/dmk-poll-stemmen`** *(default: admin)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
-| **`/dmk-poll-archief-download`** *(default: admin)* | Download `archive/dmk_archive.csv` met weekresultaten. |
-| **`/dmk-poll-archief-verwijderen`** *(default: admin)* | Verwijder het volledige CSV-archief. |
+| **`/dmk-poll-on`** *(default: admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
+| **`/dmk-poll-reset`** *(default: admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
+| **`/dmk-poll-pauze`** *(default: admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
+| **`/dmk-poll-verwijderen`** *(default: admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
+| **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
+| **`/dmk-poll-archief-download`** *(default: admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |
+| **`/dmk-poll-archief-verwijderen`** *(default: admin/mod)* | Verwijder het volledige CSV-archief. |
 | **`/dmk-poll-status`** | Ephemeral embed: pauze/namen-status en per dag de aantallen (optioneel met namen). |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
@@ -66,8 +66,8 @@ DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
 
 ## 🔐 Rechten per server instellen
 
-De defaults staan in de bot (sommige commands *(default: admin)*, andere voor iedereen).  
-Beheerders kunnen dit per server **aanpassen** via Discord:
+De defaults staan in de bot (sommige commands *(default: admin/mod)*, andere voor iedereen).  
+Beheerders en moderators kunnen dit per server **aanpassen** via Discord:
 
 1. Ga naar **Server Settings → Integrations → [jouw bot] → Commands**.
 2. Kies een command (bijv. `/dmk-poll-on`).
