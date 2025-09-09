@@ -1,6 +1,7 @@
 # Omgevingsbestanden en geheime sleutels
 .env
 .env.*
+*.bat
 
 # Zorg dat het voorbeeldbestand wél gecommit kan worden
 !.env.example
