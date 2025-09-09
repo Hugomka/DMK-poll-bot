@@ -6,7 +6,7 @@
 # Zorg dat het voorbeeldbestand wél gecommit kan worden
 !.env.example
 
-# Python cache‑ en buildbestanden
+# Python cache- en buildbestanden
 __pycache__/
 *.py[cod]
 *.pyo
@@ -38,3 +38,11 @@ archive/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Virtuele Python-omgevingen
+venv/
+.venv/
+
+# VS Code editorconfiguratie
+.vscode/*
+!.vscode/settings.json
