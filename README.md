@@ -1,13 +1,12 @@
 # DMK-poll-bot 🇳🇱
-<p align="center">
-  <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/discord.py-2.3.2-blueviolet.svg" alt="discord.py 2.3.2">
-  <img src="https://img.shields.io/github/license/Hugomka/DMK-poll-bot" alt="License">
-  <img src="https://img.shields.io/github/last-commit/Hugomka/DMK-poll-bot" alt="Last Commit">
-  <img src="https://img.shields.io/github/issues/Hugomka/DMK-poll-bot" alt="Issues">
-  <img src="https://img.shields.io/github/stars/Hugomka/DMK-poll-bot?style=social" alt="Stars">
-  <a href="https://codecov.io/gh/Hugomka/DMK-poll-bot"><img src="https://img.shields.io/codecov/c/github/Hugomka/DMK-poll-bot?label=Coverage" alt="Coverage"></a>
-</p>
+
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![discord.py 2.3.2](https://img.shields.io/badge/discord.py-2.3.2-blueviolet.svg)
+![License](https://img.shields.io/github/license/Hugomka/DMK-poll-bot)
+![Last Commit](https://img.shields.io/github/last-commit/Hugomka/DMK-poll-bot)
+![Issues](https://img.shields.io/github/issues/Hugomka/DMK-poll-bot)
+![Stars](https://img.shields.io/github/stars/Hugomka/DMK-poll-bot?style=social)
+[![Coverage](https://img.shields.io/codecov/c/github/Hugomka/DMK-poll-bot?label=Coverage)](https://codecov.io/gh/Hugomka/DMK-poll-bot)
 
 **DMK-poll-bot** is een slimme, volledig automatische Discord-bot om weekenden te plannen voor **Deaf Mario Kart (DMK)**.  
 Deze bot is speciaal gemaakt voor de DMK-community, zodat het organiseren van game-avonden soepel en eerlijk gaat.  
@@ -40,7 +39,7 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
 | **💬 Slash commando’s** | `/dmk-poll on/reset/pauze/verwijderen/stemmen/status`, archief downloaden/verwijderen, en gast-commando’s. |
-| **📊 Live status in embed** | `/dmk-poll-status` toont per dag de aantallen (en optioneel namen). |
+| **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen (en optioneel namen). |
 
 ---
 
@@ -50,18 +49,31 @@ DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
 
 | Commando | Uitleg |
 |---|---|
-| **`/dmk-poll-on`** *(admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
-| **`/dmk-poll-reset`** *(admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
-| **`/dmk-poll-pauze`** *(admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
-| **`/dmk-poll-verwijderen`** *(admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
-| **`/dmk-poll-stemmen`** *(admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
+| **`/dmk-poll-on`** *(default: admin)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
+| **`/dmk-poll-reset`** *(default: admin)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
+| **`/dmk-poll-pauze`** *(default: admin)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
+| **`/dmk-poll-verwijderen`** *(default: admin)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
+| **`/dmk-poll-stemmen`** *(default: admin)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
+| **`/dmk-poll-archief-download`** *(default: admin)* | Download `archive/dmk_archive.csv` met weekresultaten. |
+| **`/dmk-poll-archief-verwijderen`** *(default: admin)* | Verwijder het volledige CSV-archief. |
 | **`/dmk-poll-status`** | Ephemeral embed: pauze/namen-status en per dag de aantallen (optioneel met namen). |
-| **`/dmk-poll-archief-download`** *(admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |
-| **`/dmk-poll-archief-verwijderen`** *(admin/mod)* | Verwijder het volledige CSV-archief. |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
 
 **Opmerking:** De meeste admin-commando’s geven **ephemeral** feedback (alleen zichtbaar voor jou), zodat het kanaal schoon blijft.
+
+---
+
+## 🔐 Rechten per server instellen
+
+De defaults staan in de bot (sommige commands *(default: admin)*, andere voor iedereen).  
+Beheerders kunnen dit per server **aanpassen** via Discord:
+
+1. Ga naar **Server Settings → Integrations → [jouw bot] → Commands**.
+2. Kies een command (bijv. `/dmk-poll-on`).
+3. Stel **Roles and Members** in: welke rol(len) of personen het mogen gebruiken.
+4. Optioneel: beperk per **kanaal**.
+5. Klaar! Dit overschrijft de defaults. Je hoeft de bot-code niet te wijzigen.
 
 ---
 
@@ -244,9 +256,9 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 **Status bekijken** (`/dmk-poll-status`)
 
-* Ephemeral embed (alleen jij ziet het).
-* Toont pauze/namen-status en per dag de aantallen.
-* Beheerder kan de **“👤 Namen tonen”**-knop gebruiken om in de embed ook de namen (gegroepeerd met gasten) te tonen.
+* Ephemeral bericht (alleen jij ziet het).
+* Toont pauze-/namen-status en per dag de aantallen.
+* Namen kunnen ook getoond worden (gegroepeerd met gasten), afhankelijk van je instelling.
 
 **Archief**
 

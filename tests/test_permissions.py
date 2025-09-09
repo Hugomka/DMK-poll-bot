@@ -1,44 +1,77 @@
 # tests/test_permissions.py
 
-import inspect
+import unittest
 
-from apps.commands.dmk_poll import is_admin_or_moderator_role
-from tests.base import BaseTestCase
+from discord import app_commands
 
-
-class Perms:
-    def __init__(self, admin=False, mod=False):
-        self.administrator = admin
-        self.moderate_members = mod
+from apps.commands.dmk_poll import DMKPoll
 
 
-class FakeUser:
-    def __init__(self, admin=False, mod=False):
-        self.guild_permissions = Perms(admin, mod)
+def _get_cmd(attr_name):
+    """Haalt het app command object op dat op de Cog-attribute is geplakt."""
+    cmd = getattr(DMKPoll, attr_name, None)
+    if cmd is None:
+        raise AssertionError(
+            f"Commando-attribute '{attr_name}' niet gevonden op DMKPoll"
+        )
+    if not isinstance(cmd, app_commands.Command):
+        raise AssertionError(
+            f"Attribute '{attr_name}' is geen app_commands.Command (type={type(cmd)})"
+        )
+    return cmd
 
 
-class FakeInteraction:
-    def __init__(self, admin=False, mod=False):
-        self.user = FakeUser(admin, mod)
+class TestCommandDefaults(unittest.TestCase):
+    def test_admin_default_commands(self):
+        admin_cmds = {
+            # attr_name: (expected_slash_name)
+            "on": "dmk-poll-on",
+            "reset": "dmk-poll-reset",
+            "pauze": "dmk-poll-pauze",
+            "verwijderbericht": "dmk-poll-verwijderen",
+            "stemmen": "dmk-poll-stemmen",
+            "archief_download": "dmk-poll-archief-download",
+            "archief_verwijderen": "dmk-poll-archief-verwijderen",
+        }
+        for attr, expected_name in admin_cmds.items():
+            cmd = _get_cmd(attr)
+            # naam
+            self.assertEqual(cmd.name, expected_name, f"Naam mismatch bij {attr}")
+            # guild-only
+            self.assertTrue(
+                getattr(cmd, "guild_only", False), f"{attr} moet guild_only=True zijn"
+            )
+            # default permissions moeten admin bevatten
+            dp = getattr(cmd, "default_permissions", None)
+            self.assertIsNotNone(dp, f"{attr} moet default_permissions hebben")
+            self.assertTrue(
+                getattr(dp, "administrator", False), f"{attr} moet admin default hebben"
+            )
+            # description hint
+            desc = getattr(cmd, "description", "") or ""
+            self.assertIn(
+                "(default: admin)", desc, f"{attr} description mist '(default: admin)'"
+            )
+
+    def test_public_default_commands(self):
+        public_cmds = {
+            "status": "dmk-poll-status",
+            "gast_add": "gast-add",
+            "gast_remove": "gast-remove",
+        }
+        for attr, expected_name in public_cmds.items():
+            cmd = _get_cmd(attr)
+            self.assertEqual(cmd.name, expected_name, f"Naam mismatch bij {attr}")
+            self.assertTrue(
+                getattr(cmd, "guild_only", False), f"{attr} moet guild_only=True zijn"
+            )
+            # géén default_permissions => iedereen mag standaard
+            dp = getattr(cmd, "default_permissions", None)
+            self.assertTrue(
+                dp is None or getattr(dp, "value", 0) == 0,
+                f"{attr} moet géén admin default hebben",
+            )
 
 
-class TestPermission(BaseTestCase):
-    async def asyncSetUp(self):
-        await super().asyncSetUp()
-
-    async def _call_check(self, itx):
-        if inspect.iscoroutinefunction(is_admin_or_moderator_role):
-            return await is_admin_or_moderator_role(itx)
-        return is_admin_or_moderator_role(itx)
-
-    async def test_is_admin_true(self):
-        itx = FakeInteraction(admin=True, mod=False)
-        assert await self._call_check(itx)
-
-    async def test_is_moderator_true(self):
-        itx = FakeInteraction(admin=False, mod=True)
-        assert await self._call_check(itx)
-
-    async def test_is_none_false(self):
-        itx = FakeInteraction(admin=False, mod=False)
-        assert not await self._call_check(itx)
+if __name__ == "__main__":
+    unittest.main()

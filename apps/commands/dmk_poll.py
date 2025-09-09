@@ -1,9 +1,17 @@
 # apps/commands/dmk_poll.py
 
+# Richtlijn:
+# - Standaard mogen *alle leden* commands gebruiken (geen decorator nodig).
+# - Voor admin-only als default gebruik je @app_commands.default_permissions(administrator=True).
+# - Alle DMK-commands zijn server-only (geen DM's): @app_commands.guild_only()
+#
+# Beheerders kunnen deze defaults later aanpassen per server via:
+# Server Settings → Integrations → [jouw bot] → Commands.
+# (Daar kun je per command rollen/leden/kanalen aan- of uitzetten.)
+
 from __future__ import annotations
 
 import io
-import os
 import re
 from datetime import datetime
 from typing import Any, Optional
@@ -61,34 +69,6 @@ def _get_attr(obj: Any, name: str) -> Any:
     return getattr(obj, name, None)
 
 
-MODERATOR_ROLE_ID = int(os.getenv("MODERATOR_ROLE_ID", "0")) or None
-
-
-def is_admin_or_moderator_role(interaction: discord.Interaction) -> bool:
-    """Sta admins, leden met Moderate Members, of leden met de Moderator-rol toe.
-    Werkt met MODERATOR_ROLE_ID (env) of anders op rolnaam 'Moderator'/'Mod'."""
-    perms = _get_attr(interaction.user, "guild_permissions")
-    is_admin = bool(_get_attr(perms, "administrator"))
-    is_mod_bit = bool(_get_attr(perms, "moderate_members"))
-    if is_admin or is_mod_bit:
-        return True
-
-    roles = getattr(interaction.user, "roles", []) or []
-    # Eerst op ID (stabieler)
-    if MODERATOR_ROLE_ID and any(
-        getattr(r, "id", 0) == MODERATOR_ROLE_ID for r in roles
-    ):
-        return True
-    # Fallback op naam
-    if any(
-        str(getattr(r, "name", "")).strip().lower() in ("moderator", "mod")
-        for r in roles
-    ):
-        return True
-
-    return False
-
-
 class DMKPoll(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -111,12 +91,12 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-on
     # -----------------------------
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
         name="dmk-poll-on",
-        description="(Admin/mod) Plaats of update de polls per avond",
+        description="Plaats of update de polls per avond (default: admin)",
     )
-    @app_commands.check(is_admin_or_moderator_role)
     async def on(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -213,12 +193,12 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-reset
     # -----------------------------
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
         name="dmk-poll-reset",
-        description="(Admin/mod) Reset de polls naar een nieuwe week.",
+        description="Reset alle stemmen en data (default: admin)",
     )
-    @app_commands.check(is_admin_or_moderator_role)
     async def reset(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -303,11 +283,11 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-pauze
     # -----------------------------
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
-        name="dmk-poll-pauze", description="(Admin/mod) Pauzeer of hervat alle polls"
+        name="dmk-poll-pauze", description="Pauzeer of hervat de poll (default: admin)"
     )
-    @app_commands.check(is_admin_or_moderator_role)
     async def pauze(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -361,12 +341,12 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-verwijderen
     # -----------------------------
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
-        description="(Admin/mod) Verwijder alle pollberichten uit het kanaal en uit het systeem.",
+        description="Verwijder de pollberichten uit huidige kanaal (default: admin)",
     )
-    @app_commands.check(is_admin_or_moderator_role)
     async def verwijderbericht(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -430,10 +410,11 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-stemmen
     # -----------------------------
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
-        description="(Admin/mod) Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline.",
+        description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline. (default: admin)",
     )
     @app_commands.choices(
         actie=[
@@ -447,7 +428,6 @@ class DMKPoll(commands.Cog):
         ],
     )
     @app_commands.describe(tijd="Tijdstip in uu:mm (alleen nodig bij verborgen modus)")
-    @app_commands.check(is_admin_or_moderator_role)
     async def stemmen(
         self,
         interaction: discord.Interaction,
@@ -501,12 +481,12 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # Archief
     # -----------------------------
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
         name="dmk-poll-archief-download",
-        description="(Admin/mod) Download het CSV-archief met weekresultaten.",
+        description="Download het CSV-archief met weekresultaten. (default: admin)",
     )
-    @app_commands.check(is_admin_or_moderator_role)
     async def archief_download(self, interaction: discord.Interaction) -> None:
         # NIET-ephemeral defer, want we willen de file publiek kunnen sturen
         await interaction.response.defer(ephemeral=False)
@@ -543,12 +523,12 @@ class DMKPoll(commands.Cog):
             # Altijd afronden met feedback
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
-    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
-        description="(Admin/mod) Verwijder het volledige archief.",
+        description="Verwijder het volledige archief. (default: admin)",
     )
-    @app_commands.check(is_admin_or_moderator_role)
     async def archief_verwijderen(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         try:
@@ -565,6 +545,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-status
     # -----------------------------
+    @app_commands.guild_only()
     @app_commands.command(
         name="dmk-poll-status",
         description="Toon pauze, zichtbaarheid en alle stemmen per dag (ephemeral embed).",
@@ -654,9 +635,8 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # Gast-commando's
     # -----------------------------
-    @app_commands.default_permissions(
-        administrator=False
-    )  # iedereen mag gasten toevoegen
+    # iedereen mag gasten toevoegen
+    @app_commands.guild_only()
     @app_commands.command(
         name="gast-add",
         description="Voeg gaststemmen toe voor een dag+tijd. Meerdere namen scheiden met , of ;",
@@ -724,6 +704,7 @@ class DMKPoll(commands.Cog):
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
+    @app_commands.guild_only()
     @app_commands.command(
         name="gast-remove",
         description="Verwijder gaststemmen voor een dag+tijd. Meerdere namen scheiden met , of ;",
