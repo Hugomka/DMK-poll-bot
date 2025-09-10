@@ -39,6 +39,10 @@ archive/
 htmlcov/
 coverage.xml
 
+# Backup- en tijdelijke bestanden
+backups/
+*.tgz
+
 # Virtuele Python-omgevingen
 venv/
 .venv/
