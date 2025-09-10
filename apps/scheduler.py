@@ -1,10 +1,18 @@
 # apps/scheduler.py
+#
+# Doel:
+# - Reset mag ALLEEN maandag tussen 00:00 en 00:05 (Europe/Amsterdam).
+# - Catch-up bij opstart voert GEEN reset uit buiten dat venster.
+# - Geen extra kwargs naar add_job (tests gebruiken fake_add_job zonder **kwargs).
+#
+# Overige jobs blijven hetzelfde (update 18:00, notificaties vr/za/zo 18:00).
 
 import asyncio
 import json
 import os
 from datetime import datetime, timedelta
 from datetime import time as dt_time
+from typing import List, Optional
 
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -20,11 +28,12 @@ from apps.utils.poll_message import (
 )
 from apps.utils.poll_storage import load_votes, reset_votes
 
-scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Amsterdam"))
+# NL-tijdzone
+TZ = pytz.timezone("Europe/Amsterdam")
+scheduler = AsyncIOScheduler(timezone=TZ)
 
 MIN_NOTIFY_VOTES = 6
 
-# Bestanden voor lock en catch-up status
 LOCK_PATH = ".scheduler.lock"
 STATE_PATH = ".scheduler_state.json"
 
@@ -44,13 +53,19 @@ def _write_state(state: dict) -> None:
     os.replace(tmp, STATE_PATH)
 
 
+def _within_reset_window(now: datetime, minutes: int = 5) -> bool:
+    # True als het maandag 00:00-00:05 is (Europe/Amsterdam).
+    if now.tzinfo is None:
+        now = TZ.localize(now)
+    return now.weekday() == 0 and now.hour == 0 and now.minute < minutes
+
+
 async def _run_catch_up(bot) -> None:
-    """Voer gemiste jobs (18:00 dagelijks, ma 00:00 reset, 18:00 notificaties) precies één keer uit."""
-    tz = pytz.timezone("Europe/Amsterdam")
-    now = datetime.now(tz)
+    # Voer gemiste jobs maximaal een keer uit. Reset alleen in het 00:00-00:05 venster.
+    now = datetime.now(TZ)
     state = _read_state()
 
-    def should_run(last_str: str | None, scheduled_dt: datetime) -> bool:
+    def should_run(last_str: Optional[str], scheduled_dt: datetime) -> bool:
         if last_str is None:
             return True
         try:
@@ -59,7 +74,7 @@ async def _run_catch_up(bot) -> None:
             return True
         return last < scheduled_dt
 
-    missed: list[str] = []  # opgeslagen namen van jobs die zijn ingehaald
+    missed: list[str] = []
 
     # Dagelijkse update (18:00)
     last_update = state.get("update_all_polls")
@@ -81,10 +96,13 @@ async def _run_catch_up(bot) -> None:
     )
     last_sched_reset = monday if now >= monday else monday - timedelta(days=7)
     if should_run(last_reset, last_sched_reset):
-        await reset_polls(bot)
-        state["reset_polls"] = now.isoformat()
-        missed.append("reset_polls")
-        log_job("reset_polls", status="executed")
+        if _within_reset_window(now):
+            await reset_polls(bot)  # reset_polls checkt ook het venster
+            state["reset_polls"] = now.isoformat()
+            missed.append("reset_polls")
+            log_job("reset_polls", status="executed")
+        else:
+            log_job("reset_polls", status="skipped_outside_window")
     else:
         log_job("reset_polls", status="skipped")
 
@@ -95,7 +113,7 @@ async def _run_catch_up(bot) -> None:
         last_notify = state.get(key)
         days_since = (now.weekday() - target_wd) % 7
         last_date = (now - timedelta(days=days_since)).date()
-        last_occurrence = tz.localize(datetime.combine(last_date, dt_time(18, 0)))
+        last_occurrence = TZ.localize(datetime.combine(last_date, dt_time(18, 0)))
         if now < last_occurrence:
             last_occurrence -= timedelta(days=7)
         if should_run(last_notify, last_occurrence):
@@ -107,17 +125,15 @@ async def _run_catch_up(bot) -> None:
             log_job("notify", dag=dag, status="skipped")
 
     _write_state(state)
-    # Log bij opstart welke jobs ingehaald zijn
     log_startup(missed)
 
 
 async def _run_catch_up_with_lock(bot) -> None:
-    """Voer catch-up met file-lock uit zodat deze niet dubbel draait bij herstart-spikes."""
+    # Catch-up met file-lock (voorkomt dubbele runs bij snelle herstarts).
     try:
         if os.path.exists(LOCK_PATH):
             try:
                 mtime = os.path.getmtime(LOCK_PATH)
-                # Als lock <5 min oud is, sla catch-up over (waarschijnlijk dubbele start)
                 if (datetime.now().timestamp() - mtime) < 300:
                     return
                 else:
@@ -137,8 +153,8 @@ async def _run_catch_up_with_lock(bot) -> None:
             pass
 
 
-def setup_scheduler(bot):
-    """Wordt sync aangeroepen in main.py. Plant jobs en start catch-up async."""
+def setup_scheduler(bot) -> None:
+    # Plan jobs en start scheduler + catch-up.
     scheduler.add_job(
         update_all_polls,
         CronTrigger(hour=18, minute=0),
@@ -170,22 +186,19 @@ def setup_scheduler(bot):
         name="Notificatie zondag",
     )
     scheduler.start()
-
-    # Catch-up kort na start, maar niet blokkerend
     asyncio.create_task(_run_catch_up_with_lock(bot))
 
 
-async def update_all_polls(bot):
+async def update_all_polls(bot) -> None:
+    # Update per kanaal de poll-berichten (vr/za/zo) als er al polls zijn.
     log_job("update_all_polls", status="executed")
-    tasks = []
+    tasks: List[asyncio.Task] = []
 
-    # ENV: lijst met verboden kanaalnamen (komma-gescheiden)
     deny_names = set(
         n.strip().lower()
         for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
         if n.strip()
     )
-    # optioneel guard (true = update alleen kanalen waar al een poll- of stemmen-bericht is)
     allow_from_per_channel_only = os.getenv(
         "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
     ).lower() in {"1", "true", "yes", "y"}
@@ -197,16 +210,13 @@ async def update_all_polls(bot):
             except Exception:
                 cid = 0
 
-            # skip: disabled channels
             if is_channel_disabled(cid):
                 continue
 
-            # ❌ skip: kanaalnamen die je nooit wilt (algemeen/general/etc.)
             ch_name = (getattr(channel, "name", "") or "").lower()
             if ch_name in deny_names:
                 continue
 
-            # ✅ alleen bestaande polls updaten (veilig)
             has_poll = False
             try:
                 for key in ("vrijdag", "zaterdag", "zondag", "stemmen"):
@@ -226,8 +236,13 @@ async def update_all_polls(bot):
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def reset_polls(bot):
-    # stemmen leegmaken en keys opruimen (nieuwe week)
+async def reset_polls(bot) -> None:
+    # Maak stemmen leeg + verwijder bericht-IDs (alleen in venster).
+    now = datetime.now(TZ)
+    if not _within_reset_window(now):
+        log_job("reset_polls", status="skipped_outside_window")
+        return
+
     log_job("reset_polls", status="executed")
     await reset_votes()
     for guild in bot.guilds:
@@ -239,12 +254,10 @@ async def reset_polls(bot):
                         clear_message_id(channel.id, key)
                     except Exception:
                         pass
-    # Optioneel: hier /dmk-poll-on aanroepen via je Cog.
 
 
-async def notify_voters_if_avond_gaat_door(bot, dag: str):
-    """Stuur om 18:00 een melding per kanaal als één tijd >= 6 stemmen heeft.
-    Bij gelijk → 20:30 wint (DMK‑regel)."""
+async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
+    # Stuur melding als een tijd >= 6 stemmen heeft (gelijkstand -> 20:30).
     log_job("notify", dag=dag, status="executed")
     KEY_19 = "om 19:00 uur"
     KEY_2030 = "om 20:30 uur"
@@ -252,40 +265,35 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
     for guild in bot.guilds:
         for channel in get_channels(guild):
             try:
-                # sla uitgeschakelde kanalen over
                 if is_channel_disabled(getattr(channel, "id", 0)):
                     continue
-                # Scoped stemmen voor dit kanaal
+
                 scoped = await load_votes(
-                    getattr(guild, "id", "0"), getattr(channel, "id", "0")
+                    getattr(guild, "id", "0"),
+                    getattr(channel, "id", "0"),
                 )
-                # Verzamel stemmers per tijd voor de gevraagde dag
-                voters_19 = set()
-                voters_2030 = set()
+
+                voters_19: set[str] = set()
+                voters_2030: set[str] = set()
                 for uid, per_dag in (scoped or {}).items():
                     tijden = (per_dag or {}).get(dag, [])
                     if not isinstance(tijden, list):
                         continue
                     if KEY_19 in tijden:
                         if isinstance(uid, str) and "_guest::" in uid:
-                            owner_id = uid.split("_guest::", 1)[0]
-                            voters_19.add(owner_id)
+                            voters_19.add(uid.split("_guest::", 1)[0])
                         else:
                             voters_19.add(str(uid))
                     if KEY_2030 in tijden:
                         if isinstance(uid, str) and "_guest::" in uid:
-                            owner_id = uid.split("_guest::", 1)[0]
-                            voters_2030.add(owner_id)
+                            voters_2030.add(uid.split("_guest::", 1)[0])
                         else:
                             voters_2030.add(str(uid))
 
                 c19, c2030 = len(voters_19), len(voters_2030)
-
-                # Geen doorgang → geen melding voor dit kanaal
-                if c19 < 6 and c2030 < 6:
+                if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
                     continue
 
-                # winnaar (gelijk → 20:30)
                 if c2030 >= c19:
                     winnaar_txt = "20:30"
                     winnaar_set = voters_2030
@@ -293,7 +301,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
                     winnaar_txt = "19:00"
                     winnaar_set = voters_19
 
-                mentions = []
+                mentions: List[str] = []
                 for uid in winnaar_set:
                     try:
                         member = (
@@ -309,7 +317,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str):
                 suffix = f"{' '.join(mentions)}" if mentions else ""
                 await safe_call(
                     channel.send,
-                    f"📢 DMK op **{dag} {winnaar_txt}** gaat door!{suffix}",
+                    f" DMK op **{dag} {winnaar_txt}** gaat door!{suffix}",
                 )
             except Exception as e:
                 print(

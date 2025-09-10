@@ -48,7 +48,9 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
         should execute on the first call and be skipped on the second call.
         """
         tz = pytz.timezone("Europe/Amsterdam")
-        fixed_now = tz.localize(datetime(2024, 5, 27, 19, 0, 0))
+        fixed_now = tz.localize(
+            datetime(2024, 5, 27, 0, 2, 0)
+        )  # maandag 00:02 binnen venster
 
         class FixedDateTime(datetime):
             @classmethod
@@ -124,7 +126,9 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_run_catch_up_should_run_exception_and_future_occurrence(self):
         tz = pytz.timezone("Europe/Amsterdam")
         # Donderdag 17:00 → voor vrijdag 18:00, triggert 'now < last_occurrence' pad
-        fixed_now = tz.localize(datetime(2024, 5, 23, 17, 0, 0))
+        fixed_now = tz.localize(
+            datetime(2024, 5, 27, 0, 2, 0)
+        )  # maandag 00:02 binnen venster
 
         class FixedDateTime(datetime):
             @classmethod
@@ -328,6 +332,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             return "ok"
 
         with (
+            patch.object(scheduler, "_within_reset_window", return_value=True),
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(
                 scheduler, "is_channel_disabled", side_effect=lambda cid: cid == 3
@@ -425,6 +430,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("kapot")
 
         with (
+            patch.object(scheduler, "_within_reset_window", return_value=True),
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
             patch.object(
