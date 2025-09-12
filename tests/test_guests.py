@@ -1,4 +1,5 @@
 # tests/test_guests.py
+
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,7 +16,7 @@ from tests.base import BaseTestCase
 
 DAG = "vrijdag"
 TIJD = "om 20:30 uur"
-OWNER = "111"  # string is prima; poll_storage gebruikt strings als keys
+OWNER = "111"  # String is prima; poll_storage gebruikt strings als keys
 
 
 class TestGasten(BaseTestCase):

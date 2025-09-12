@@ -1,5 +1,5 @@
 # apps/commands/dmk_poll.py
-
+#
 # Richtlijn:
 # - Standaard mogen *alle leden* commands gebruiken (geen decorator nodig).
 # - Voor admin en moderator als default gebruik je @app_commands.default_permissions(moderate_members=True).
@@ -111,7 +111,7 @@ class DMKPoll(commands.Cog):
             try:
                 set_channel_disabled(getattr(channel, "id", 0), False)
             except Exception:
-                # niet hard falen als togglen mislukt; we gaan verder met plaatsen
+                # Niet hard falen als togglen mislukt; we gaan verder met plaatsen
                 pass
 
             # Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
@@ -255,7 +255,7 @@ class DMKPoll(commands.Cog):
                 )
                 await safe_call(
                     msg.edit, content=content, view=None
-                )  # geen knoppen tonen
+                )  # Geen knoppen tonen
 
             # 5) (Optioneel) Stemmen-bericht tekst + knop updaten als het bestaat
             key = "stemmen"
@@ -369,7 +369,7 @@ class DMKPoll(commands.Cog):
                 if msg is not None:
                     afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
                     await safe_call(msg.edit, content=afsluit_tekst, view=None)
-                # key altijd opschonen
+                # Key altijd opschonen
                 clear_message_id(channel.id, dag)
 
             # 2) Losse “Stemmen”-bericht ook opruimen
@@ -380,7 +380,7 @@ class DMKPoll(commands.Cog):
                     try:
                         await safe_call(s_msg.delete)
                     except Exception:
-                        # als delete niet mag, dan in elk geval neutraliseren
+                        # Als delete niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             s_msg.edit, content="📴 Stemmen gesloten.", view=None
                         )
@@ -587,7 +587,7 @@ class DMKPoll(commands.Cog):
                 color=discord.Color.blurple(),
             )
 
-            # Gescopeerde stemmen voor dit guild+kanaal
+            # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
 
             for dag in ["vrijdag", "zaterdag", "zondag"]:
@@ -635,7 +635,7 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # Gast-commando's
     # -----------------------------
-    # iedereen mag gasten toevoegen
+    # Iedereen mag gasten toevoegen
     @app_commands.guild_only()
     @app_commands.command(
         name="gast-add",
@@ -664,7 +664,7 @@ class DMKPoll(commands.Cog):
         try:
             dag, tijd = slot.value.split("|", 1)
 
-            # split op komma of puntkomma
+            # Split op komma of puntkomma
             ruwe = [p.strip() for p in re.split(r"[;,]", namen or "") if p.strip()]
             if not ruwe:
                 await interaction.followup.send(

@@ -1,8 +1,10 @@
+# requirements.txt
+# 
 # runtime dependencies
 discord.py==2.3.2
 python-dotenv
 apscheduler
 pytz
 
-# audioop was removed in Python 3.13, needed for discord voice imports
+# audioop is verwijderd in Python 3.13, nodig voor discord voice imports
 audioop-lts>=0.2 ; python_version >= "3.13"

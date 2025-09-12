@@ -33,8 +33,10 @@ def _save_data(data):
 
 
 def get_setting(channel_id: int, dag: str):
-    """Geef de instelling voor zichtbaarheid en tijdstip terug.
-    Standaard: {'modus': 'deadline', 'tijd': '18:00'}."""
+    """
+    Geef de instelling voor zichtbaarheid en tijdstip terug.
+    Standaard: {'modus': 'deadline', 'tijd': '18:00'}.
+    """
     data = _load_data()
     return data.get(str(channel_id), {}).get(
         dag, {"modus": "deadline", "tijd": "18:00"}
@@ -68,18 +70,18 @@ def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
 
     target_idx = DAYS_INDEX.get(dag)
     if target_idx is None:
-        return False  # onbekende dag
+        return False  # Onbekende dag
 
     huidige_idx = now.weekday()
 
-    # vóór de dag → verbergen
+    # Vóór de dag → verbergen
     if huidige_idx < target_idx:
         return True
-    # na de dag → tonen
+    # Na de dag → tonen
     if huidige_idx > target_idx:
         return False
 
-    # zelfde dag: verbergen tot de deadline-tijd
+    # Zelfde dag: verbergen tot de deadline-tijd
     deadline = time(uur, minuut)
     return now.time() < deadline
 

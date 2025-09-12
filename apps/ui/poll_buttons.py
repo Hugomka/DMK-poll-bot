@@ -159,7 +159,7 @@ class PollButtonView(View):
         filter_dag: str | None = None,
         now: datetime | None = None,
     ):
-        super().__init__(timeout=180)  # iets ruimer
+        super().__init__(timeout=180)  # Iets ruimer
         now = now or datetime.now(ZoneInfo("Europe/Amsterdam"))
 
         for option in get_poll_options():
@@ -192,7 +192,7 @@ async def create_poll_button_views_per_day(
 
     for dag in list_days():
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
-        if view.children:  # alleen tonen als er knoppen zijn
+        if view.children:  # Alleen tonen als er knoppen zijn
             header = HEADER_TMPL.format(dag=dag.capitalize())
             views.append((dag, header, view))
     return views

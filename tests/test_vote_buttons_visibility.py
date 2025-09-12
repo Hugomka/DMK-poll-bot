@@ -45,7 +45,7 @@ class TestStemknopZichtbaarheid(BaseTestCase):
     def test_specials_ook_verlopen_na_dag(self):
         now = datetime(
             2025, 8, 17, 18, 0, tzinfo=ZoneInfo("Europe/Amsterdam")
-        )  # zondag
+        )  # Zondag
         zichtbaar = is_vote_button_visible(self.channel_id, "vrijdag", "misschien", now)
         self.assertFalse(zichtbaar)
 
@@ -58,7 +58,7 @@ class TestStemknopZichtbaarheid(BaseTestCase):
     def test_specials_zichtbaar_voor_deadline(self):
         now = datetime(
             2025, 8, 17, 18, 55, tzinfo=ZoneInfo("Europe/Amsterdam")
-        )  # zondag
+        )  # Zondag
         zichtbaar = is_vote_button_visible(self.channel_id, "zondag", "misschien", now)
         self.assertTrue(zichtbaar)
 

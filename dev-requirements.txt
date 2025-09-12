@@ -1,10 +1,12 @@
-# test & coverage
+# dev-requirements.txt
+# 
+# Test & coverage
 coverage
 pytest
 
-# lint & format
+# Lint & format
 black
 ruff
 
-# eventueel extra helpers
+# Eventueel extra helpers
 pytest-asyncio

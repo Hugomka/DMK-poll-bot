@@ -31,29 +31,29 @@ class TestVisibilityButtons(BaseTestCase):
         self.zaterdag = "zaterdag"
         self.zondag = "zondag"
 
-    # ---- guard & day relation ----
+    # ---- Bewaker & dagrelatie ----
 
     async def test_unknown_day_returns_false(self):
-        now = datetime(2025, 8, 15, 12, 0, tzinfo=AMS)  # vrijdag
+        now = datetime(2025, 8, 15, 12, 0, tzinfo=AMS)  # Vrijdag
         self.assertFalse(
             is_vote_button_visible(self.channel_id, "moonsday", "om 19:00 uur", now)
         )
 
     async def test_past_day_buttons_hidden(self):
-        now = datetime(2025, 8, 16, 12, 0, tzinfo=AMS)  # zaterdag
-        # vraag is voor vrijdag terwijl het al zaterdag is
+        now = datetime(2025, 8, 16, 12, 0, tzinfo=AMS)  # Zaterdag
+        # Vraag is voor vrijdag terwijl het al zaterdag is
         self.assertFalse(
             is_vote_button_visible(self.channel_id, self.vrijdag, "om 19:00 uur", now)
         )
 
     async def test_future_day_buttons_visible(self):
-        now = datetime(2025, 8, 15, 12, 0, tzinfo=AMS)  # vrijdag
-        # vraag is voor zaterdag terwijl het nog vrijdag is
+        now = datetime(2025, 8, 15, 12, 0, tzinfo=AMS)  # Vrijdag
+        # Vraag is voor zaterdag terwijl het nog vrijdag is
         self.assertTrue(
             is_vote_button_visible(self.channel_id, self.zaterdag, "om 19:00 uur", now)
         )
 
-    # ---- same day, normal times ----
+    # ---- Dezelfde dag, normale tijden ----
 
     async def test_same_day_1900_before_and_after(self):
         # Vrijdag: 18:59 -> zichtbaar; 19:00 -> uit
@@ -81,16 +81,16 @@ class TestVisibilityButtons(BaseTestCase):
             is_vote_button_visible(self.channel_id, self.vrijdag, "om 20:30 uur", after)
         )
 
-    # ---- specials ----
+    # ---- Specials ("misschien" en "niet meedoen") ----
 
     async def test_specials_visible_until_next_slot_then_off(self):
-        # met standaard opties bestaat 20:30, dus na 19:00 maar vóór 20:30 nog zichtbaar
+        # Met standaard opties bestaat 20:30, dus na 19:00 maar vóór 20:30 nog zichtbaar
         at_1910 = datetime(2025, 8, 15, 19, 10, tzinfo=AMS)
         self.assertTrue(
             is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", at_1910)
         )
 
-        # na het laatste slot (20:31) moeten specials uit
+        # Na het laatste slot (20:31) moeten specials uit
         at_2031 = datetime(2025, 8, 15, 20, 31, tzinfo=AMS)
         self.assertFalse(
             is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", at_2031)
@@ -107,19 +107,19 @@ class TestVisibilityButtons(BaseTestCase):
                 is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", now)
             )
 
-    # ---- explicit deadline behaviour ----
+    # ---- Expliciete deadline gedrag ----
 
     async def test_explicit_deadline_cuts_all_buttons_after_deadline(self):
-        # admin zet expliciet deadline op 18:00
+        # Admin zet expliciet deadline op 18:00
         set_visibility(self.channel_id, self.vrijdag, modus="deadline", tijd="18:00")
         at_1800 = datetime(2025, 8, 15, 18, 0, tzinfo=AMS)
-        # normale tijd
+        # Normale tijd
         self.assertFalse(
             is_vote_button_visible(
                 self.channel_id, self.vrijdag, "om 20:30 uur", at_1800
             )
         )
-        # specials ook uit
+        # Specials ook uit
         self.assertFalse(
             is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", at_1800)
         )
@@ -182,7 +182,7 @@ class TestVisibilityButtons(BaseTestCase):
         finally:
             setattr(vis, "_load_settings_data", original)
 
-    # ---- exception branches inside is_vote_button_visible ----
+    # ---- Exceptietakken binnen is_vote_button_visible ----
 
     async def test_is_visible_handles_get_setting_exception(self):
         # Zorg dat er een expliciete setting is, zodat we in de try/except komen
@@ -202,7 +202,7 @@ class TestVisibilityButtons(BaseTestCase):
         with patch(
             "apps.logic.visibility.get_poll_options", side_effect=RuntimeError("kapot")
         ):
-            # specials met exception → tijden = [] → False
+            # Specials met exception → tijden = [] → False
             now = datetime(2025, 8, 15, 19, 10, tzinfo=AMS)
             self.assertFalse(
                 is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", now)

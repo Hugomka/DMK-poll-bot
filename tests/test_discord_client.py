@@ -31,7 +31,7 @@ class TestDiscordClient(BaseTestCase):
         await super().asyncSetUp()
 
     async def test_safe_call_retries_on_429_without_sleep_waits(self):
-        # voorkom echte vertraging in tests
+        # Voorkom echte vertraging in tests
         async def fast_sleep(_):
             return None
 
@@ -44,7 +44,7 @@ class TestDiscordClient(BaseTestCase):
             )
 
             assert res == "OK"
-            assert counter["n"] == 2  # precies 2 keer gefaald -> 2 retries gedaan
+            assert counter["n"] == 2  # Precies 2 keer gefaald -> 2 retries gedaan
 
     def test_get_guilds_and_channels_cache(self):
         class FakeGuild:
@@ -69,13 +69,13 @@ class TestDiscordClient(BaseTestCase):
             g1 = FakeGuild(1, ["c1"])
             bot = FakeBot([g1])
 
-            # eerste call -> cache fill
+            # Eerste call -> cache fill
             v1 = get_guilds(bot)
             v1_id = id(v1)
             ch1 = get_channels(g1)
             ch1_id = id(ch1)
 
-            # zelfde tijd -> cache hit (object-id blijft gelijk)
+            # Zelfde tijd -> cache hit (object-id blijft gelijk)
             v2 = get_guilds(bot)
             ch2 = get_channels(g1)
             assert id(v2) == v1_id
@@ -86,5 +86,5 @@ class TestDiscordClient(BaseTestCase):
 
             v3 = get_guilds(bot)
             ch3 = get_channels(g1)
-            assert id(v3) != v1_id  # nieuw gecachte lijst
-            assert id(ch3) != ch1_id  # nieuw gecachte kanalen
+            assert id(v3) != v1_id  # Nieuw gecachte lijst
+            assert id(ch3) != ch1_id  # Nieuw gecachte kanalen

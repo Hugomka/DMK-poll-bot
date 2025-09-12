@@ -1,4 +1,6 @@
-# Omgevingsbestanden en geheime sleutels
+# .gitignore
+# 
+# Omgevingsbestanden en geheime keys
 .env
 .env.*
 *.bat

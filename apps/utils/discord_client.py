@@ -133,7 +133,7 @@ async def safe_call(
     def _compute_delay(exp_attempt: int, retry_after: float | None) -> float:
         if retry_after is not None:
             return float(retry_after)
-        # exponentieel met jitter
+        # Exponentieel met jitter
         base = max(0.0, base_delay)
         j = random.uniform(0.0, max(0.0, jitter))
         return base * (2**exp_attempt) + j

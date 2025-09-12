@@ -1,6 +1,8 @@
 # apps/entities/poll_option.py
+
 import json
 import os
+
 from discord import ButtonStyle
 
 OPTIONS_FILE = "poll_options.json"
@@ -37,7 +39,7 @@ def _load_raw_options():
     try:
         with open(OPTIONS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # eenvoudige validatie
+        # Eenvoudige validatie
         ok = [
             o
             for o in data

@@ -51,7 +51,7 @@ async def build_poll_message_for_day_async(
     return message
 
 
-# --- Helper: groepeer leden en gasten (voor status + toggle) ---
+# Helper: groepeer leden en gasten (voor status + toggle)
 async def build_grouped_names_for(
     dag: str, tijd: str, guild: discord.Guild | None, all_votes: dict
 ) -> tuple[int, str]:

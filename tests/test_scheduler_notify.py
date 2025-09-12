@@ -80,7 +80,7 @@ class TestSchedulerNotify(BaseTestCase):
         g = FakeGuild(1, [FakeChannel(5, "dmk")])
         bot = FakeBot([g])
 
-        # stemmen: tijden voor 'vrijdag' is géén lijst → skip
+        # Stemmen: tijden voor 'vrijdag' is géén lijst → skip
         votes = {"123": {"vrijdag": "om 19:00 uur"}}
 
         async def fake_load_votes(*args, **kwargs):
@@ -96,7 +96,7 @@ class TestSchedulerNotify(BaseTestCase):
             scheduler, "safe_call", new_callable=AsyncMock
         ) as mock_safe:
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            mock_safe.assert_not_awaited()  # disabled → geen send
+            mock_safe.assert_not_awaited()  # Disabled → geen send
 
     async def test_notify_guest_collapse_counts_and_continue_when_under_6(self):
         ch = FakeChannel(7, "dmk")
@@ -123,7 +123,7 @@ class TestSchedulerNotify(BaseTestCase):
             scheduler, "safe_call", new_callable=AsyncMock
         ) as mock_safe:
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            # totaal 1 (owner 42) vs 1 → beide < 6 → geen melding
+            # Totaal 1 (owner 42) vs 1 → beide < 6 → geen melding
             mock_safe.assert_not_awaited()
             assert len(ch.sent) == 0
 
@@ -131,7 +131,7 @@ class TestSchedulerNotify(BaseTestCase):
         self,
     ):
         ch = FakeChannel(9, "speelavond")
-        # voeg een member 7 toe; 'NaN' zal except-pad raken
+        # Voeg een member 7 toe; 'NaN' zal except-pad raken
         members = {7: type("M", (), {"mention": "<@7>"})()}
         g = FakeGuild(1, [ch], members_map=members)
         bot = FakeBot([g])
@@ -150,7 +150,7 @@ class TestSchedulerNotify(BaseTestCase):
             return votes
 
         async def failing_safe_call(func, content):
-            # forceer except in outer try/except
+            # Forceer except in outer try/except
             raise RuntimeError("send kapot")
 
         with patch.object(
@@ -162,7 +162,7 @@ class TestSchedulerNotify(BaseTestCase):
         ), patch.object(
             scheduler, "safe_call", side_effect=failing_safe_call
         ):
-            # moet niet crashen ondanks except in safe_call; winner is 19:00
+            # Moet niet crashen ondanks except in safe_call; winner is 19:00
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
             # Geen exceptions bubbelen door; ch.sent blijft leeg omdat safe_call faalde
             assert len(ch.sent) == 0
@@ -172,7 +172,7 @@ class TestSchedulerNotify(BaseTestCase):
         g = FakeGuild(1, [ch])
         bot = FakeBot([g])
 
-        # tijden is géén lijst → moet worden overgeslagen
+        # Tijden is géén lijst → moet worden overgeslagen
         votes = {"u1": {"vrijdag": "om 20:30 uur"}}
 
         async def fake_load_votes(*_, **__):

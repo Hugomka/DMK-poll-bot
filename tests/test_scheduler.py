@@ -13,15 +13,13 @@ from apps import scheduler
 
 
 class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
-    """
-    Tests for the scheduler catch-up logic and state persistence.
-    """
+    """Tests voor de inhaallogica van de planner en het behouden van de status."""
 
     async def test_write_state_atomic(self):
         """
-        Ensure that the _write_state function writes state atomically.  A
-        temporary state file should be replaced in a single operation and the
-        temporary .tmp file should not remain on disk after the write.
+        Zorg ervoor dat de functie _write_state de status atomair opslaat.
+        Een tijdelijke statusbestand moet in één bewerking worden vervangen
+        en het tijdelijke .tmp-bestand mag na het schrijven niet op de schijf blijven staan.
         """
         import tempfile
 
@@ -43,14 +41,14 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_catch_up_idempotent(self):
         """
-        Verify that the catch-up logic only runs missed jobs once.  When run
-        twice in succession without advancing the simulated time, the jobs
-        should execute on the first call and be skipped on the second call.
+        Verifieer dat de inhaallogica gemiste taken slechts één keer uitvoert.
+        Wanneer deze twee keer achter elkaar wordt uitgevoerd zonder de gesimuleerde tijd vooruit te zetten,
+        moeten de taken bij de eerste oproep worden uitgevoerd en bij de tweede worden overgeslagen.
         """
         tz = pytz.timezone("Europe/Amsterdam")
         fixed_now = tz.localize(
             datetime(2024, 5, 27, 0, 2, 0)
-        )  # maandag 00:02 binnen venster
+        )  # Maandag 00:02 binnen venster
 
         class FixedDateTime(datetime):
             @classmethod
@@ -128,7 +126,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
         # Donderdag 17:00 → voor vrijdag 18:00, triggert 'now < last_occurrence' pad
         fixed_now = tz.localize(
             datetime(2024, 5, 27, 0, 2, 0)
-        )  # maandag 00:02 binnen venster
+        )  # Maandag 00:02 binnen venster
 
         class FixedDateTime(datetime):
             @classmethod
@@ -166,7 +164,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             return state.copy()
 
         def fake_write_state(new_state: dict):
-            # overschrijven om side-effects te simuleren
+            # Overschrijven om side-effects te simuleren
             state.clear()
             state.update(new_state)
 
@@ -202,7 +200,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             with open(lockfile, "w", encoding="utf-8") as f:
                 f.write("pid")
 
-            # timestamp gelijk aan mtime → delta < 300 → skip
+            # Timestamp gelijk aan mtime → delta < 300 → skip
             fake_now_ts = os.path.getmtime(lockfile)
 
             class FakeNowObj:
@@ -363,7 +361,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 scheduler, "_run_catch_up_with_lock", new_callable=AsyncMock
             ) as mock_cu,
         ):
-            # Move definitions here so they are in scope
+            # Verplaats definities hier zodat ze in scope zijn
             fake_bot = object()
             added = []
 
@@ -421,11 +419,11 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             return guild.text_channels
 
         def fake_get_message_id(cid, key):
-            return 999  # altijd aanwezig
+            return 999  # Altijd aanwezig
 
         def fake_clear_message_id(cid, key):
             cleared.append((cid, key))
-            # gooi fout op één van de keys om except-pad te raken
+            # Gooi fout op één van de keys om except-pad te raken
             if key == "zondag":
                 raise RuntimeError("kapot")
 

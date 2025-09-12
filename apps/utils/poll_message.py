@@ -22,7 +22,8 @@ _pending_tasks: dict[tuple[int, str], asyncio.Task] = {}
 
 
 def is_channel_disabled(channel_id: int) -> bool:
-    """Controleer of dit kanaal uitgeschakeld is voor polls.
+    """
+    Controleer of dit kanaal uitgeschakeld is voor polls.
 
     We gebruiken strings als keys, net zoals bij per_channel.
     Als het kanaal in de lijst staat, worden polls niet opnieuw aangemaakt.
@@ -41,7 +42,8 @@ def is_channel_disabled(channel_id: int) -> bool:
 
 
 def set_channel_disabled(channel_id: int, disabled: bool) -> None:
-    """Zet of verwijder de uitgeschakelde status voor een kanaal.
+    """
+    Zet of verwijder de uitgeschakelde status voor een kanaal.
 
     Wanneer `disabled` True is, voegen we het kanaal toe aan de lijst.
     Wanneer `disabled` False is, verwijderen we het kanaal uit de lijst.
@@ -101,7 +103,8 @@ def clear_message_id(channel_id: int, key: str) -> None:
 
 
 def schedule_poll_update(channel: Any, dag: str, delay: float = 0.3) -> asyncio.Task:
-    """Plan een update voor (kanaal, dag) op de achtergrond met kleine debounce.
+    """
+    Plan een update voor (kanaal, dag) op de achtergrond met kleine debounce.
 
     - Als er al een pending taak bestaat voor dezelfde key, vervangen we die (reset de debounce).
     - Retourneert de asyncio.Task, zodat een aanroeper eventueel kan awaiten in batch (scheduler).
@@ -129,7 +132,8 @@ def schedule_poll_update(channel: Any, dag: str, delay: float = 0.3) -> asyncio.
 
 
 async def update_poll_message(channel: Any, dag: str | None = None) -> None:
-    """Update (of maak aan) de dag-berichten.
+    """
+    Update (of maak aan) de dag-berichten.
 
     Toont/verbergt aantallen per dag via should_hide_counts(...).
     Als er geen message_id is of het bericht bestaat niet meer,
@@ -162,7 +166,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                 guild_id=gid_val,
                 channel_id=cid_val,
                 hide_counts=hide,
-                guild=getattr(channel, "guild", None),  # voor namen
+                guild=getattr(channel, "guild", None),  # Voor namen
             )
 
             decision = await build_decision_line(gid_val, cid_val, d, now)
@@ -176,7 +180,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                     msg = await safe_call(fetch, mid) if fetch else None
                     if msg is not None:
                         await safe_call(msg.edit, content=content, view=None)
-                        continue  # klaar voor deze dag
+                        continue  # Klaar voor deze dag
                     else:
                         # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
                         clear_message_id(cid_val, d)
@@ -189,7 +193,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                         continue
                     else:
                         print(f"❌ Fout bij updaten voor {d}: {e}")
-                        continue  # geen create proberen in dit pad
+                        continue  # Geen create proberen in dit pad
 
             # Create-pad: geen mid óf net opgeschoond na NotFound → nieuw sturen
             try:

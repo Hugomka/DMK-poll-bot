@@ -5,9 +5,9 @@ from datetime import datetime, time
 from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_settings import get_setting
 
-# We call a private helper to detect if a setting is explicitly stored.
-# This keeps behaviour minimal: only enforce deadline on buttons
-# when an admin actually set it for this channel/day.
+# We roepen een private helper aan om te detecteren of een instelling expliciet is opgeslagen.
+# Dit houdt het gedrag minimaal: alleen een deadline afdwingen op knoppen
+# wanneer een admin deze daadwerkelijk heeft ingesteld voor dit kanaal/dag.
 try:
     from apps.utils.poll_settings import (
         _load_data as _load_settings_data,  # type: ignore
@@ -33,9 +33,10 @@ TIJD_LABELS = {
 
 
 def _has_explicit_setting(channel_id: int, dag: str) -> bool:
-    """Return True if there is an explicit entry stored for this channel/day.
-    We do NOT want to treat the in-code default ('deadline', 18:00) as explicit
-    for button visibility rules.
+    """
+    Geef True terug als er een expliciete invoer is opgeslagen voor dit kanaal/deze dag.
+    We willen de standaardwaarde in de code ('deadline', 18:00) NIET als expliciet beschouwen
+    voor de zichtbaarheid van
     """
     if _load_settings_data is None:
         return False
@@ -48,7 +49,8 @@ def _has_explicit_setting(channel_id: int, dag: str) -> bool:
 
 
 def is_vote_button_visible(channel_id: int, dag: str, tijd: str, now: datetime) -> bool:
-    """Bepaalt of een stemknop zichtbaar is (alleen knoplogica, niet aantallen).
+    """
+    Bepaalt of een stemknop zichtbaar is (alleen knoplogica, niet aantallen).
 
     Regels:
     - Dag in verleden: onzichtbaar

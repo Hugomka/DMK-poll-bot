@@ -35,13 +35,13 @@ class TestCommandDefaults(unittest.TestCase):
         }
         for attr, expected_name in admin_mod_cmds.items():
             cmd = _get_cmd(attr)
-            # naam
+            # Naam
             self.assertEqual(cmd.name, expected_name, f"Naam mismatch bij {attr}")
-            # guild-only
+            # Guild-only
             self.assertTrue(
                 getattr(cmd, "guild_only", False), f"{attr} moet guild_only=True zijn"
             )
-            # default permissions moeten admin of moderate_members bevatten
+            # Default permissions moeten admin of moderate_members bevatten
             dp = getattr(cmd, "default_permissions", None)
             self.assertIsNotNone(dp, f"{attr} moet default_permissions hebben")
             has_admin = getattr(dp, "administrator", False)
@@ -50,7 +50,7 @@ class TestCommandDefaults(unittest.TestCase):
                 has_admin or has_moderate,
                 f"{attr} moet admin of moderate_members default hebben",
             )
-            # description hint: accepteer zowel (default: admin/mod) als de losse varianten
+            # Description hint: accepteer zowel (default: admin/mod) als de losse varianten
             desc = getattr(cmd, "description", "") or ""
             self.assertTrue(
                 any(
@@ -76,7 +76,7 @@ class TestCommandDefaults(unittest.TestCase):
             self.assertTrue(
                 getattr(cmd, "guild_only", False), f"{attr} moet guild_only=True zijn"
             )
-            # géén default_permissions => iedereen mag standaard
+            # Géén default_permissions => iedereen mag standaard
             dp = getattr(cmd, "default_permissions", None)
             self.assertTrue(
                 dp is None or getattr(dp, "value", 0) == 0,

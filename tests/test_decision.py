@@ -1,4 +1,5 @@
 # tests/test_decision.py
+
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -20,9 +21,7 @@ class TestDecision(BaseTestCase):
         await super().asyncSetUp()
 
     async def _set_votes(self, mapping: dict):
-        """
-        mapping: dict[str_user_id] -> {"vrijdag": [tijd, ...]}
-        """
+        """mapping: dict[str_user_id] -> {"vrijdag": [tijd, ...]}"""
         await save_votes_scoped(1, 12345, mapping)
 
     def _dt(self, y, m, d, hh=12, mm=0):

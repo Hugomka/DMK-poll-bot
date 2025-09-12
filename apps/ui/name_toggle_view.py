@@ -1,4 +1,5 @@
 # apps/ui/name_toggle_view.py
+
 from typing import Optional
 
 import discord

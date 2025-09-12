@@ -9,7 +9,7 @@ from apps.utils.poll_storage import get_counts_for_day
 # Alleen deze twee tijden doen mee aan de beslissing
 T19 = "om 19:00 uur"
 T2030 = "om 20:30 uur"
-MIN_STEMMEN = 6  # drempel voor “gaat door”
+MIN_STEMMEN = 6  # Drempel voor “gaat door”
 
 
 async def build_decision_line(
@@ -54,7 +54,7 @@ async def build_decision_line(
     if voor_deadline:
         return "⏳ Beslissing komt **om 18:00**."
 
-    # Ná de deadline → echte beslissing tonen (gescope per guild+channel)
+    # Ná de deadline → echte beslissing tonen (gescope per guild en channel)
     counts = await get_counts_for_day(dag, guild_id, channel_id)
     c19 = counts.get(T19, 0)
     c2030 = counts.get(T2030, 0)
