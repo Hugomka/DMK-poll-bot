@@ -50,18 +50,18 @@ class TestCommandDefaults(unittest.TestCase):
                 has_admin or has_moderate,
                 f"{attr} moet admin of moderate_members default hebben",
             )
-            # Description hint: accepteer zowel (default: admin/mod) als de losse varianten
+            # Description hint: accepteer zowel (standaard: beheerder/moderator) als de losse varianten
             desc = getattr(cmd, "description", "") or ""
             self.assertTrue(
                 any(
                     tag in desc
                     for tag in (
-                        "(default: admin/mod)",
-                        "(default: admin)",
-                        "(default: moderator)",
+                        "(standaard: beheerder/moderator)",
+                        "(standaard: beheerder)",
+                        "(standaard: moderator)",
                     )
                 ),
-                f"{attr} description mist '(default: admin/mod)' of '(default: admin)' of '(default: moderator)'",
+                f"{attr} description mist '(standaard: beheerder/moderator)' of '(standaard: beheerder)' of '(standaard: moderator)'",
             )
 
     def test_public_default_commands(self):
