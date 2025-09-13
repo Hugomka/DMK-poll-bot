@@ -13,7 +13,7 @@ from apps.ui.poll_buttons import OneStemButtonView
 
 
 def _hide_pynacl_warning(record: logging.LogRecord) -> bool:
-    return "PyNaCl is not installed" not in record.getMessage()
+    return "PyNaCl is niet geïnstalleerd" not in record.getMessage()
 
 
 logging.basicConfig(level=logging.INFO)
@@ -37,9 +37,9 @@ async def on_ready():
     print(f"✅ Bot is online als {bot.user}")
     try:
         synced = await bot.tree.sync()
-        print(f"🔧 Slash commands gesynchroniseerd: {len(synced)}")
+        print(f"🔧 Slash-commando's gesynchroniseerd: {len(synced)}")
     except Exception as e:
-        print(f"❌ Fout bij synchroniseren van slash commands: {e}")
+        print(f"❌ Fout bij het synchroniseren van slash-commando's: {e}")
 
 
 async def main():
