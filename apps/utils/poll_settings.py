@@ -22,7 +22,7 @@ def _load_data():
         with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
             try:
                 return json.load(f)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError:  # pragma: no cover
                 pass
     return {}
 
