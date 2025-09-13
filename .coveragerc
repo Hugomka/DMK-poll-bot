@@ -1,4 +1,11 @@
 [run]
+source = apps
+branch = True
 omit =
-  */site-packages/*
-  tests/*
+    */site-packages/*
+    tests/*
+
+[report]
+show_missing = True
+omit =
+    */__init__.py
