@@ -146,7 +146,7 @@ class PollButton(Button):
                         view=new_view,
                     )
             except Exception as inner:
-                print(f"❌ Kon geen fallback tonen: {inner}")
+                print(f"❌ Kon geen terugvaloptie tonen: {inner}")
 
 
 class PollButtonView(View):

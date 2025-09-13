@@ -5,9 +5,9 @@ from datetime import datetime, time
 from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_settings import get_setting
 
-# We roepen een private helper aan om te detecteren of een instelling expliciet is opgeslagen.
-# Dit houdt het gedrag minimaal: alleen een deadline afdwingen op knoppen
-# wanneer een admin deze daadwerkelijk heeft ingesteld voor dit kanaal/dag.
+# We roepen een interne helper aan om te bepalen of er een expliciete instelling is opgeslagen.
+# Het standaardgedrag verbergt de stemknoppen wanneer het aantal zichtbare dagen kleiner is dan
+# het aantal geplande poll‑dagen.
 try:
     from apps.utils.poll_settings import (
         _load_data as _load_settings_data,  # type: ignore

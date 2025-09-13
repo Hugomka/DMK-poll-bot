@@ -7,7 +7,7 @@ from discord import ButtonStyle
 
 OPTIONS_FILE = "poll_options.json"
 
-# Fallback (als JSON ontbreekt of stuk is)
+# Standaardoptie (als JSON ontbreekt of stuk is)
 _DEFAULTS = [
     {"dag": "vrijdag", "tijd": "om 19:00 uur", "emoji": "🔴"},
     {"dag": "vrijdag", "tijd": "om 20:30 uur", "emoji": "🟠"},
