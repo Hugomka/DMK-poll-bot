@@ -38,14 +38,14 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **📢 Notificaties naar stemmers** | Als een avond doorgaat, mentiont de bot alle stemmers van het winnende tijdstip. |
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
-| **💬 Slash commando’s** | `/dmk-poll on/reset/pauze/verwijderen/stemmen/status`, archief downloaden/verwijderen, en gast-commando’s. |
+| **💬 Slash commando's** | `/dmk-poll on/reset/pauze/verwijderen/stemmen/status`, archief downloaden/verwijderen, en gast-commando's. |
 | **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen (en optioneel namen). |
 
 ---
 
-## 💬 Overzicht van commando’s
+## 💬 Overzicht van commando's
 
-DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
+DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 
 | Commando | Uitleg |
 |---|---|
@@ -60,7 +60,7 @@ DMK-poll-bot werkt met **Slash commando’s** (typ `/` in Discord).
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
 
-**Opmerking:** De meeste admin-commando’s geven **ephemeral** feedback (alleen zichtbaar voor jou), zodat het kanaal schoon blijft.
+**Opmerking:** De meeste admin-commando's geven **ephemeral** feedback (alleen zichtbaar voor jou), zodat het kanaal schoon blijft.
 
 ---
 
@@ -83,7 +83,7 @@ Beheerders en moderators kunnen dit per server **aanpassen** via Discord:
   Voorbeeld:  
 ```/gast-add slot:"Zaterdag 19:00" namen:"Anna, Piet"```
 
-Je kunt meerdere namen scheiden met komma’s of `;`. De bot meldt welke gasten zijn toegevoegd en welke al bestonden.
+Je kunt meerdere namen scheiden met komma's of `;`. De bot meldt welke gasten zijn toegevoegd en welke al bestonden.
 
 - **Gast verwijderen:**  
 Voorbeeld:  
@@ -118,7 +118,7 @@ De stemopties staan in **`poll_options.json`**. Standaard:
 ]
 ```
 
-* Pas tijden/emoji’s gerust aan.
+* Pas tijden/emoji's gerust aan.
 * Hou de structuur aan (`dag`, `tijd`, `emoji`).
 * Restart de bot na wijzigen zodat nieuwe polls de aanpassing gebruiken.
 * Als het JSON ontbreekt of stuk is, vallen we terug op deze defaults.
@@ -207,23 +207,23 @@ journalctl -u dmk-bot -f
 
 **Map-structuur**
 
-* `apps/commands/` – Slash commando’s (o.a. `dmk_poll.py`).
+* `apps/commands/` – Slash commando's (o.a. `dmk_poll.py`).
 * `apps/ui/` – Discord UI: knoppen en views (bv. stemmen, naam-toggle, archief-knop).
 * `apps/utils/` – Opslag (`poll_storage.py`, `poll_settings.py`), berichtenbouw (`message_builder.py`), scheduler (`scheduler.py`), archief (`archive.py`).
-* `main.py` – Start de bot, registreert scheduler en commando’s.
+* `main.py` – Start de bot, registreert scheduler en commando's.
 
 **Belangrijke data-bestanden**
 
 | Bestand/map               | Doel                                                                             |
 | ------------------------- | -------------------------------------------------------------------------------- |
-| `poll_options.json`       | Config van opties (tijden/emoji’s) per dag.                                      |
+| `poll_options.json`       | Config van opties (tijden/emoji's) per dag.                                      |
 | `votes.json`              | Alle stemmen (per user/gast per dag). Async lock voor veilige I/O.               |
 | `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen.        |
-| `poll_message.json`       | Opslag van bericht-ID’s van de channel-polls (om te kunnen updaten/verwijderen). |
+| `poll_message.json`       | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
 | `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
 
 **Archief**
-Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen. Downloaden en wissen kan met de archief-commando’s.
+Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen. Downloaden en wissen kan met de archief-commando's.
 
 **Beslissingsregels**
 

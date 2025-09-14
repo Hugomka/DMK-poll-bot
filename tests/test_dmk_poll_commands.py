@@ -3,6 +3,8 @@
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from discord import app_commands
+
 from apps.commands.dmk_poll import DMKPoll
 from tests.base import BaseTestCase
 
@@ -28,16 +30,23 @@ class TestDMKPollCommands(BaseTestCase):
         self.bot = MagicMock()
         self.cog = DMKPoll(self.bot)
 
+    # --- replace the whole _run helper with this version ---
     async def _run(self, cmd, *args, **kwargs):
         """
-        Roept een app_commands.Command aan via .callback(self, ...),
-        of valt terug op direct aanroepen voor gewone callables.
+        Roept een app_commands.Command aan via .callback(cog, ...).
+        - Als 'cmd' een app_commands.Command is, gebruik bij voorkeur cmd.binding
+          (de echte cog instantie). Val anders terug op self.cog.
+        - Voor gewone async callables: roep direct aan.
         """
         cb = getattr(cmd, "callback", None)
         if cb is not None:
-            # app_commands.Command: callback verwacht de cog als eerste arg
-            return await cb(self.cog, *args, **kwargs)
-        # fallback voor echte callables (zou hier niet meer moeten komen)
+            # Gebruik de echte gebonden cog als die aanwezig is
+            owner = getattr(cmd, "binding", None)
+            if owner is None:
+                # fallback op de test-fixture cog
+                owner = getattr(self, "cog", None)
+            return await cb(owner, *args, **kwargs)
+        # fallback voor echte async callables
         return await cast(Any, cmd)(*args, **kwargs)
 
     def _last_content(self, mock_send) -> str:
@@ -104,6 +113,157 @@ class TestDMKPollCommands(BaseTestCase):
             # Followup verstuurd
             interaction.followup.send.assert_called()
             assert "ingeschakeld" in self._last_content(interaction.followup.send)
+
+    #  /dmk-poll-on: pad waar fetch_message None → send + save_message_id
+    async def test_on_fetch_none_then_send_and_save(self):
+        guild = MagicMock(id=123)
+        channel = MagicMock(id=456, guild=guild)
+
+        # fetch_message geeft None terug (bericht verdwenen), dus on() moet send + save doen
+        channel.fetch_message = AsyncMock(return_value=None)
+
+        sent_ids = iter([9001, 9002])  # id voor dag-bericht en later voor 'stemmen'
+
+        async def fake_send(content=None, view=None):
+            m = MagicMock()
+            m.id = next(sent_ids)
+            return m
+
+        channel.send = AsyncMock(side_effect=fake_send)
+
+        with patch("apps.commands.dmk_poll.set_channel_disabled"), patch(
+            "apps.commands.dmk_poll.get_message_id",
+            side_effect=lambda cid, key: 111 if key == "vrijdag" else None,
+        ), patch("apps.commands.dmk_poll.save_message_id") as save_mid, patch(
+            "apps.commands.dmk_poll.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.dmk_poll.is_paused", return_value=False
+        ), patch(
+            "apps.commands.dmk_poll.OneStemButtonView"
+        ) as OneStem, patch(
+            "apps.commands.dmk_poll.build_poll_message_for_day_async",
+            new=AsyncMock(return_value="DAGCONTENT"),
+        ):
+            OneStem.return_value = MagicMock()
+            interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
+            await self._run(self.cog.on, interaction)
+
+        # Er is ten minste 1x send gedaan voor 'vrijdag' (omdat fetch None was) én save_message_id aangeroepen
+        channel.send.assert_awaited()
+        assert save_mid.call_count >= 1
+        interaction.followup.send.assert_called()
+
+    #  /dmk-poll-on: pad waar get_message_id None voor álles → eerste plaatsing (3 dagen + 'stemmen')
+    async def test_on_first_placement_sends_for_all_days_and_stemmen(self):
+        guild = MagicMock(id=1)
+        channel = MagicMock(id=2, guild=guild)
+
+        channel.fetch_message = AsyncMock(return_value=None)
+
+        async def fake_send(content=None, view=None):
+            m = MagicMock()
+            m.id = 7000 if view is None else 8000
+            return m
+
+        channel.send = AsyncMock(side_effect=fake_send)
+
+        with patch("apps.commands.dmk_poll.set_channel_disabled"), patch(
+            "apps.commands.dmk_poll.get_message_id", return_value=None
+        ), patch("apps.commands.dmk_poll.save_message_id") as save_mid, patch(
+            "apps.commands.dmk_poll.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.dmk_poll.is_paused", return_value=False
+        ), patch(
+            "apps.commands.dmk_poll.OneStemButtonView"
+        ) as OneStem, patch(
+            "apps.commands.dmk_poll.build_poll_message_for_day_async",
+            new=AsyncMock(return_value="DAG"),
+        ):
+            OneStem.return_value = MagicMock()
+            interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
+            await self._run(self.cog.on, interaction)
+
+        # 4x opslaan: 3 dagen + 1x 'stemmen'
+        assert save_mid.call_count == 4
+        # send minstens 4x aangeroepen (3 dagen + 1 stemmen)
+        assert channel.send.await_count >= 4
+        interaction.followup.send.assert_called()
+
+    # _status_impl: niet-admin → géén view meegeven
+    async def test_status_impl_non_admin_has_no_view(self):
+        guild = MagicMock(id=42)
+        channel = MagicMock(id=99, guild=guild)
+
+        # Bouw simpele opties en gegroepeerde namen
+        class Opt:
+            def __init__(self, dag, tijd, emoji):
+                self.dag = dag
+                self.tijd = tijd
+                self.emoji = emoji
+
+        opties = [
+            Opt("vrijdag", "om 19:00 uur", "🕖"),
+            Opt("zaterdag", "om 19:00 uur", "🕖"),
+            Opt("zondag", "om 19:00 uur", "🕖"),
+        ]
+
+        with patch("apps.commands.dmk_poll.is_paused", return_value=False), patch(
+            "apps.commands.dmk_poll.is_name_display_enabled", return_value=True
+        ), patch(
+            "apps.commands.dmk_poll.get_setting",
+            side_effect=lambda cid, d: {"modus": "altijd"},
+        ), patch(
+            "apps.commands.dmk_poll.get_poll_options", return_value=opties
+        ), patch(
+            "apps.commands.dmk_poll.load_votes", new=AsyncMock(return_value={})
+        ), patch(
+            "apps.commands.dmk_poll.build_grouped_names_for",
+            new=AsyncMock(return_value=(0, "")),
+        ):
+            interaction = _mk_interaction(channel=channel, admin=False, guild=guild)
+            await self._run(self.cog._status_impl, interaction)
+
+        # Er is een embed gestuurd zónder view
+        assert interaction.followup.send.called
+        _, kwargs = interaction.followup.send.call_args
+        assert "embed" in kwargs
+        assert "view" not in kwargs  # niet-admin → geen NaamToggleView
+
+    # _status_impl: channel None → ephem. foutmelding
+    async def test_status_impl_channel_none(self):
+        interaction = _mk_interaction(channel=None, admin=True, guild=None)
+        await self._run(self.cog._status_impl, interaction)
+        interaction.followup.send.assert_called()
+        assert "Geen kanaal" in self._last_content(interaction.followup.send)
+
+    # on_app_command_error: MissingPermissions/CheckFailure → ephem. foutmelding
+    async def test_on_app_command_error_missing_permissions(self):
+        # interaction met response.send_message
+        interaction = MagicMock()
+        interaction.response.send_message = AsyncMock()
+
+        # MissingPermissions
+        err = app_commands.MissingPermissions(missing_permissions=["ban_members"])
+        await self._run(self.cog.on_app_command_error, interaction, err)
+        interaction.response.send_message.assert_awaited()
+        args, kwargs = interaction.response.send_message.call_args
+        assert kwargs.get("ephemeral", False) is True
+
+        # CheckFailure
+        interaction2 = MagicMock()
+        interaction2.response.send_message = AsyncMock()
+        err2 = app_commands.CheckFailure("nope")
+        await self._run(self.cog.on_app_command_error, interaction2, err2)
+        interaction2.response.send_message.assert_awaited()
+
+    # on_app_command_error: andere fout → wordt opnieuw gegooid
+    async def test_on_app_command_error_other_is_reraised(self):
+        interaction = MagicMock()
+        interaction.response.send_message = AsyncMock()
+        with self.assertRaises(RuntimeError):
+            await self._run(
+                self.cog.on_app_command_error, interaction, RuntimeError("boom")
+            )
 
     async def test_on_no_channel_early_return(self):
         interaction = _mk_interaction(channel=None, admin=True)
@@ -429,3 +589,195 @@ class TestDMKPollCommands(BaseTestCase):
             assert (
                 "geen archief" in self._last_content(interaction2.followup.send).lower()
             )
+
+    # /dmk-poll-archief-download → open_archive_bytes() geeft geen data
+    async def test_archief_download_open_bytes_none_sends_error(self):
+        channel = MagicMock(id=123)
+        interaction = _mk_interaction(channel=channel, admin=True)
+
+        with patch("apps.commands.dmk_poll.archive_exists", return_value=True), patch(
+            "apps.commands.dmk_poll.open_archive_bytes", return_value=("arch.csv", None)
+        ):
+            await TestDMKPollCommands._run(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                DMKPoll(MagicMock()).archief_download,
+                interaction,
+            )
+
+        interaction.followup.send.assert_called()
+        # mag content als arg of als kwarg zijn; gebruik helper
+        assert (
+            "kon niet worden gelezen"
+            in TestDMKPollCommands._last_content(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                interaction.followup.send,
+            ).lower()
+        )
+
+    # /gast-add → ongeldig (lege) namenlijst
+    async def test_gast_add_invalid_names_sends_warning(self):
+        guild = MagicMock(id=1)
+        channel = MagicMock(id=2, guild=guild)
+
+        # Choice-helper zoals eerder
+        Choice = type(
+            "Choice",
+            (),
+            {"__init__": lambda self, value: setattr(self, "value", value)},
+        )
+        slot = Choice("vrijdag|om 19:00 uur")
+
+        interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
+
+        with patch(
+            "apps.commands.dmk_poll.update_poll_message", new=AsyncMock()
+        ) as upd, patch(
+            "apps.commands.dmk_poll.add_guest_votes", new=AsyncMock()
+        ) as add:
+            await TestDMKPollCommands._run(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                DMKPoll(MagicMock()).gast_add,
+                interaction,
+                slot=slot,
+                namen=" ; ,  ,  ;  ",
+            )
+
+        interaction.followup.send.assert_called()
+        assert (
+            "geen geldige namen"
+            in TestDMKPollCommands._last_content(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                interaction.followup.send,
+            ).lower()
+        )
+        add.assert_not_awaited()
+        upd.assert_not_awaited()
+
+    # /gast-add → succesvol pad + update van dag-bericht
+    async def test_gast_add_success_updates_message_and_reports_added(self):
+        guild = MagicMock(id=10)
+        channel = MagicMock(id=20, guild=guild)
+
+        Choice = type(
+            "Choice",
+            (),
+            {"__init__": lambda self, value: setattr(self, "value", value)},
+        )
+        slot = Choice("vrijdag|om 19:00 uur")
+
+        interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
+
+        with patch(
+            "apps.commands.dmk_poll.add_guest_votes",
+            new=AsyncMock(return_value=(["Mario", "Luigi"], [])),
+        ) as add, patch(
+            "apps.commands.dmk_poll.update_poll_message", new=AsyncMock()
+        ) as upd:
+            await TestDMKPollCommands._run(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                DMKPoll(MagicMock()).gast_add,
+                interaction,
+                slot=slot,
+                namen="Mario, Luigi",
+            )
+
+        add.assert_awaited()
+        upd.assert_awaited()
+        # moet dag 'vrijdag' hebben geüpdatet
+        args, kwargs = upd.call_args
+        assert kwargs.get("dag") == "vrijdag"
+        assert (
+            "toegevoegd"
+            in TestDMKPollCommands._last_content(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                interaction.followup.send,
+            ).lower()
+        )
+
+    # /gast-remove → ongeldig (lege) namenlijst
+    async def test_gast_remove_invalid_names_sends_warning(self):
+        guild = MagicMock(id=1)
+        channel = MagicMock(id=2, guild=guild)
+
+        Choice = type(
+            "Choice",
+            (),
+            {"__init__": lambda self, value: setattr(self, "value", value)},
+        )
+        slot = Choice("zaterdag|om 20:30 uur")
+
+        interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
+
+        with patch(
+            "apps.commands.dmk_poll.remove_guest_votes", new=AsyncMock()
+        ) as rem, patch(
+            "apps.commands.dmk_poll.update_poll_message", new=AsyncMock()
+        ) as upd:
+            await TestDMKPollCommands._run(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                DMKPoll(MagicMock()).gast_remove,
+                interaction,
+                slot=slot,
+                namen=" , ;  ",
+            )
+
+        interaction.followup.send.assert_called()
+        assert (
+            "geen geldige namen"
+            in TestDMKPollCommands._last_content(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                interaction.followup.send,
+            ).lower()
+        )
+        rem.assert_not_awaited()
+        upd.assert_not_awaited()
+
+    # /gast-remove → deels verwijderd, deels niet gevonden + update dag-bericht
+    async def test_gast_remove_success_and_not_found_updates_message(self):
+        guild = MagicMock(id=10)
+        channel = MagicMock(id=20, guild=guild)
+
+        Choice = type(
+            "Choice",
+            (),
+            {"__init__": lambda self, value: setattr(self, "value", value)},
+        )
+        slot = Choice("zondag|om 19:00 uur")
+
+        interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
+
+        with patch(
+            "apps.commands.dmk_poll.remove_guest_votes",
+            new=AsyncMock(return_value=(["Peach"], ["Yoshi"])),
+        ) as rem, patch(
+            "apps.commands.dmk_poll.update_poll_message", new=AsyncMock()
+        ) as upd:
+            await TestDMKPollCommands._run(
+                TestDMKPollCommands,  # type: ignore[attr-defined]
+                DMKPoll(MagicMock()).gast_remove,
+                interaction,
+                slot=slot,
+                namen="Peach, Yoshi",
+            )
+
+        rem.assert_awaited()
+        upd.assert_awaited()
+        args, kwargs = upd.call_args
+        assert kwargs.get("dag") == "zondag"
+        txt = TestDMKPollCommands._last_content(
+            TestDMKPollCommands, interaction.followup.send  # type: ignore[attr-defined]
+        ).lower()
+        assert "verwijderd" in txt and "niet gevonden" in txt
+
+    # setup() → zet on_error en registreert de cog
+    async def test_setup_registers_cog_and_on_error_hook(self):
+        bot = MagicMock()
+        bot.tree = MagicMock()
+        bot.add_cog = AsyncMock()
+
+        from apps.commands.dmk_poll import setup as setup_cog
+
+        await setup_cog(bot)
+
+        bot.add_cog.assert_awaited()
+        assert callable(bot.tree.on_error)
