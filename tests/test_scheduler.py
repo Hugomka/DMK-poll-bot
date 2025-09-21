@@ -285,8 +285,8 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 # Geef de event loop 1 tick om de task te laten starten
                 await asyncio.sleep(0)
 
-                # 5 jobs: update, reset, notify vr/za/zo
-                self.assertEqual(mock_sched.add_job.call_count, 5)
+                # 8 jobs: update, reset, 3 reminders, 3 notificaties
+                self.assertEqual(mock_sched.add_job.call_count, 8)
                 mock_task.assert_called_once()
                 self.assertEqual(added[0][1], [fake_bot])
                 # Catch-up is daadwerkelijk gestart (geawait door de Task)
@@ -384,8 +384,8 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 # Geef de event loop 1 tick om de task te laten starten
                 await asyncio.sleep(0)
 
-                # 5 jobs: update, reset, notify vr/za/zo
-                self.assertEqual(mock_sched.add_job.call_count, 5)
+                # 8 jobs: update, reset, 3 reminders, 3 notificaties
+                self.assertEqual(mock_sched.add_job.call_count, 8)
                 mock_task.assert_called_once()
                 # eerste job args moeten het bot object bevatten
                 self.assertEqual(added[0][1], [fake_bot])

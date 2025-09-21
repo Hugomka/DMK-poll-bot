@@ -107,13 +107,9 @@ async def _run_catch_up(bot) -> None:
         reset_date if now >= reset_date else reset_date - timedelta(days=7)
     )
     if should_run(last_reset, last_sched_reset):
-        if _within_reset_window(now):
-            await reset_polls(bot)
-            state["reset_polls"] = now.isoformat()
-            missed.append("reset_polls")
-            log_job("reset_polls", status="executed")
-        else:
-            log_job("reset_polls", status="skipped_outside_window")
+        await reset_polls(bot)
+        state["reset_polls"] = now.isoformat()
+        missed.append("reset_polls")
     else:
         log_job("reset_polls", status="skipped")
 
@@ -265,7 +261,7 @@ async def update_all_polls(bot) -> None:
         "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
     ).lower() in {"1", "true", "yes", "y"}
 
-    for guild in bot.guilds:
+    for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
             try:
                 cid = int(getattr(channel, "id", 0))
@@ -298,6 +294,160 @@ async def update_all_polls(bot) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+async def notify_non_voters(bot, dag: str) -> None:
+    """
+    Herinner leden die nog niet hebben gestemd voor een bepaalde dag.
+    Vermeld alle niet-stemmers als mention en vraag ze vóór 18:00 uur te stemmen.
+    """
+    log_job("reminder", dag=dag, status="executed")
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            if is_channel_disabled(getattr(channel, "id", 0)):
+                continue
+
+            # Alle stemmen voor dit guild+channel
+            scoped = (
+                await load_votes(
+                    getattr(guild, "id", "0"),
+                    getattr(channel, "id", "0"),
+                )
+                or {}
+            )
+
+            # Verzamel user-IDs die al hebben gestemd (leden en gasten)
+            voted_ids: set[str] = set()
+            for uid, per_dag in scoped.items():
+                try:
+                    tijden = (per_dag or {}).get(dag, [])
+                    if not isinstance(tijden, list):
+                        continue
+                    if tijden:
+                        # guests: <owner>_guest::<gast>
+                        if isinstance(uid, str) and "_guest::" in uid:
+                            uid = uid.split("_guest::", 1)[0]
+                        voted_ids.add(str(uid))
+                except Exception:
+                    continue
+
+            # Zoek alle leden in het kanaal (val terug op guild.members)
+            members = getattr(channel, "members", None) or getattr(guild, "members", [])
+            non_voters: list[str] = []
+            for member in members:
+                try:
+                    # Sla bots over
+                    if getattr(member, "bot", False):
+                        continue
+                    m_id = str(getattr(member, "id", ""))
+                    if m_id in voted_ids:
+                        continue
+                    mention = getattr(member, "mention", None)
+                    if mention:
+                        non_voters.append(mention)
+                except Exception:
+                    continue
+
+            if non_voters:
+                msg = f"{', '.join(non_voters)} - jullie hebben nog niet gestemd. Graag stemmen vóór 18:00. Dank!"
+                # Controleer of het kanaal een send‑methode heeft
+                send_func = getattr(channel, "send", None)
+                if send_func:
+                    try:
+                        await safe_call(send_func, msg)
+                    except Exception as e:
+                        # Tests willen dat dit niet crasht
+                        print(
+                            f"Fout bij herinneren in kanaal {getattr(channel, 'name', channel)}: {e}"
+                        )
+
+
+async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
+    """
+    Stuur melding als een tijd >= MIN_NOTIFY_VOTES stemmen heeft (gelijkstand → 20:30).
+    De deelnemers worden eerst genoemd, daarna volgt de zin 'de DMK-avond van … gaat door'.
+    """
+    log_job("notify", dag=dag, status="executed")
+    KEY_19 = "om 19:00 uur"
+    KEY_2030 = "om 20:30 uur"
+
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            if is_channel_disabled(getattr(channel, "id", 0)):
+                continue
+
+            scoped = (
+                await load_votes(
+                    getattr(guild, "id", "0"),
+                    getattr(channel, "id", "0"),
+                )
+                or {}
+            )
+
+            voters_19: set[str] = set()
+            voters_2030: set[str] = set()
+            for uid, per_dag in scoped.items():
+                tijden = (per_dag or {}).get(dag, [])
+                if not isinstance(tijden, list):
+                    continue
+                if KEY_19 in tijden:
+                    # gasten bevatten "_guest::"; neem eigenaar
+                    actual_uid = (
+                        uid.split("_guest::", 1)[0]
+                        if isinstance(uid, str) and "_guest::" in uid
+                        else uid
+                    )
+                    voters_19.add(str(actual_uid))
+                if KEY_2030 in tijden:
+                    actual_uid = (
+                        uid.split("_guest::", 1)[0]
+                        if isinstance(uid, str) and "_guest::" in uid
+                        else uid
+                    )
+                    voters_2030.add(str(actual_uid))
+
+            c19, c2030 = len(voters_19), len(voters_2030)
+            if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
+                continue
+
+            # Bepaal winnende tijd
+            if c2030 >= c19:
+                winnaar_txt = "20:30"
+                winner_set = voters_2030
+            else:
+                winnaar_txt = "19:00"
+                winner_set = voters_19
+
+            # Bouw mention-lijst op basis van member objects
+            mentions: List[str] = []
+            for uid in winner_set:
+                try:
+                    member = (
+                        guild.get_member(int(uid))
+                        if hasattr(guild, "get_member")
+                        else None
+                    )
+                    if member and getattr(member, "mention", None):
+                        mentions.append(member.mention)
+                except Exception:
+                    continue
+
+            # Berichttekst
+            if mentions:
+                prefix = ", ".join(mentions)
+                message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
+            else:
+                message = f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
+
+            send_func = getattr(channel, "send", None)
+            if send_func:
+                try:
+                    await safe_call(send_func, message)
+                except Exception as e:
+                    # Tests willen dat dit niet crasht (b.v. 'send kapot')
+                    print(
+                        f"Fout bij notificeren in kanaal {getattr(channel, 'name', channel)}: {e}"
+                    )
+
+
 async def reset_polls(bot) -> None:
     """
     Maak stemmen leeg + verwijder bericht-IDs en stuur een resetmelding.
@@ -310,179 +460,31 @@ async def reset_polls(bot) -> None:
 
     log_job("reset_polls", status="executed")
     await reset_votes()
-    for guild in bot.guilds:
+    for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
+            try:
+                cid = int(getattr(channel, "id"))
+            except Exception:
+                continue
+
+            # Wis alle bekende keys, exceptions negeren
             for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
-                mid = get_message_id(channel.id, key)
-                if mid:
-                    try:
-                        clear_message_id(channel.id, key)
-                    except Exception:
-                        pass
+                try:
+                    _ = get_message_id(cid, key)
+                    clear_message_id(cid, key)
+                except Exception:
+                    pass
 
-            # Stuur resetbericht (@everyone)
-            try:
-                await safe_call(
-                    channel.send,
-                    "⬆️@everyone De poll is zojuist gereset voor het nieuwe weekend. "
-                    "Je kunt weer stemmen. Veel plezier!",
-                )
-            except Exception as e:
-                print(
-                    f"Fout bij versturen resetmelding in kanaal "
-                    f"{getattr(channel, 'name', channel)}: {e}"
-                )
-
-
-async def notify_non_voters(bot, dag: str) -> None:
-    """
-    Herinner leden die nog niet hebben gestemd voor een bepaalde dag.
-    Vermeld alle niet-stemmers als mention en vraag ze vóór 18:00 uur te stemmen.
-    """
-    log_job("reminder", dag=dag, status="executed")
-    for guild in bot.guilds:
-        for channel in get_channels(guild):
-            try:
-                if is_channel_disabled(getattr(channel, "id", 0)):
-                    continue
-
-                # Alle stemmen voor dit guild+channel
-                scoped = (
-                    await load_votes(
-                        getattr(guild, "id", "0"),
-                        getattr(channel, "id", "0"),
+            # Stuur resetbericht (@everyone) maar slik exceptions in
+            send_func = getattr(channel, "send", None)
+            if send_func:
+                try:
+                    await safe_call(
+                        send_func,
+                        "⬆️@everyone De poll is zojuist gereset voor het nieuwe weekend. "
+                        "Je kunt weer stemmen. Veel plezier!",
                     )
-                    or {}
-                )
-
-                # Verzamel user-IDs die al hebben gestemd (leden en gasten)
-                voted_ids: set[str] = set()
-                for uid, per_dag in scoped.items():
-                    try:
-                        tijden = (per_dag or {}).get(dag, [])
-                        if not isinstance(tijden, list):
-                            continue
-                        if tijden:
-                            # guests: <owner>_guest::<gast>
-                            if isinstance(uid, str) and "_guest::" in uid:
-                                uid = uid.split("_guest::", 1)[0]
-                            voted_ids.add(str(uid))
-                    except Exception:
-                        continue
-
-                # Zoek alle leden in het kanaal (val terug op guild.members)
-                members = getattr(channel, "members", None) or getattr(
-                    guild, "members", []
-                )
-                non_voters: list[str] = []
-                for member in members:
-                    try:
-                        # Sla bots over
-                        if getattr(member, "bot", False):
-                            continue
-                        m_id = str(getattr(member, "id", ""))
-                        if m_id in voted_ids:
-                            continue
-                        mention = getattr(member, "mention", None)
-                        if mention:
-                            non_voters.append(mention)
-                    except Exception:
-                        continue
-
-                if non_voters:
-                    msg = (
-                        f"{', '.join(non_voters)} - jullie hebben nog niet gestemd. "
-                        "Graag stemmen vóór 18:00. Dank!"
+                except Exception as e:
+                    print(
+                        f"Fout bij versturen resetmelding in kanaal {getattr(channel, 'name', 'onbekend')}: {e}"
                     )
-                    await safe_call(channel.send, msg)
-            except Exception as e:
-                print(
-                    f"Fout bij herinneren in kanaal {getattr(channel, 'name', channel)}: {e}"
-                )
-
-
-async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
-    """
-    Stuur melding als een tijd >= MIN_NOTIFY_VOTES stemmen heeft (gelijkstand → 20:30).
-    De deelnemers worden eerst genoemd, daarna volgt de zin 'de DMK-avond van … gaat door'.
-    """
-    log_job("notify", dag=dag, status="executed")
-    KEY_19 = "om 19:00 uur"
-    KEY_2030 = "om 20:30 uur"
-
-    for guild in bot.guilds:
-        for channel in get_channels(guild):
-            try:
-                if is_channel_disabled(getattr(channel, "id", 0)):
-                    continue
-
-                scoped = (
-                    await load_votes(
-                        getattr(guild, "id", "0"),
-                        getattr(channel, "id", "0"),
-                    )
-                    or {}
-                )
-
-                voters_19: set[str] = set()
-                voters_2030: set[str] = set()
-                for uid, per_dag in scoped.items():
-                    tijden = (per_dag or {}).get(dag, [])
-                    if not isinstance(tijden, list):
-                        continue
-                    if KEY_19 in tijden:
-                        # gasten bevatten "_guest::"; neem eigenaar
-                        actual_uid = (
-                            uid.split("_guest::", 1)[0]
-                            if isinstance(uid, str) and "_guest::" in uid
-                            else uid
-                        )
-                        voters_19.add(str(actual_uid))
-                    if KEY_2030 in tijden:
-                        actual_uid = (
-                            uid.split("_guest::", 1)[0]
-                            if isinstance(uid, str) and "_guest::" in uid
-                            else uid
-                        )
-                        voters_2030.add(str(actual_uid))
-
-                c19, c2030 = len(voters_19), len(voters_2030)
-                if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
-                    continue
-
-                # Bepaal winnende tijd
-                if c2030 >= c19:
-                    winnaar_txt = "20:30"
-                    winner_set = voters_2030
-                else:
-                    winnaar_txt = "19:00"
-                    winner_set = voters_19
-
-                # Bouw mention-lijst op basis van member objects
-                mentions: List[str] = []
-                for uid in winner_set:
-                    try:
-                        member = (
-                            guild.get_member(int(uid))
-                            if hasattr(guild, "get_member")
-                            else None
-                        )
-                        if member and getattr(member, "mention", None):
-                            mentions.append(member.mention)
-                    except Exception:
-                        continue
-
-                # Stuur melding met juiste tekst
-                if mentions:
-                    prefix = ", ".join(mentions)
-                    message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
-                else:
-                    message = (
-                        f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
-                    )
-
-                await safe_call(channel.send, message)
-            except Exception as e:
-                print(
-                    f"Fout bij notificeren in kanaal {getattr(channel, 'name', channel)}: {e}"
-                )
