@@ -1,11 +1,4 @@
 # apps/scheduler.py
-#
-# Doel:
-# - Reset mag ALLEEN maandag tussen 00:00 en 00:05 (Europe/Amsterdam).
-# - Catch-up bij opstart voert GEEN reset uit buiten dat venster.
-# - Geen extra kwargs naar add_job (tests gebruiken fake_add_job zonder **kwargs).
-#
-# Overige jobs blijven hetzelfde (update 18:00, notificaties vr/za/zo 18:00).
 
 import asyncio
 import json
@@ -34,6 +27,12 @@ scheduler = AsyncIOScheduler(timezone=TZ)
 
 MIN_NOTIFY_VOTES = 6
 
+# Nieuw: herinneringstijd en resetinstellingen
+REMINDER_HOUR = 17  # 17:00 uur - stuur herinnering vóór de deadline
+RESET_DAY_OF_WEEK = 1  # 0=ma, 1=di … reset op dinsdag
+RESET_HOUR = 20  # 20:00 uur - resetmoment
+REMINDER_DAYS = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
+
 LOCK_PATH = ".scheduler.lock"
 STATE_PATH = ".scheduler_state.json"
 
@@ -54,14 +53,24 @@ def _write_state(state: dict) -> None:
 
 
 def _within_reset_window(now: datetime, minutes: int = 5) -> bool:
-    # True als het maandag 00:00-00:05 is (Europe/Amsterdam).
+    """
+    Controleer of we in het resetvenster zitten.
+    Reset vindt voortaan plaats op dinsdag tussen 20:00 en 20:05.
+    """
     if now.tzinfo is None:
         now = TZ.localize(now)
-    return now.weekday() == 0 and now.hour == 0 and now.minute < minutes
+    return (
+        now.weekday() == RESET_DAY_OF_WEEK
+        and now.hour == RESET_HOUR
+        and now.minute < minutes
+    )
 
 
 async def _run_catch_up(bot) -> None:
-    # Voer gemiste jobs maximaal een keer uit. Reset alleen in het 00:00-00:05 venster.
+    """
+    Catch-up na herstart: voer gemiste jobs maximaal één keer uit.
+    Reset alleen in het nieuwe venster (dinsdag 20:00 - 20:05).
+    """
     now = datetime.now(TZ)
     state = _read_state()
 
@@ -88,16 +97,18 @@ async def _run_catch_up(bot) -> None:
     else:
         log_job("update_all_polls", status="skipped")
 
-    # Wekelijkse reset (maandag 00:00)
+    # Wekelijkse reset (dinsdag 20:00)
     last_reset = state.get("reset_polls")
-    days_since_monday = (now.weekday() - 0) % 7
-    monday = (now - timedelta(days=days_since_monday)).replace(
-        hour=0, minute=0, second=0, microsecond=0
+    days_since = (now.weekday() - RESET_DAY_OF_WEEK) % 7
+    reset_date = (now - timedelta(days=days_since)).replace(
+        hour=RESET_HOUR, minute=0, second=0, microsecond=0
     )
-    last_sched_reset = monday if now >= monday else monday - timedelta(days=7)
+    last_sched_reset = (
+        reset_date if now >= reset_date else reset_date - timedelta(days=7)
+    )
     if should_run(last_reset, last_sched_reset):
         if _within_reset_window(now):
-            await reset_polls(bot)  # reset_polls checkt ook het venster
+            await reset_polls(bot)
             state["reset_polls"] = now.isoformat()
             missed.append("reset_polls")
             log_job("reset_polls", status="executed")
@@ -106,14 +117,15 @@ async def _run_catch_up(bot) -> None:
     else:
         log_job("reset_polls", status="skipped")
 
-    # Notificaties (vr/za/zo 18:00)
+    # Notificaties (vr/za/zo - om 18:05)
     weekday_map = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
     for dag, target_wd in weekday_map.items():
         key = f"notify_{dag}"
         last_notify = state.get(key)
         days_since = (now.weekday() - target_wd) % 7
         last_date = (now - timedelta(days=days_since)).date()
-        last_occurrence = TZ.localize(datetime.combine(last_date, dt_time(18, 0)))
+        # 18:05 i.p.v. precies 18:00 om pollupdates af te ronden
+        last_occurrence = TZ.localize(datetime.combine(last_date, dt_time(18, 5)))
         if now < last_occurrence:
             last_occurrence -= timedelta(days=7)
         if should_run(last_notify, last_occurrence):
@@ -124,12 +136,31 @@ async def _run_catch_up(bot) -> None:
         else:
             log_job("notify", dag=dag, status="skipped")
 
+    # Herinneringen naar niet-stemmers (17:00)
+    for dag, target_wd in REMINDER_DAYS.items():
+        key = f"reminder_{dag}"
+        last_rem = state.get(key)
+        days_since = (now.weekday() - target_wd) % 7
+        last_date = (now - timedelta(days=days_since)).date()
+        rem_occurrence = TZ.localize(
+            datetime.combine(last_date, dt_time(REMINDER_HOUR, 0))
+        )
+        if now < rem_occurrence:
+            rem_occurrence -= timedelta(days=7)
+        if should_run(last_rem, rem_occurrence):
+            await notify_non_voters(bot, dag)
+            state[key] = now.isoformat()
+            missed.append(f"reminder_{dag}")
+            log_job("reminder", dag=dag, status="executed")
+        else:
+            log_job("reminder", dag=dag, status="skipped")
+
     _write_state(state)
     log_startup(missed)
 
 
 async def _run_catch_up_with_lock(bot) -> None:
-    # Catch-up met file-lock (voorkomt dubbele runs bij snelle herstarts).
+    """Catch-up met file-lock (voorkomt dubbele runs bij snelle herstarts)."""
     try:
         if os.path.exists(LOCK_PATH):
             try:
@@ -154,34 +185,62 @@ async def _run_catch_up_with_lock(bot) -> None:
 
 
 def setup_scheduler(bot) -> None:
-    # Plan jobs en start scheduler + catch-up.
+    """
+    Plan periodieke jobs en start de scheduler.
+    - Pollupdate elke dag om 18:00.
+    - Herinnering niet-stemmers op vr/za/zo om 17:00.
+    - Notificatie dat een avond doorgaat op vr/za/zo om 18:05.
+    - Reset op dinsdag om 20:00.
+    """
+    # Dagelijkse pollupdates
     scheduler.add_job(
         update_all_polls,
         CronTrigger(hour=18, minute=0),
         args=[bot],
         name="Dagelijkse pollupdate om 18:00",
     )
+    # Wekelijkse reset (dinsdag 20:00)
     scheduler.add_job(
         reset_polls,
-        CronTrigger(day_of_week="mon", hour=0, minute=0),
+        CronTrigger(day_of_week="tue", hour=RESET_HOUR, minute=0),
         args=[bot],
-        name="Wekelijkse reset",
+        name="Wekelijkse reset dinsdag 20:00",
+    )
+    # Herinneringen (vrijdag, zaterdag, zondag)
+    scheduler.add_job(
+        notify_non_voters,
+        CronTrigger(day_of_week="fri", hour=REMINDER_HOUR, minute=0),
+        args=[bot, "vrijdag"],
+        name="Herinnering vrijdag",
     )
     scheduler.add_job(
+        notify_non_voters,
+        CronTrigger(day_of_week="sat", hour=REMINDER_HOUR, minute=0),
+        args=[bot, "zaterdag"],
+        name="Herinnering zaterdag",
+    )
+    scheduler.add_job(
+        notify_non_voters,
+        CronTrigger(day_of_week="sun", hour=REMINDER_HOUR, minute=0),
+        args=[bot, "zondag"],
+        name="Herinnering zondag",
+    )
+    # Notificaties als een avond doorgaat (18:05 om race-condities te voorkomen)
+    scheduler.add_job(
         notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="fri", hour=18, minute=0),
+        CronTrigger(day_of_week="fri", hour=18, minute=5),
         args=[bot, "vrijdag"],
         name="Notificatie vrijdag",
     )
     scheduler.add_job(
         notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="sat", hour=18, minute=0),
+        CronTrigger(day_of_week="sat", hour=18, minute=5),
         args=[bot, "zaterdag"],
         name="Notificatie zaterdag",
     )
     scheduler.add_job(
         notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="sun", hour=18, minute=0),
+        CronTrigger(day_of_week="sun", hour=18, minute=5),
         args=[bot, "zondag"],
         name="Notificatie zondag",
     )
@@ -190,7 +249,10 @@ def setup_scheduler(bot) -> None:
 
 
 async def update_all_polls(bot) -> None:
-    # Update per kanaal de poll-berichten (vr/za/zo) als er al polls zijn.
+    """
+    Update per kanaal de poll-berichten (vrijdag, zaterdag, zondag) als er al polls zijn.
+    Deze functie blijft ongewijzigd.
+    """
     log_job("update_all_polls", status="executed")
     tasks: List[asyncio.Task] = []
 
@@ -237,7 +299,10 @@ async def update_all_polls(bot) -> None:
 
 
 async def reset_polls(bot) -> None:
-    # Maak stemmen leeg + verwijder bericht-IDs (alleen in venster).
+    """
+    Maak stemmen leeg + verwijder bericht-IDs en stuur een resetmelding.
+    Reset wordt alleen uitgevoerd in het resetvenster (dinsdag 20:00 - 20:05).
+    """
     now = datetime.now(TZ)
     if not _within_reset_window(now):
         log_job("reset_polls", status="skipped_outside_window")
@@ -255,9 +320,92 @@ async def reset_polls(bot) -> None:
                     except Exception:
                         pass
 
+            # Stuur resetbericht (@everyone)
+            try:
+                await safe_call(
+                    channel.send,
+                    "⬆️@everyone De poll is zojuist gereset voor het nieuwe weekend. "
+                    "Je kunt weer stemmen. Veel plezier!",
+                )
+            except Exception as e:
+                print(
+                    f"Fout bij versturen resetmelding in kanaal "
+                    f"{getattr(channel, 'name', channel)}: {e}"
+                )
+
+
+async def notify_non_voters(bot, dag: str) -> None:
+    """
+    Herinner leden die nog niet hebben gestemd voor een bepaalde dag.
+    Vermeld alle niet-stemmers als mention en vraag ze vóór 18:00 uur te stemmen.
+    """
+    log_job("reminder", dag=dag, status="executed")
+    for guild in bot.guilds:
+        for channel in get_channels(guild):
+            try:
+                if is_channel_disabled(getattr(channel, "id", 0)):
+                    continue
+
+                # Alle stemmen voor dit guild+channel
+                scoped = (
+                    await load_votes(
+                        getattr(guild, "id", "0"),
+                        getattr(channel, "id", "0"),
+                    )
+                    or {}
+                )
+
+                # Verzamel user-IDs die al hebben gestemd (leden en gasten)
+                voted_ids: set[str] = set()
+                for uid, per_dag in scoped.items():
+                    try:
+                        tijden = (per_dag or {}).get(dag, [])
+                        if not isinstance(tijden, list):
+                            continue
+                        if tijden:
+                            # guests: <owner>_guest::<gast>
+                            if isinstance(uid, str) and "_guest::" in uid:
+                                uid = uid.split("_guest::", 1)[0]
+                            voted_ids.add(str(uid))
+                    except Exception:
+                        continue
+
+                # Zoek alle leden in het kanaal (val terug op guild.members)
+                members = getattr(channel, "members", None) or getattr(
+                    guild, "members", []
+                )
+                non_voters: list[str] = []
+                for member in members:
+                    try:
+                        # Sla bots over
+                        if getattr(member, "bot", False):
+                            continue
+                        m_id = str(getattr(member, "id", ""))
+                        if m_id in voted_ids:
+                            continue
+                        mention = getattr(member, "mention", None)
+                        if mention:
+                            non_voters.append(mention)
+                    except Exception:
+                        continue
+
+                if non_voters:
+                    msg = (
+                        f"{', '.join(non_voters)} - jullie hebben nog niet gestemd. "
+                        "Graag stemmen vóór 18:00. Dank!"
+                    )
+                    await safe_call(channel.send, msg)
+            except Exception as e:
+                print(
+                    f"Fout bij herinneren in kanaal {getattr(channel, 'name', channel)}: {e}"
+                )
+
 
 async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
-    # Stuur melding als een tijd >= 6 stemmen heeft (gelijkstand -> 20:30).
+    """
+    Stuur melding als een tijd >= MIN_NOTIFY_VOTES stemmen heeft (gelijkstand → 20:30).
+    De deelnemers worden eerst genoemd, daarna volgt de zin 'de DMK-avond van … gaat door'.
+    """
     log_job("notify", dag=dag, status="executed")
     KEY_19 = "om 19:00 uur"
     KEY_2030 = "om 20:30 uur"
@@ -268,41 +416,51 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                 if is_channel_disabled(getattr(channel, "id", 0)):
                     continue
 
-                scoped = await load_votes(
-                    getattr(guild, "id", "0"),
-                    getattr(channel, "id", "0"),
+                scoped = (
+                    await load_votes(
+                        getattr(guild, "id", "0"),
+                        getattr(channel, "id", "0"),
+                    )
+                    or {}
                 )
 
                 voters_19: set[str] = set()
                 voters_2030: set[str] = set()
-                for uid, per_dag in (scoped or {}).items():
+                for uid, per_dag in scoped.items():
                     tijden = (per_dag or {}).get(dag, [])
                     if not isinstance(tijden, list):
                         continue
                     if KEY_19 in tijden:
-                        if isinstance(uid, str) and "_guest::" in uid:
-                            voters_19.add(uid.split("_guest::", 1)[0])
-                        else:
-                            voters_19.add(str(uid))
+                        # gasten bevatten "_guest::"; neem eigenaar
+                        actual_uid = (
+                            uid.split("_guest::", 1)[0]
+                            if isinstance(uid, str) and "_guest::" in uid
+                            else uid
+                        )
+                        voters_19.add(str(actual_uid))
                     if KEY_2030 in tijden:
-                        if isinstance(uid, str) and "_guest::" in uid:
-                            voters_2030.add(uid.split("_guest::", 1)[0])
-                        else:
-                            voters_2030.add(str(uid))
+                        actual_uid = (
+                            uid.split("_guest::", 1)[0]
+                            if isinstance(uid, str) and "_guest::" in uid
+                            else uid
+                        )
+                        voters_2030.add(str(actual_uid))
 
                 c19, c2030 = len(voters_19), len(voters_2030)
                 if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
                     continue
 
+                # Bepaal winnende tijd
                 if c2030 >= c19:
                     winnaar_txt = "20:30"
-                    winnaar_set = voters_2030
+                    winner_set = voters_2030
                 else:
                     winnaar_txt = "19:00"
-                    winnaar_set = voters_19
+                    winner_set = voters_19
 
+                # Bouw mention-lijst op basis van member objects
                 mentions: List[str] = []
-                for uid in winnaar_set:
+                for uid in winner_set:
                     try:
                         member = (
                             guild.get_member(int(uid))
@@ -314,11 +472,16 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                     except Exception:
                         continue
 
-                suffix = f"{' '.join(mentions)}" if mentions else ""
-                await safe_call(
-                    channel.send,
-                    f" DMK op **{dag} {winnaar_txt}** gaat door!{suffix}",
-                )
+                # Stuur melding met juiste tekst
+                if mentions:
+                    prefix = ", ".join(mentions)
+                    message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
+                else:
+                    message = (
+                        f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
+                    )
+
+                await safe_call(channel.send, message)
             except Exception as e:
                 print(
                     f"Fout bij notificeren in kanaal {getattr(channel, 'name', channel)}: {e}"
