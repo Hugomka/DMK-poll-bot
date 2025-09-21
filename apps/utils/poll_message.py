@@ -171,7 +171,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
 
             decision = await build_decision_line(gid_val, cid_val, d, now)
             if decision:
-                content = content.rstrip() + "\n\n" + decision
+                content = content.rstrip() + "\n" + decision
 
             if mid:
                 try:

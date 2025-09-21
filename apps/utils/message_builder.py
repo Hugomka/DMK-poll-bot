@@ -25,10 +25,10 @@ async def build_poll_message_for_day_async(
     - pauze: voeg marker toe in de titel
     - guild: optioneel, voor mentions in andere helpers
     """
-    title = f"**DMK-poll voor {dag.capitalize()}**"
+    title = f"**DMK-poll voor {dag.capitalize()}:**"
     if pauze:
         title += " **- _(Gepauzeerd)_**"
-    message = f"{title}\n\n"
+    message = f"{title}\n"
 
     # Filter opties voor deze dag
     opties = [o for o in get_poll_options() if o.dag == dag]
@@ -48,7 +48,7 @@ async def build_poll_message_for_day_async(
             n = int(counts.get(opt.tijd, 0))
             message += f"{label} ({n} stemmen)\n"
 
-    return message
+    return f"{message}\u200b"
 
 
 # Helper: groepeer leden en gasten (voor status + toggle)
