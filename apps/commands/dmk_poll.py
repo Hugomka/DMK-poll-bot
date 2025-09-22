@@ -21,6 +21,7 @@ import discord
 from discord import File, app_commands
 from discord.ext import commands
 
+from apps import scheduler
 from apps.entities.poll_option import get_poll_options
 from apps.ui.poll_buttons import OneStemButtonView
 from apps.utils.archive import (
@@ -214,7 +215,16 @@ class DMKPoll(commands.Cog):
             # 2) Alle stemmen wissen
             await reset_votes()
 
-            # 3) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
+            # 3) Update reset-tijd in scheduler-state
+            now = datetime.now(scheduler.TZ)
+            try:
+                state = scheduler._read_state()
+                state["reset_polls"] = now.isoformat()
+                scheduler._write_state(state)
+            except Exception as e:
+                print(f"⚠️ Kon scheduler-state niet bijwerken: {e}")
+
+            # 4) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
             paused = is_paused(channel.id)
             gevonden = False
