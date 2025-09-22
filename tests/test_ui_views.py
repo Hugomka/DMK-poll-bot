@@ -1,9 +1,9 @@
 # tests/test_ui_views.py
 
 import discord
-from tests.base import BaseTestCase
+
 from apps.ui.poll_buttons import OneStemButtonView
-from apps.ui.name_toggle_view import NaamToggleView
+from tests.base import BaseTestCase
 
 
 class TestUIViews(BaseTestCase):
@@ -21,9 +21,3 @@ class TestUIViews(BaseTestCase):
         assert len(v2.children) >= 1
         assert isinstance(v2.children[0], discord.ui.Button)
         assert v2.children[0].disabled is True
-
-    async def test_naam_toggle_view_has_button(self):
-        v = NaamToggleView(channel_id=123)
-        # Minstens 1 knop aanwezig
-        assert len(v.children) >= 1
-        assert any(isinstance(c, discord.ui.Button) for c in v.children)

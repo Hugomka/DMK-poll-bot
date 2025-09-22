@@ -107,17 +107,3 @@ def reset_settings() -> None:
     """Verwijdert alle zichtbaarheid- en pauze-instellingen."""
     if os.path.exists(SETTINGS_FILE):
         os.remove(SETTINGS_FILE)
-
-
-def is_name_display_enabled(channel_id: int) -> bool:
-    data = _load_data()
-    return bool(data.get(str(channel_id), {}).get("__toon_namen__", False))
-
-
-def toggle_name_display(channel_id: int) -> bool:
-    data = _load_data()
-    ch = data.setdefault(str(channel_id), {})
-    huidig = ch.get("__toon_namen__", False)
-    ch["__toon_namen__"] = not huidig
-    _save_data(data)
-    return ch["__toon_namen__"]

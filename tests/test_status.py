@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from apps.commands.dmk_poll import DMKPoll
-from apps.utils.poll_settings import toggle_name_display
 from apps.utils.poll_storage import toggle_vote
 from tests.base import BaseTestCase
 
@@ -18,7 +17,6 @@ class TestStatusCommand(BaseTestCase):
     async def test_status_embed_toon_namen(self):
         # Zet naamweergave aan
         kanaal_id = 123456
-        toggle_name_display(kanaal_id)
 
         # Simuleer stem
         await toggle_vote("111", "vrijdag", "om 19:00 uur", kanaal_id, kanaal_id)

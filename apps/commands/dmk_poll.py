@@ -22,7 +22,6 @@ from discord import File, app_commands
 from discord.ext import commands
 
 from apps.entities.poll_option import get_poll_options
-from apps.ui.name_toggle_view import NaamToggleView
 from apps.ui.poll_buttons import OneStemButtonView
 from apps.utils.archive import (
     append_week_snapshot,
@@ -44,11 +43,9 @@ from apps.utils.poll_message import (
 )
 from apps.utils.poll_settings import (
     get_setting,
-    is_name_display_enabled,
     is_paused,
     set_visibility,
     should_hide_counts,
-    toggle_name_display,
     toggle_paused,
 )
 from apps.utils.poll_storage import (
@@ -217,14 +214,7 @@ class DMKPoll(commands.Cog):
             # 2) Alle stemmen wissen
             await reset_votes()
 
-            # 3) Namen direct uitschakelen (alleen als ze aan staan)
-            try:
-                if is_name_display_enabled(channel.id):
-                    toggle_name_display(channel.id)  # uitzetten
-            except Exception as e:  # pragma: no cover
-                print(f"⚠️ namen uitschakelen mislukte: {e}")
-
-            # 4) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
+            # 3) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
             paused = is_paused(channel.id)
             gevonden = False
@@ -547,9 +537,10 @@ class DMKPoll(commands.Cog):
     # /dmk-poll-status
     # -----------------------------
     @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-status",
-        description="Toon pauze, zichtbaarheid en alle stemmen per dag (ephemeral embed).",
+        description="Toon pauze, zichtbaarheid en alle stemmen per dag. (standaard: beheerder/moderator)",
     )
     async def status(self, interaction: discord.Interaction) -> None:
         # Alleen defer hier, de echte logica staat in _status_impl
@@ -579,12 +570,10 @@ class DMKPoll(commands.Cog):
 
         try:
             pauze_txt = "Ja" if is_paused(cid_val) else "Nee"
-            namen_aan = is_name_display_enabled(cid_val)
-            namen_txt = "zichtbaar" if namen_aan else "anoniem"
 
             embed = discord.Embed(
                 title="📊 DMK-poll status",
-                description=f"⏸️ Pauze: **{pauze_txt}**\n👤 Namen: **{namen_txt}**",
+                description=f"⏸️ Pauze: **{pauze_txt}**",
                 color=discord.Color.blurple(),
             )
 
@@ -609,7 +598,7 @@ class DMKPoll(commands.Cog):
                     )
 
                     regel = f"{opt.emoji} {opt.tijd} — **{totaal}** stemmen"
-                    if namen_aan and groepen_txt:
+                    if groepen_txt:
                         regel += f":  {groepen_txt}"
                     regels.append(regel)
 
@@ -620,15 +609,7 @@ class DMKPoll(commands.Cog):
                     inline=False,
                 )
 
-            # Alleen een view tonen voor admins
-            perms = getattr(interaction.user, "guild_permissions", None)
-            is_admin = bool(getattr(perms, "administrator", False))
-            if is_admin:
-                await interaction.followup.send(
-                    embed=embed, ephemeral=True, view=NaamToggleView(cid_val)
-                )
-            else:
-                await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)

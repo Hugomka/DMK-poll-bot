@@ -32,6 +32,7 @@ class TestCommandDefaults(unittest.TestCase):
             "stemmen": "dmk-poll-stemmen",
             "archief_download": "dmk-poll-archief-download",
             "archief_verwijderen": "dmk-poll-archief-verwijderen",
+            "status": "dmk-poll-status",
         }
         for attr, expected_name in admin_mod_cmds.items():
             cmd = _get_cmd(attr)
@@ -66,7 +67,6 @@ class TestCommandDefaults(unittest.TestCase):
 
     def test_public_default_commands(self):
         public_cmds = {
-            "status": "dmk-poll-status",
             "gast_add": "gast-add",
             "gast_remove": "gast-remove",
         }

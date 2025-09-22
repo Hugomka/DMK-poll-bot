@@ -4,7 +4,6 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock
 
 from apps.commands.dmk_poll import DMKPoll
-from apps.utils.poll_settings import toggle_name_display
 from apps.utils.poll_storage import (
     add_guest_votes,
     get_votes_for_option,
@@ -75,7 +74,6 @@ class TestGasten(BaseTestCase):
     async def test_status_embed_met_owner_en_gasten(self):
         # Namen tonen aanzetten voor kanaal
         kanaal_id = 123456
-        toggle_name_display(kanaal_id)
 
         # Owner stemt zelf ook
         await toggle_vote(OWNER, DAG, TIJD, 0, kanaal_id)
@@ -123,7 +121,6 @@ class TestGasten(BaseTestCase):
     # --- Status: alleen gasten (owner stemt niet) -> compact en juiste count ---
     async def test_status_embed_alleen_gasten(self):
         kanaal_id = 7890
-        toggle_name_display(kanaal_id)
 
         # Owner stemt NIET, maar heeft 2 gasten
         await add_guest_votes(OWNER, DAG, TIJD, ["Anna", "Maria"], 0, kanaal_id)

@@ -39,7 +39,7 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
 | **💬 Slash commando's** | `/dmk-poll on/reset/pauze/verwijderen/stemmen/status`, archief downloaden/verwijderen, en gast-commando's. |
-| **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen (en optioneel namen). |
+| **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen en optioneel namen. |
 
 ---
 
@@ -56,7 +56,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-archief-download`** *(default: admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |
 | **`/dmk-poll-archief-verwijderen`** *(default: admin/mod)* | Verwijder het volledige CSV-archief. |
-| **`/dmk-poll-status`** | Ephemeral embed: pauze/namen-status en per dag de aantallen (optioneel met namen). |
+| **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
 
@@ -90,7 +90,7 @@ Voorbeeld:
 ```/gast-remove slot:"Zaterdag 19:00" namen:"Piet"```
 De bot meldt welke namen zijn verwijderd of niet gevonden.
 
-**Hoe telt dit mee?** Elke gast telt als een **extra stem** op dat tijdstip, gekoppeld aan jouw account. In de openbare poll zie je alleen aantallen. In `/dmk-poll-status` (als **namen tonen** aan staat) worden stemmen gegroepeerd per eigenaar, bv.:  
+**Hoe telt dit mee?** Elke gast telt als een **extra stem** op dat tijdstip, gekoppeld aan jouw account. In de openbare poll zie je alleen aantallen. In `/dmk-poll-status` worden stemmen gegroepeerd per eigenaar, bv.:  
 `@Johan (@Johan: Tim, Kim), @Piet`
 
 ---

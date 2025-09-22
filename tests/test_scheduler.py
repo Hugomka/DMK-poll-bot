@@ -59,10 +59,13 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             def fromisoformat(cls, s):  # type: ignore[override]
                 return datetime.fromisoformat(s)
 
-        calls = {"update_all_polls": 0, "reset_polls": 0, "notify": []}
+        calls = {"update_all_polls": 0, "reset_polls": 0, "notify": [], "early": 0}
 
         async def dummy_update_all_polls(bot):
             calls["update_all_polls"] += 1
+
+        async def dummy_early_reminder(bot):
+            calls["early"] += 1
 
         async def dummy_reset_polls(bot):
             calls["reset_polls"] += 1
@@ -93,6 +96,12 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 scheduler, "notify_voters_if_avond_gaat_door", dummy_notify, create=True
             ),
+            patch.object(
+                scheduler,
+                "notify_non_voters_thursday",
+                dummy_early_reminder,
+                create=True,
+            ),
             patch.object(scheduler, "_read_state", side_effect=fake_read_state),
             patch.object(scheduler, "_write_state", side_effect=fake_write_state),
         ):
@@ -103,6 +112,9 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 "update_all_polls should run once on first call",
             )
             self.assertEqual(
+                calls["early"], 1, "early reminder should run once on first call"
+            )
+            self.assertEqual(
                 calls["reset_polls"], 1, "reset_polls should run once on first call"
             )
             self.assertCountEqual(calls["notify"], ["vrijdag", "zaterdag", "zondag"])
@@ -110,10 +122,12 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 calls["update_all_polls"], 1, "update_all_polls should not run again"
             )
+            self.assertEqual(calls["early"], 1, "early reminder should not run again")
             self.assertEqual(
                 calls["reset_polls"], 1, "reset_polls should not run again"
             )
             self.assertEqual(len(calls["notify"]), 3, "notify should not run again")
+            self.assertEqual(calls["update_all_polls"], 1)
 
     async def test_read_state_returns_empty_on_exception(self):
         with patch.object(scheduler, "STATE_PATH", "/nope/.does-not-exist.json"):
@@ -285,8 +299,8 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 # Geef de event loop 1 tick om de task te laten starten
                 await asyncio.sleep(0)
 
-                # 8 jobs: update, reset, 3 reminders, 3 notificaties
-                self.assertEqual(mock_sched.add_job.call_count, 8)
+                # 9 jobs: update, reset, 4 reminders en 3 notificaties
+                self.assertEqual(mock_sched.add_job.call_count, 9)
                 mock_task.assert_called_once()
                 self.assertEqual(added[0][1], [fake_bot])
                 # Catch-up is daadwerkelijk gestart (geawait door de Task)
@@ -384,8 +398,8 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 # Geef de event loop 1 tick om de task te laten starten
                 await asyncio.sleep(0)
 
-                # 8 jobs: update, reset, 3 reminders, 3 notificaties
-                self.assertEqual(mock_sched.add_job.call_count, 8)
+                # 9 jobs: update, reset, 4 reminders en 3 notificaties
+                self.assertEqual(mock_sched.add_job.call_count, 9)
                 mock_task.assert_called_once()
                 # eerste job args moeten het bot object bevatten
                 self.assertEqual(added[0][1], [fake_bot])

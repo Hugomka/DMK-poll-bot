@@ -208,13 +208,9 @@ class TestDMKPollCommands(BaseTestCase):
         ]
 
         with patch("apps.commands.dmk_poll.is_paused", return_value=False), patch(
-            "apps.commands.dmk_poll.is_name_display_enabled", return_value=True
-        ), patch(
             "apps.commands.dmk_poll.get_setting",
             side_effect=lambda cid, d: {"modus": "altijd"},
-        ), patch(
-            "apps.commands.dmk_poll.get_poll_options", return_value=opties
-        ), patch(
+        ), patch("apps.commands.dmk_poll.get_poll_options", return_value=opties), patch(
             "apps.commands.dmk_poll.load_votes", new=AsyncMock(return_value={})
         ), patch(
             "apps.commands.dmk_poll.build_grouped_names_for",
@@ -294,10 +290,6 @@ class TestDMKPollCommands(BaseTestCase):
 
         with patch(
             "apps.commands.dmk_poll.append_week_snapshot", new=AsyncMock()
-        ), patch("apps.commands.dmk_poll.reset_votes", new=AsyncMock()), patch(
-            "apps.commands.dmk_poll.is_name_display_enabled", return_value=True
-        ), patch(
-            "apps.commands.dmk_poll.toggle_name_display"
         ), patch(
             "apps.commands.dmk_poll.get_message_id",
             side_effect=lambda cid, k: (
@@ -342,8 +334,6 @@ class TestDMKPollCommands(BaseTestCase):
         with patch(
             "apps.commands.dmk_poll.append_week_snapshot", new=AsyncMock()
         ), patch("apps.commands.dmk_poll.reset_votes", new=AsyncMock()), patch(
-            "apps.commands.dmk_poll.is_name_display_enabled", return_value=False
-        ), patch(
             "apps.commands.dmk_poll.get_message_id", return_value=None
         ), patch(
             "apps.commands.dmk_poll.is_paused", return_value=True
