@@ -405,7 +405,7 @@ class DMKPoll(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
-        description="Stel in of stemmenaantallen zichtbaar zijn of verborgen blijven tot de deadline. (standaard: beheerder/moderator)",
+        description="Toon of verberg stemmenaantallen tot de deadline. (standaard: beheerder/moderator)",
     )
     @app_commands.choices(
         actie=[
