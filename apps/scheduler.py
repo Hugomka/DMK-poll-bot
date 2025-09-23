@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from datetime import time as dt_time
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -66,6 +66,37 @@ def _load_poll_config() -> None:
 
 # laad configuratie zodra het bestand wordt geïmporteerd
 _load_poll_config()
+
+
+def should_run(last_run: Union[str, datetime, None], occurrence: datetime) -> bool:
+    """
+    Bepaal of een job moet draaien t.o.v. de laatst uitgevoerde timestamp.
+    - occurrence is de geplande occurrence in Europe/Amsterdam.
+    - last_run mag een ISO-string, datetime of None zijn.
+    """
+    # zorg dat occurrence tz-aware is
+    if occurrence.tzinfo is None:
+        occurrence = TZ.localize(occurrence)
+
+    if last_run is None:
+        return True
+
+    # parse last_run → datetime
+    if isinstance(last_run, datetime):
+        last_dt = last_run
+    else:
+        try:
+            last_dt = datetime.fromisoformat(str(last_run))
+        except Exception:
+            # Kapotte of lege state? Dan gewoon uitvoeren.
+            return True
+
+    # zorg dat last_dt tz-aware is
+    if last_dt.tzinfo is None:
+        last_dt = TZ.localize(last_dt)
+
+    # gelijk → NIET runnen; alleen draaien als last_dt < occurrence
+    return last_dt < occurrence
 
 
 async def notify_non_voters_thursday(bot) -> None:
@@ -391,68 +422,78 @@ async def update_all_polls(bot) -> None:
 
 async def notify_non_voters(bot, dag: str) -> None:
     """
-    Herinner leden die nog niet hebben gestemd voor een bepaalde dag.
-    Vermeld alle niet-stemmers als mention en vraag ze vóór 18:00 uur te stemmen.
+    Herinner leden die nog niet hebben gestemd.
+    We beschouwen 'ergens dit weekend gestemd' (incl. gast → eigenaar) als al gestemd.
     """
     log_job("reminder", dag=dag, status="executed")
+
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
+            # Respecteer uitgeschakelde kanalen
             if is_channel_disabled(getattr(channel, "id", 0)):
                 continue
 
-            # Alle stemmen voor dit guild+channel
+            # Votes gescopeerd op guild+channel
             scoped = (
-                await load_votes(
-                    getattr(guild, "id", "0"),
-                    getattr(channel, "id", "0"),
-                )
+                await load_votes(getattr(guild, "id", "0"), getattr(channel, "id", "0"))
                 or {}
             )
 
-            # Verzamel user-IDs die al hebben gestemd (leden en gasten)
-            voted_ids: set[str] = set()
-            for uid, per_dag in scoped.items():
-                try:
-                    tijden = (per_dag or {}).get(dag, [])
-                    if not isinstance(tijden, list):
-                        continue
-                    if tijden:
-                        # guests: <owner>_guest::<gast>
-                        if isinstance(uid, str) and "_guest::" in uid:
-                            uid = uid.split("_guest::", 1)[0]
-                        voted_ids.add(str(uid))
-                except Exception:
-                    continue
-
-            # Zoek alle leden in het kanaal (val terug op guild.members)
+            # Leden uit kanaal (fallback naar guild.members)
             members = getattr(channel, "members", None) or getattr(guild, "members", [])
-            non_voters: list[str] = []
-            for member in members:
+
+            # 1) Verzamel owners die *ergens* (op een van de dagen) gestemd hebben
+            voted_ids_any: set[int] = set()
+            for uid, dagen_map in scoped.items():
+                # guests hebben vorm: "<owner>_guest::<gast>"
+                owner_str = (
+                    uid.split("_guest::", 1)[0] if isinstance(uid, str) else str(uid)
+                )
                 try:
-                    # Sla bots over
-                    if getattr(member, "bot", False):
-                        continue
-                    m_id = str(getattr(member, "id", ""))
-                    if m_id in voted_ids:
-                        continue
-                    mention = getattr(member, "mention", None)
-                    if mention:
-                        non_voters.append(mention)
+                    owner = int(owner_str)
                 except Exception:
                     continue
 
-            if non_voters:
-                msg = f"{', '.join(non_voters)} - jullie hebben nog niet gestemd. Graag stemmen vóór 18:00. Dank!"
-                # Controleer of het kanaal een send‑methode heeft
-                send_func = getattr(channel, "send", None)
-                if send_func:
-                    try:
-                        await safe_call(send_func, msg)
-                    except Exception as e:
-                        # Tests willen dat dit niet crasht
-                        print(
-                            f"Fout bij herinneren in kanaal {getattr(channel, 'name', channel)}: {e}"
-                        )
+                if isinstance(dagen_map, dict):
+                    # zodra er op een dag een lijst met tijden is → telt als 'gestemd'
+                    for tijden in dagen_map.values():
+                        if isinstance(tijden, list) and tijden:
+                            voted_ids_any.add(owner)
+                            break
+
+            # 2) Non-voters = echte leden zonder bot-flag die niet in voted_ids_any zitten
+            to_mention = []
+            for m in members:
+                try:
+                    if getattr(m, "bot", False):
+                        continue
+                    mid = getattr(m, "id", None)
+                    if mid is None:
+                        continue
+                    if mid in voted_ids_any:
+                        continue
+                    mention = getattr(m, "mention", None) or f"<@{mid}>"
+                    to_mention.append(mention)
+                except Exception:
+                    continue
+
+            if not to_mention:
+                continue  # geen non-voters in dit kanaal
+
+            msg = (
+                f"{', '.join(to_mention)} — jullie hebben nog niet gestemd. "
+                f"Graag stemmen vóór 18:00. Dank!"
+            )
+
+            send_func = getattr(channel, "send", None)
+            if send_func:
+                try:
+                    await safe_call(send_func, msg)
+                except Exception as e:
+                    # In tests: niet laten crashen
+                    print(
+                        f"Fout bij herinneren in kanaal {getattr(channel, 'name', channel)}: {e}"
+                    )
 
 
 async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
