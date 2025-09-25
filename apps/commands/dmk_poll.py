@@ -761,6 +761,48 @@ class DMKPoll(commands.Cog):
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
+    # -----------------------------
+    # /dmk-poll-notify (fallback)
+    # -----------------------------
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.command(
+        name="dmk-poll-notify",
+        description="Plaats handmatig de notificatie voor een dag (fallback; beheerder/moderator).",
+    )
+    @app_commands.choices(
+        dag=[
+            app_commands.Choice(name="Vrijdag", value="vrijdag"),
+            app_commands.Choice(name="Zaterdag", value="zaterdag"),
+            app_commands.Choice(name="Zondag", value="zondag"),
+        ],
+    )
+    async def notify_fallback(
+        self,
+        interaction: discord.Interaction,
+        dag: app_commands.Choice[str],
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        if channel is None:
+            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            return
+
+        try:
+            ok = await scheduler.notify_for_channel(channel, dag.value)
+            if ok:
+                await interaction.followup.send(
+                    f"✅ Notificatie voor **{dag.value}** is verstuurd in dit kanaal.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    f"ℹ️ Geen notificatie verstuurd (mogelijk <6 stemmen of geen data) voor **{dag.value}**.",
+                    ephemeral=True,
+                )
+        except Exception as e:  # pragma: no cover
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
     c = DMKPoll(bot)

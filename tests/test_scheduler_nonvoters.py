@@ -62,7 +62,9 @@ class NonVotersTestCase(BaseTestCase):
             await scheduler.notify_non_voters(bot, "vrijdag")
             # safe_call is aangeroepen en de tekst bevat alleen <@1>, niet <@3>
             mock_safe.assert_awaited()
-            args, kwargs = mock_safe.await_args
+            event = mock_safe.await_args
+            assert event is not None
+            args, kwargs = event
             text = " ".join(str(a) for a in args)
             assert "<@1>" in text
             assert "<@3>" not in text

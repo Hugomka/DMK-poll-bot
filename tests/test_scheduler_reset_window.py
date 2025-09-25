@@ -53,3 +53,13 @@ class ResetWindowTestCase(BaseTestCase):
             ),
             "Recenter last_run → niet runnen",
         )
+
+    def test_should_run_naive_equals_occurrence_is_false(self):
+        occurrence = TZ.localize(datetime(2024, 6, 4, 20, 0, 0))
+        last_run_naive_equal = datetime(2024, 6, 4, 20, 0, 0)  # naive
+        self.assertFalse(scheduler.should_run(last_run_naive_equal, occurrence))
+
+    def test_should_run_old_naive_is_true(self):
+        occurrence = TZ.localize(datetime(2024, 6, 4, 20, 0, 0))
+        last_run_naive_old = datetime(2024, 6, 3, 12, 0, 0)  # duidelijk eerder
+        self.assertTrue(scheduler.should_run(last_run_naive_old, occurrence))

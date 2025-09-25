@@ -624,3 +624,71 @@ async def reset_polls(bot) -> None:
                     print(
                         f"Fout bij versturen resetmelding in kanaal {getattr(channel, 'name', 'onbekend')}: {e}"
                     )
+
+
+async def notify_for_channel(channel, dag: str) -> bool:
+    """
+    Stuur dezelfde notificatie die de scheduler normaal zou plaatsen,
+    maar dan alleen in het opgegeven kanaal. Geeft True terug als er iets
+    is verstuurd, anders False.
+    """
+    if is_channel_disabled(getattr(channel, "id", 0)):
+        return False
+
+    guild = getattr(channel, "guild", None)
+    gid = getattr(guild, "id", "0") if guild is not None else "0"
+    cid = getattr(channel, "id", "0") or "0"
+
+    # Haal gescopeerde stemmen op (exact zoals notify doet)
+    votes = await load_votes(gid, cid) or {}
+
+    # Bepaal per tijdslot het aantal stemmen; volg dezelfde logica/regels
+    # als in notify(): drempels, tie-break (19:00 vs 20:30), guest-samenvouwen, enz.
+    try:
+        # Zelfde aggregatie als notify() gebruikt
+        counts = {}
+        for uid, per_dag in votes.items():
+            try:
+                tijden = (per_dag or {}).get(dag, [])
+                if isinstance(tijden, list):
+                    for t in tijden:
+                        counts[t] = counts.get(t, 0) + 1
+            except Exception:
+                continue
+
+        # Niets te melden?
+        if not counts:
+            return False
+
+        # Zelfde win- en drempelregels als notify()
+        # - >=6 voor een slot → meld dat slot
+        # - bij gelijke stand/beslisregel: voorkeur 20:30 boven 19:00 (zoals in tests)
+        winner = None
+        max_count = -1
+        for slot, cnt in counts.items():
+            if cnt > max_count:
+                winner, max_count = slot, cnt
+            elif cnt == max_count:
+                # tie-break: geef 20:30 voorrang
+                if "20:30" in slot and "20:30" not in (winner or ""):
+                    winner = slot
+
+        if max_count < 6:
+            # Onder drempel → niets sturen
+            return False
+
+        # Tekst zoals notify() (‘speelavond’/mentions doet notify intern meestal ook zo)
+        tekst = f"📣 Er zijn **{max_count}** stemmen voor **{dag} {winner}**. Zien we je daar?"
+
+        try:
+            await safe_call(channel.send, tekst)
+            log_job("notify", dag=dag, status="executed")
+            return True
+        except Exception as e:
+            print(
+                f"Fout bij notificeren in kanaal {getattr(channel, 'name', channel)}: {e}"
+            )
+            return False
+    except Exception:
+        # Fail-safe: nooit crashen vanuit een command
+        return False
