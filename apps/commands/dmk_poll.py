@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 from datetime import datetime
 from typing import Any, Optional
@@ -38,6 +39,7 @@ from apps.utils.message_builder import (
 from apps.utils.poll_message import (
     clear_message_id,
     get_message_id,
+    is_channel_disabled,
     save_message_id,
     set_channel_disabled,
     update_poll_message,
@@ -62,13 +64,47 @@ except Exception:  # pragma: no cover
     ArchiveDeleteView = None
 
 
+RESET_TEXT = (
+    "@everyone De poll is zojuist gereset voor het nieuwe weekend. "
+    "Je kunt weer stemmen. Veel plezier!"
+)
+
+
+def _is_poll_channel(channel) -> bool:
+    """Alleen toestaan in een kanaal waar de bot actief is (heeft poll-IDs)."""
+    try:
+        cid = int(getattr(channel, "id", 0))
+    except Exception:
+        return False
+    if not cid:
+        return False
+    for key in ("vrijdag", "zaterdag", "zondag", "stemmen"):
+        try:
+            if get_message_id(cid, key):
+                return True
+        except Exception:
+            # defensief: negeer kapotte opslag
+            continue
+    return False
+
+
+def _is_denied_channel(channel) -> bool:
+    names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    ch_name = (getattr(channel, "name", "") or "").lower()
+    return ch_name in names
+
+
 def _get_attr(obj: Any, name: str) -> Any:
     """Helper om attribute access type-veilig te doen richting Pylance."""
     return getattr(obj, name, None)
 
 
 class DMKPoll(commands.Cog):
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot):
         self.bot = bot
 
     async def on_app_command_error(
@@ -764,44 +800,60 @@ class DMKPoll(commands.Cog):
     # -----------------------------
     # /dmk-poll-notify (fallback)
     # -----------------------------
-    @app_commands.guild_only()
-    @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-notify",
-        description="Plaats handmatig de notificatie voor een dag (fallback; beheerder/moderator).",
+        description="Stuur handmatig een notificatie voor DMK-poll.",
     )
-    @app_commands.choices(
-        dag=[
-            app_commands.Choice(name="Vrijdag", value="vrijdag"),
-            app_commands.Choice(name="Zaterdag", value="zaterdag"),
-            app_commands.Choice(name="Zondag", value="zondag"),
-        ],
+    @app_commands.describe(
+        dag="Optioneel: vrijdag, zaterdag of zondag. Zonder dag wordt de algemene resetmelding gestuurd."
     )
+    @app_commands.checks.has_any_role("Administrator", "Moderator")
     async def notify_fallback(
         self,
         interaction: discord.Interaction,
-        dag: app_commands.Choice[str],
-    ) -> None:
+        dag: Optional[app_commands.Choice[str]] = None,
+    ):
         await interaction.response.defer(ephemeral=True)
-        channel = interaction.channel
+        channel = getattr(interaction, "channel", None)
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            return
+
+        # 1) kanaal is uitgeschakeld → stil terug
+        if is_channel_disabled(getattr(channel, "id", 0)):
+            return
+
+        # 2) kanaal is denied → stil terug
+        if _is_denied_channel(channel):
+            return
+
+        # 3) alleen in actieve poll-kanalen → stil terug
+        allow_from_per_channel_only = os.getenv(
+            "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+        ).lower() in {"1", "true", "yes", "y"}
+        if allow_from_per_channel_only and not _is_poll_channel(channel):
             return
 
         try:
-            ok = await scheduler.notify_for_channel(channel, dag.value)
-            if ok:
-                await interaction.followup.send(
-                    f"✅ Notificatie voor **{dag.value}** is verstuurd in dit kanaal.",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    f"ℹ️ Geen notificatie verstuurd (mogelijk <6 stemmen of geen data) voor **{dag.value}**.",
-                    ephemeral=True,
-                )
-        except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            if dag and dag.value:
+                ok = await scheduler.notify_for_channel(channel, dag.value)
+                if ok:
+                    await interaction.followup.send(
+                        f"Notificatie voor **{dag.value}** is verstuurd.",
+                        ephemeral=True,
+                    )
+                    return
+
+                await safe_call(channel.send, RESET_TEXT)
+                return
+
+            # Geen dag → algemene melding
+            await safe_call(channel.send, RESET_TEXT)
+            await interaction.followup.send(
+                "Algemene melding is verstuurd.", ephemeral=True
+            )
+        except Exception:
+            await safe_call(channel.send, RESET_TEXT)
+            return
 
 
 async def setup(bot: commands.Bot) -> None:

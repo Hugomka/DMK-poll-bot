@@ -489,11 +489,8 @@ async def notify_non_voters(bot, dag: str) -> None:
             if send_func:
                 try:
                     await safe_call(send_func, msg)
-                except Exception as e:
-                    # In tests: niet laten crashen
-                    print(
-                        f"Fout bij herinneren in kanaal {getattr(channel, 'name', channel)}: {e}"
-                    )
+                except Exception:
+                    pass
 
 
 async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
@@ -577,11 +574,9 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
             if send_func:
                 try:
                     await safe_call(send_func, message)
-                except Exception as e:
-                    # Tests willen dat dit niet crasht (b.v. 'send kapot')
-                    print(
-                        f"Fout bij notificeren in kanaal {getattr(channel, 'name', channel)}: {e}"
-                    )
+                except Exception:
+                    # Tests willen dat dit niet crasht
+                    return
 
 
 async def reset_polls(bot) -> None:
@@ -620,10 +615,8 @@ async def reset_polls(bot) -> None:
                         "⬆️@everyone De poll is zojuist gereset voor het nieuwe weekend. "
                         "Je kunt weer stemmen. Veel plezier!",
                     )
-                except Exception as e:
-                    print(
-                        f"Fout bij versturen resetmelding in kanaal {getattr(channel, 'name', 'onbekend')}: {e}"
-                    )
+                except Exception:
+                    continue
 
 
 async def notify_for_channel(channel, dag: str) -> bool:
@@ -631,23 +624,53 @@ async def notify_for_channel(channel, dag: str) -> bool:
     Stuur dezelfde notificatie die de scheduler normaal zou plaatsen,
     maar dan alleen in het opgegeven kanaal. Geeft True terug als er iets
     is verstuurd, anders False.
+    Respecteert uitgeschakelde kanalen, DENY_CHANNEL_NAMES en
+    (optioneel) 'alleen in actieve poll-kanalen'.
     """
-    if is_channel_disabled(getattr(channel, "id", 0)):
-        return False
-
-    guild = getattr(channel, "guild", None)
-    gid = getattr(guild, "id", "0") if guild is not None else "0"
-    cid = getattr(channel, "id", "0") or "0"
-
-    # Haal gescopeerde stemmen op (exact zoals notify doet)
-    votes = await load_votes(gid, cid) or {}
-
-    # Bepaal per tijdslot het aantal stemmen; volg dezelfde logica/regels
-    # als in notify(): drempels, tie-break (19:00 vs 20:30), guest-samenvouwen, enz.
     try:
-        # Zelfde aggregatie als notify() gebruikt
-        counts = {}
-        for uid, per_dag in votes.items():
+        if is_channel_disabled(getattr(channel, "id", 0)):
+            return False
+
+        # DENY-lijst
+        deny_names = set(
+            n.strip().lower()
+            for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+            if n.strip()
+        )
+        ch_name = (getattr(channel, "name", "") or "").lower()
+        if ch_name in deny_names:
+            return False
+
+        # Alleen in actieve poll-kanalen wanneer ingeschakeld
+        allow_from_per_channel_only = os.getenv(
+            "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+        ).lower() in {"1", "true", "yes", "y"}
+        has_poll = False
+        if allow_from_per_channel_only:
+            try:
+                cid = int(getattr(channel, "id", 0))
+            except Exception:
+                cid = 0
+            if cid:
+                for key in ("vrijdag", "zaterdag", "zondag", "stemmen"):
+                    try:
+                        if get_message_id(cid, key):
+                            has_poll = True
+                            break
+                    except Exception:
+                        pass
+            if not has_poll:
+                return False
+
+        guild = getattr(channel, "guild", None)
+        gid = getattr(guild, "id", "0") if guild is not None else "0"
+        cid = getattr(channel, "id", "0") or "0"
+
+        votes = await load_votes(gid, cid) or {}
+
+        # Tel stemmen per tijdslot (zoals notify_voters_if_avond_gaat_door)
+        counts: dict[str, int] = {}
+        for _uid, per_dag in votes.items():
             try:
                 tijden = (per_dag or {}).get(dag, [])
                 if isinstance(tijden, list):
@@ -656,39 +679,25 @@ async def notify_for_channel(channel, dag: str) -> bool:
             except Exception:
                 continue
 
-        # Niets te melden?
         if not counts:
             return False
 
-        # Zelfde win- en drempelregels als notify()
-        # - >=6 voor een slot → meld dat slot
-        # - bij gelijke stand/beslisregel: voorkeur 20:30 boven 19:00 (zoals in tests)
         winner = None
         max_count = -1
         for slot, cnt in counts.items():
             if cnt > max_count:
                 winner, max_count = slot, cnt
             elif cnt == max_count:
-                # tie-break: geef 20:30 voorrang
                 if "20:30" in slot and "20:30" not in (winner or ""):
                     winner = slot
 
-        if max_count < 6:
-            # Onder drempel → niets sturen
+        if max_count < MIN_NOTIFY_VOTES:
             return False
 
-        # Tekst zoals notify() (‘speelavond’/mentions doet notify intern meestal ook zo)
         tekst = f"📣 Er zijn **{max_count}** stemmen voor **{dag} {winner}**. Zien we je daar?"
-
-        try:
-            await safe_call(channel.send, tekst)
-            log_job("notify", dag=dag, status="executed")
-            return True
-        except Exception as e:
-            print(
-                f"Fout bij notificeren in kanaal {getattr(channel, 'name', channel)}: {e}"
-            )
-            return False
+        await safe_call(channel.send, tekst)
+        log_job("notify", dag=dag, status="executed")
+        return True
     except Exception:
-        # Fail-safe: nooit crashen vanuit een command
+        # In commands willen we nooit crashen
         return False
