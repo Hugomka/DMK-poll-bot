@@ -2,7 +2,6 @@
 from unittest.mock import AsyncMock, patch
 
 from apps import scheduler
-from tests.base import BaseTestCase
 
 
 class FakeMember:
@@ -35,19 +34,17 @@ class FakeGuild:
             )
         ]
 
-
-class NonVotersTestCase(BaseTestCase):
     async def test_notify_non_voters_met_leeg_en_guest_data(self):
         bot = type("B", (), {"guilds": [FakeGuild()]})()
 
         def fake_load_votes(guild_id, channel_id):
-            # Let op: guests-key moet "<owner>_guest::<guest>" zijn.
+            # 1 heeft nergens gestemd
+            # 2 is bot (gestemd op vrijdag, maar bots worden gefilterd)
+            # 3 heeft alleen zaterdag gestemd via guest-key
             return {
-                "1": {"vrijdag": []},  # niet gestemd
-                "2": {"vrijdag": ["20:30"]},  # bot, wordt toch gefilterd
-                "3_guest::77": {
-                    "zaterdag": ["21:00"]
-                },  # owner=3 heeft (elders) gestemd → telt als '3'
+                "1": {"vrijdag": []},
+                "2": {"vrijdag": ["20:30"]},
+                "3_guest::77": {"zaterdag": ["21:00"]},
             }
 
         with patch.object(
@@ -59,13 +56,30 @@ class NonVotersTestCase(BaseTestCase):
         ), patch.object(
             scheduler, "safe_call", new_callable=AsyncMock
         ) as mock_safe:
+
+            # --- VRIJDAG ---
             await scheduler.notify_non_voters(bot, "vrijdag")
-            # safe_call is aangeroepen en de tekst bevat alleen <@1>, niet <@3>
+
             mock_safe.assert_awaited()
-            event = mock_safe.await_args
-            assert event is not None
-            args, kwargs = event
-            text = " ".join(str(a) for a in args)
+            texts = [
+                " ".join(str(a) for a in call.args)
+                for call in mock_safe.await_args_list
+            ]
+            text = " ".join(texts)
+
+            assert "<@1>" in text
+            assert "<@3>" in text
+
+            # --- ZATERDAG ---
+            mock_safe.reset_mock()
+            await scheduler.notify_non_voters(bot, "zaterdag")
+
+            texts = [
+                " ".join(str(a) for a in call.args)
+                for call in mock_safe.await_args_list
+            ]
+            text = " ".join(texts)
+
             assert "<@1>" in text
             assert "<@3>" not in text
 

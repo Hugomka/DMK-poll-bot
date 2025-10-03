@@ -682,7 +682,7 @@ class DMKPoll(commands.Cog):
     async def notify_fallback(
         self,
         interaction: discord.Interaction,
-        dag: Optional[app_commands.Choice[str]] = None,
+        dag: Optional[str] = None,
     ):
         await interaction.response.defer(ephemeral=True)
         channel = getattr(interaction, "channel", None)
@@ -705,16 +705,20 @@ class DMKPoll(commands.Cog):
             return
 
         try:
-            if dag and dag.value:
-                ok = await scheduler.notify_for_channel(channel, dag.value)
-                if ok:
+            if dag:
+                dag_str = dag.lower()
+                handled = await scheduler.notify_non_voters(
+                    self.bot, dag=dag_str, channel=channel
+                )
+                if handled:
                     await interaction.followup.send(
-                        f"Notificatie voor **{dag.value}** is verstuurd.",
+                        f"Notificatie voor **{dag_str}** is verstuurd.", ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(
+                        f"Geen notificatie verstuurd voor **{dag_str}** (geen niet-stemmers gevonden).",
                         ephemeral=True,
                     )
-                    return
-
-                await safe_call(channel.send, RESET_TEXT)
                 return
 
             # Geen dag → algemene melding
@@ -722,9 +726,9 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send(
                 "Algemene melding is verstuurd.", ephemeral=True
             )
-        except Exception:
-            await safe_call(channel.send, RESET_TEXT)
-            return
+
+        except Exception as e:
+            await interaction.followup.send(f"Er ging iets mis: {e}", ephemeral=True)
 
     # -----------------------------
     # Gast-commando's
