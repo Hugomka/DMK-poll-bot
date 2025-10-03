@@ -661,6 +661,72 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     # -----------------------------
+    # /dmk-poll-notify (fallback)
+    # -----------------------------
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.command(
+        name="dmk-poll-notify",
+        description="Stuur handmatig een notificatie voor DMK-poll.",
+    )
+    @app_commands.describe(
+        dag="Optioneel: vrijdag, zaterdag of zondag. Zonder dag wordt de algemene resetmelding gestuurd."
+    )
+    @app_commands.choices(
+        dag=[
+            app_commands.Choice(name="vrijdag", value="vrijdag"),
+            app_commands.Choice(name="zaterdag", value="zaterdag"),
+            app_commands.Choice(name="zondag", value="zondag"),
+        ]
+    )
+    async def notify_fallback(
+        self,
+        interaction: discord.Interaction,
+        dag: Optional[app_commands.Choice[str]] = None,
+    ):
+        await interaction.response.defer(ephemeral=True)
+        channel = getattr(interaction, "channel", None)
+        if channel is None:
+            return
+
+        # 1) kanaal is uitgeschakeld → stil terug
+        if is_channel_disabled(getattr(channel, "id", 0)):
+            return
+
+        # 2) kanaal is denied → stil terug
+        if _is_denied_channel(channel):
+            return
+
+        # 3) alleen in actieve poll-kanalen → stil terug
+        allow_from_per_channel_only = os.getenv(
+            "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+        ).lower() in {"1", "true", "yes", "y"}
+        if allow_from_per_channel_only and not _is_poll_channel(channel):
+            return
+
+        try:
+            if dag and dag.value:
+                ok = await scheduler.notify_for_channel(channel, dag.value)
+                if ok:
+                    await interaction.followup.send(
+                        f"Notificatie voor **{dag.value}** is verstuurd.",
+                        ephemeral=True,
+                    )
+                    return
+
+                await safe_call(channel.send, RESET_TEXT)
+                return
+
+            # Geen dag → algemene melding
+            await safe_call(channel.send, RESET_TEXT)
+            await interaction.followup.send(
+                "Algemene melding is verstuurd.", ephemeral=True
+            )
+        except Exception:
+            await safe_call(channel.send, RESET_TEXT)
+            return
+
+    # -----------------------------
     # Gast-commando's
     # -----------------------------
     # Iedereen mag gasten toevoegen
@@ -796,64 +862,6 @@ class DMKPoll(commands.Cog):
             )
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
-
-    # -----------------------------
-    # /dmk-poll-notify (fallback)
-    # -----------------------------
-    @app_commands.command(
-        name="dmk-poll-notify",
-        description="Stuur handmatig een notificatie voor DMK-poll.",
-    )
-    @app_commands.describe(
-        dag="Optioneel: vrijdag, zaterdag of zondag. Zonder dag wordt de algemene resetmelding gestuurd."
-    )
-    @app_commands.checks.has_any_role("Administrator", "Moderator")
-    async def notify_fallback(
-        self,
-        interaction: discord.Interaction,
-        dag: Optional[app_commands.Choice[str]] = None,
-    ):
-        await interaction.response.defer(ephemeral=True)
-        channel = getattr(interaction, "channel", None)
-        if channel is None:
-            return
-
-        # 1) kanaal is uitgeschakeld → stil terug
-        if is_channel_disabled(getattr(channel, "id", 0)):
-            return
-
-        # 2) kanaal is denied → stil terug
-        if _is_denied_channel(channel):
-            return
-
-        # 3) alleen in actieve poll-kanalen → stil terug
-        allow_from_per_channel_only = os.getenv(
-            "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-        ).lower() in {"1", "true", "yes", "y"}
-        if allow_from_per_channel_only and not _is_poll_channel(channel):
-            return
-
-        try:
-            if dag and dag.value:
-                ok = await scheduler.notify_for_channel(channel, dag.value)
-                if ok:
-                    await interaction.followup.send(
-                        f"Notificatie voor **{dag.value}** is verstuurd.",
-                        ephemeral=True,
-                    )
-                    return
-
-                await safe_call(channel.send, RESET_TEXT)
-                return
-
-            # Geen dag → algemene melding
-            await safe_call(channel.send, RESET_TEXT)
-            await interaction.followup.send(
-                "Algemene melding is verstuurd.", ephemeral=True
-            )
-        except Exception:
-            await safe_call(channel.send, RESET_TEXT)
-            return
 
 
 async def setup(bot: commands.Bot) -> None:
