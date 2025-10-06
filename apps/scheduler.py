@@ -65,6 +65,25 @@ def _load_poll_config() -> None:
     EARLY_REMINDER_DAY = data.get("early_reminder_day", EARLY_REMINDER_DAY)
 
 
+def _weekly_reset_threshold(now: datetime) -> datetime:
+    """
+    Drempel voor 'nieuwe week' t.b.v. reset-skip:
+    - Zondag 20:30 Europe/Amsterdam.
+    Als nu vóór die tijd ligt, pak de vorige week.
+    """
+    if now.tzinfo is None:
+        now = TZ.localize(now)
+
+    # 6 = zondag
+    days_since_sun = (now.weekday() - 6) % 7
+    last_sunday = (now - timedelta(days=days_since_sun)).replace(
+        hour=20, minute=30, second=0, microsecond=0
+    )
+    if now < last_sunday:
+        last_sunday -= timedelta(days=7)
+    return last_sunday
+
+
 # laad configuratie zodra het bestand wordt geïmporteerd
 _load_poll_config()
 
@@ -214,9 +233,13 @@ async def _run_catch_up(bot) -> None:
         reset_date if now >= reset_date else reset_date - timedelta(days=7)
     )
     if should_run(last_reset, last_sched_reset):
-        await reset_polls(bot)
-        state["reset_polls"] = now.isoformat()
-        missed.append("reset_polls")
+        executed = await reset_polls(bot)
+        if executed:
+            state["reset_polls"] = now.isoformat()
+            missed.append("reset_polls")
+        else:
+            # al geskipte reset (buiten venster of al handmatig gedaan)
+            log_job("reset_polls", status="skipped_in_catchup")
     else:
         log_job("reset_polls", status="skipped")
 
@@ -609,16 +632,37 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                     return
 
 
-async def reset_polls(bot) -> None:
+async def reset_polls(bot) -> bool:
     """
     Maak stemmen leeg + verwijder bericht-IDs en stuur een resetmelding.
-    Reset wordt alleen uitgevoerd in het resetvenster (dinsdag 20:00 - 20:05).
+    Reset wordt alleen uitgevoerd in het resetvenster (dinsdag 20:00 - 20:05),
+    en alleen als er niet al handmatig gereset is sinds de drempel (zondag 20:30).
+    Retourneert True als er echt is gereset, anders False.
     """
     now = datetime.now(TZ)
+
+    # Buiten venster? Sla over.
     if not _within_reset_window(now):
         log_job("reset_polls", status="skipped_outside_window")
-        return
+        return False
 
+    # Nieuw: skip als er al handmatig (of eerder) is gereset sinds zondag 20:30.
+    state = _read_state()
+    last_reset_str = state.get("reset_polls")
+    threshold = _weekly_reset_threshold(now)
+    if last_reset_str:
+        try:
+            last_dt = datetime.fromisoformat(str(last_reset_str))
+            if last_dt.tzinfo is None:
+                last_dt = TZ.localize(last_dt)
+        except Exception:
+            last_dt = None
+        if last_dt and last_dt >= threshold:
+            # Al gereset deze week → niets doen
+            log_job("reset_polls", status="skipped_already_reset")
+            return False
+
+    # Uitvoeren
     log_job("reset_polls", status="executed")
     await reset_votes()
     for guild in getattr(bot, "guilds", []) or []:
@@ -647,6 +691,15 @@ async def reset_polls(bot) -> None:
                     )
                 except Exception:
                     continue
+
+    # State bijwerken (nu is er wél gereset)
+    try:
+        state["reset_polls"] = now.isoformat()
+        _write_state(state)
+    except Exception:
+        pass
+
+    return True
 
 
 async def notify_for_channel(channel, dag: str) -> bool:

@@ -69,6 +69,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
         async def dummy_reset_polls(bot):
             calls["reset_polls"] += 1
+            return True
 
         async def dummy_notify(bot, dag: str):
             calls["notify"].append(dag)
@@ -443,6 +444,9 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "_within_reset_window", return_value=True),
+            # Belangrijk: forceer lege state zodat reset niet geskip’t wordt
+            patch.object(scheduler, "_read_state", return_value={}),
+            patch.object(scheduler, "_write_state", lambda s: None),
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
             patch.object(
