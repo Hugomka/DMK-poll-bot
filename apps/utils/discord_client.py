@@ -105,7 +105,7 @@ def get_channels(guild: Any) -> list[Any]:
 
 
 # ----------
-# safe_call
+# Safe call
 # ----------
 
 
@@ -172,3 +172,40 @@ async def safe_call(
                 attempt += 1
                 continue
             raise
+
+
+# ----------------------------------------
+# Fetch message or none, and delete safely
+# ----------------------------------------
+
+
+async def fetch_message_or_none(channel, message_id):
+    """Haal bericht op; geef None terug als het (al) weg is."""
+    fetch = getattr(channel, "fetch_message", None)
+    if not fetch:
+        return None
+    try:
+        return await safe_call(fetch, message_id)
+    except HTTPExc as e:
+        code = getattr(e, "code", None)
+        status = getattr(e, "status", None)
+        if code == 10008 or status == 404:  # Unknown Message / Not Found
+            return None
+        raise
+
+
+async def delete_safely(msg) -> bool:
+    """Verwijder bericht; geef False terug als het niet kan of al weg is."""
+    delete = getattr(msg, "delete", None)
+    if not delete:
+        return False
+    try:
+        await safe_call(delete)
+        return True
+    except HTTPExc as e:
+        code = getattr(e, "code", None)
+        status = getattr(e, "status", None)
+        # 10008 = Unknown Message, 403/50013 = geen permissie
+        if code in {10008, 50013} or status in {403, 404}:
+            return False
+        raise

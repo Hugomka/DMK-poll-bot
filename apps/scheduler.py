@@ -509,7 +509,7 @@ async def notify_non_voters(
                 )
             else:
                 header = "📣 DMK-poll – herinnering\nJe hebt nog niet gestemd voor dit weekend."
-            footer = "Stem a.u.b. in het vaste poll-bericht (knoppen)."
+            footer = "Stem a.u.b. in deze poll zo snel mogelijk."
             msg = f"{header}\n{', '.join(to_mention)}\n{footer}"
 
             try:
@@ -594,9 +594,11 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
             # Berichttekst
             if mentions:
                 prefix = ", ".join(mentions)
-                message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
+                message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
             else:
-                message = f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Tot dan!"
+                message = (
+                    f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
+                )
 
             send_func = getattr(channel, "send", None)
             if send_func:

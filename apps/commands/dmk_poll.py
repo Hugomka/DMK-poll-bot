@@ -31,7 +31,7 @@ from apps.utils.archive import (
     delete_archive,
     open_archive_bytes,
 )
-from apps.utils.discord_client import safe_call
+from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import (
     build_grouped_names_for,
     build_poll_message_for_day_async,
@@ -159,8 +159,7 @@ class DMKPoll(commands.Cog):
 
                 mid = get_message_id(channel.id, dag)
                 if mid:
-                    fetch = _get_attr(channel, "fetch_message")
-                    msg = await safe_call(fetch, mid) if fetch else None
+                    msg = await fetch_message_or_none(channel, mid)
                     if msg is not None:
                         await safe_call(msg.edit, content=content, view=None)
                     else:
@@ -191,14 +190,13 @@ class DMKPoll(commands.Cog):
             s_mid = get_message_id(channel.id, key)
             paused = is_paused(channel.id)
             view = OneStemButtonView(paused=paused)
+            send = _get_attr(channel, "send")
 
             if s_mid:
-                fetch = _get_attr(channel, "fetch_message")
-                s_msg = await safe_call(fetch, s_mid) if fetch else None
+                s_msg = await fetch_message_or_none(channel, s_mid)
                 if s_msg is not None:
                     await safe_call(s_msg.edit, content=tekst, view=view)
                 else:
-                    send = _get_attr(channel, "send")
                     s_msg = (
                         await safe_call(send, content=tekst, view=view)
                         if send
@@ -207,13 +205,11 @@ class DMKPoll(commands.Cog):
                     if s_msg is not None:
                         save_message_id(channel.id, key, s_msg.id)
             else:
-                send = _get_attr(channel, "send")
                 s_msg = (
                     await safe_call(send, content=tekst, view=view) if send else None
                 )
                 if s_msg is not None:
                     save_message_id(channel.id, key, s_msg.id)
-
             await interaction.followup.send(
                 "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
                 ephemeral=True,
@@ -265,13 +261,12 @@ class DMKPoll(commands.Cog):
             paused = is_paused(channel.id)
             gevonden = False
 
-            fetch = _get_attr(channel, "fetch_message")
             for dag in dagen:
                 mid = get_message_id(channel.id, dag)
                 if not mid:
                     continue
                 gevonden = True
-                msg = await safe_call(fetch, mid) if fetch else None
+                msg = await fetch_message_or_none(channel, mid)
                 if msg is None:
                     continue
                 hide = should_hide_counts(channel.id, dag, now)
@@ -297,7 +292,7 @@ class DMKPoll(commands.Cog):
             key = "stemmen"
             s_mid = get_message_id(channel.id, key)
             if s_mid:
-                s_msg = await safe_call(fetch, s_mid) if fetch else None
+                s_msg = await fetch_message_or_none(channel, s_mid)
                 if s_msg is not None:
                     tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
                     view = OneStemButtonView(paused=paused)
@@ -346,10 +341,9 @@ class DMKPoll(commands.Cog):
             )
             view = OneStemButtonView(paused=paused)
 
-            fetch = _get_attr(channel, "fetch_message")
             send = _get_attr(channel, "send")
             if mid:
-                msg = await safe_call(fetch, mid) if fetch else None
+                msg = await fetch_message_or_none(channel, mid)
                 if msg is not None:
                     await safe_call(msg.edit, content=tekst, view=view)
                 else:
@@ -394,7 +388,6 @@ class DMKPoll(commands.Cog):
 
         try:
             gevonden = False
-            fetch = _get_attr(channel, "fetch_message")
 
             # 1) Dag-berichten afsluiten (knop-vrij) en keys wissen
             for dag in dagen:
@@ -402,7 +395,7 @@ class DMKPoll(commands.Cog):
                 if not mid:
                     continue
                 gevonden = True
-                msg = await safe_call(fetch, mid) if fetch else None
+                msg = await fetch_message_or_none(channel, mid)
                 if msg is not None:
                     afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
                     await safe_call(msg.edit, content=afsluit_tekst, view=None)
@@ -412,7 +405,7 @@ class DMKPoll(commands.Cog):
             # 2) Losse “Stemmen”-bericht ook opruimen
             s_mid = get_message_id(channel.id, "stemmen")
             if s_mid:
-                s_msg = await safe_call(fetch, s_mid) if fetch else None
+                s_msg = await fetch_message_or_none(channel, s_mid)
                 if s_msg is not None:
                     try:
                         await safe_call(s_msg.delete)

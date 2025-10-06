@@ -7,10 +7,8 @@ from datetime import datetime
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-import discord
-
 from apps.logic.decision import build_decision_line
-from apps.utils.discord_client import safe_call
+from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import should_hide_counts
 
@@ -171,29 +169,16 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
 
             decision = await build_decision_line(gid_val, cid_val, d, now)
             if decision:
-                content = content.rstrip() + "\n" + decision
+                content = content.rstrip() + ":arrow_up: " + decision + "\n\u200b"
 
             if mid:
-                try:
-                    # Probeer te editen als het bericht bestaat
-                    fetch = getattr(channel, "fetch_message", None)
-                    msg = await safe_call(fetch, mid) if fetch else None
-                    if msg is not None:
-                        await safe_call(msg.edit, content=content, view=None)
-                        continue  # Klaar voor deze dag
-                    else:
-                        # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
-                        clear_message_id(cid_val, d)
-                except discord.NotFound:
-                    # Bestond niet meer → id opruimen en hierna aanmaken
+                msg = await fetch_message_or_none(channel, mid)
+                if msg is not None:
+                    await safe_call(msg.edit, content=content, view=None)
+                    continue
+                else:
+                    # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
                     clear_message_id(cid_val, d)
-                except discord.HTTPException as e:
-                    if getattr(e, "code", None) == 30046:
-                        # Maximum edits voor oud bericht → niets doen (stil negeren)
-                        continue
-                    else:
-                        print(f"❌ Fout bij updaten voor {d}: {e}")
-                        continue  # Geen create proberen in dit pad
 
             # Create-pad: geen mid óf net opgeschoond na NotFound → nieuw sturen
             try:

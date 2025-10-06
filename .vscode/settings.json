@@ -1,17 +1,21 @@
-// .vscode/settings.json
-{
-    // Formatter
-    "editor.formatOnSave": true,
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
-    // Ruff (lint aan; fixes/imports bij Save via code actions)
-    "ruff.lint.enable": true,
-    "editor.codeActionsOnSave": {
-        "source.fixAll.ruff": "explicit",
-        "source.organizeImports.ruff": "explicit"
-    },
-    // Pylance type-analyse
-    "python.analysis.diagnosticMode": "workspace",
-    "python.analysis.typeCheckingMode": "basic" // of "strict"
-}
+    // .vscode/settings.json
+    {
+        // Formatter
+        "editor.formatOnSave": true,
+        "[python]": {
+            "editor.defaultFormatter": "ms-python.black-formatter"
+        },
+        // Ruff (lint aan; fixes/imports bij Save via code actions)
+        "ruff.lint.enable": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        },
+        // Pylance type-analyse
+        "python.analysis.diagnosticMode": "workspace",
+        "python.analysis.diagnosticSeverityOverrides": {
+            "reportMissingImports": "none",
+            "reportMissingModuleSource": "none"
+        },
+        "python.analysis.typeCheckingMode": "basic" // of "strict"
+    }
