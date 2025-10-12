@@ -26,10 +26,10 @@ from apps import scheduler
 from apps.entities.poll_option import get_poll_options
 from apps.ui.poll_buttons import OneStemButtonView
 from apps.utils.archive import (
-    append_week_snapshot,
-    archive_exists,
-    delete_archive,
-    open_archive_bytes,
+    append_week_snapshot_scoped,
+    archive_exists_scoped,
+    delete_archive_scoped,
+    open_archive_bytes_scoped,
 )
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import (
@@ -56,6 +56,7 @@ from apps.utils.poll_storage import (
     load_votes,
     remove_guest_votes,
     reset_votes,
+    reset_votes_scoped,
 )
 
 try:
@@ -237,15 +238,22 @@ class DMKPoll(commands.Cog):
             return
         dagen = ["vrijdag", "zaterdag", "zondag"]
 
-        try:
-            # 1) Archief bijwerken (mag mislukken zonder het command te breken)
-            try:
-                await append_week_snapshot()
-            except Exception as e:  # pragma: no cover
-                print(f"⚠️ append_week_snapshot mislukte: {e}")
+        guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
+        gid = int(getattr(guild, "id", 0)) if guild else 0
+        cid = int(getattr(channel, "id", 0))
 
-            # 2) Alle stemmen wissen
-            await reset_votes()
+        try:
+            # 1) Archief bijwerken (per kanaal)
+            try:
+                await append_week_snapshot_scoped(gid, cid)
+            except Exception as e:  # pragma: no cover
+                print(f"⚠️ append_week_snapshot_scoped mislukte: {e}")
+
+            # 2) Stemmen wissen (per kanaal)
+            try:
+                await reset_votes_scoped(gid, cid)
+            except Exception:
+                await reset_votes()
 
             # 3) Update reset-tijd in scheduler-state
             now = datetime.now(scheduler.TZ)
@@ -518,18 +526,24 @@ class DMKPoll(commands.Cog):
         description="Download het CSV-archief met weekresultaten. (standaard: beheerder/moderator)",
     )
     async def archief_download(self, interaction: discord.Interaction) -> None:
-        # NIET-ephemeral defer, want we willen de file publiek kunnen sturen
         await interaction.response.defer(ephemeral=False)
+        channel = interaction.channel
+        if channel is None:
+            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            return
+
+        guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
+        gid = int(getattr(guild, "id", 0)) if guild else 0
+        cid = int(getattr(channel, "id", 0))
 
         try:
-            if not archive_exists():
-                # Korte privé melding als er niets is
+            if not archive_exists_scoped(gid, cid):
                 await interaction.followup.send(
-                    "Er is nog geen archief.", ephemeral=True
+                    "Er is nog geen archief voor dit kanaal.", ephemeral=True
                 )
                 return
 
-            filename, data = open_archive_bytes()
+            filename, data = open_archive_bytes_scoped(gid, cid)
             if not data:
                 await interaction.followup.send(
                     "Archief kon niet worden gelezen.", ephemeral=True
@@ -538,19 +552,18 @@ class DMKPoll(commands.Cog):
 
             if ArchiveDeleteView is None:
                 await interaction.followup.send(
-                    content="CSV-archief met weekresultaten.",
+                    content="CSV-archief met weekresultaten voor dit kanaal.",
                     file=File(io.BytesIO(data), filename=filename),
                 )
                 return
 
-            view = ArchiveDeleteView()
+            view = ArchiveDeleteView(gid, cid)
             await interaction.followup.send(
-                "CSV-archief met weekresultaten. Wil je het hierna verwijderen?",
+                "CSV-archief met weekresultaten voor dit kanaal. Wil je het hierna verwijderen?",
                 file=File(io.BytesIO(data), filename=filename),
                 view=view,
             )
         except Exception as e:  # pragma: no cover
-            # Altijd afronden met feedback
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     @app_commands.guild_only()
@@ -561,12 +574,21 @@ class DMKPoll(commands.Cog):
     )
     async def archief_verwijderen(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        if channel is None:
+            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            return
+
+        guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
+        gid = int(getattr(guild, "id", 0)) if guild else 0
+        cid = int(getattr(channel, "id", 0))
+
         try:
-            ok = delete_archive()
+            ok = delete_archive_scoped(gid, cid)
             msg = (
-                "Archief verwijderd. ✅"
+                "Archief voor dit kanaal verwijderd. ✅"
                 if ok
-                else "Er was geen archief om te verwijderen."
+                else "Er was geen archief om te verwijderen voor dit kanaal."
             )
             await interaction.followup.send(msg, ephemeral=True)
         except Exception as e:  # pragma: no cover

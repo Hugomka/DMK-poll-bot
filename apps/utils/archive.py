@@ -1,13 +1,14 @@
 # apps/utils/archive.py
 
-import os
 import csv
-import pytz
+import os
 from datetime import datetime, timedelta
-from typing import Tuple
+from typing import Optional, Tuple
 
-from apps.utils.poll_storage import load_votes
+import pytz
+
 from apps.entities.poll_option import get_poll_options
+from apps.utils.poll_storage import load_votes
 
 ARCHIVE_DIR = "archive"
 ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
@@ -21,6 +22,28 @@ for o in get_poll_options():
 
 def _ensure_dir():
     os.makedirs(ARCHIVE_DIR, exist_ok=True)
+
+
+def _sanitize_id(value: int | str) -> str:
+    """Sanitize guild/channel ID voor veilige bestandsnaam."""
+    s = str(value).strip()
+    # Alleen cijfers en underscores toestaan
+    return "".join(c if c.isdigit() or c == "_" else "_" for c in s)
+
+
+def get_archive_path_scoped(
+    guild_id: Optional[int | str] = None, channel_id: Optional[int | str] = None
+) -> str:
+    """
+    Pad naar CSV-archief.
+    - Zonder guild/channel → legacy pad: ARCHIVE_CSV
+    - Met beide IDs → per-kanaal pad: archive/dmk_archive_<guild>_<channel>.csv
+    """
+    if guild_id is None or channel_id is None:
+        return ARCHIVE_CSV
+    gid = _sanitize_id(guild_id)
+    cid = _sanitize_id(channel_id)
+    return os.path.join(ARCHIVE_DIR, f"dmk_archive_{gid}_{cid}.csv")
 
 
 def _empty_counts():
@@ -56,16 +79,36 @@ def _week_dates_eu(now):
     return (week, vr.isoformat(), za.isoformat(), zo.isoformat())
 
 
-async def append_week_snapshot(now=None) -> None:
+# === SCOPED ARCHIVE FUNCTIONS (PER GUILD+CHANNEL) met backward compat ===
+
+
+async def append_week_snapshot_scoped(
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+    now: Optional[datetime] = None,
+) -> None:
     """
-    Schrijf 1 rij naar CSV met week + datums + aantallen per dag/optie.
-    Roep dit A L T I J D aan vóór reset_votes().
+    Schrijf 1 rij naar CSV met week+datums+tellingen.
+    Backward compat:
+      - Zonder guild/channel → gebruik globale ARCHIVE_CSV (legacy tests).
+      - Sommige oude tests roepen append_week_snapshot_scoped(<now>) aan:
+        detecteer dat en verschuif argumenten.
     """
+    # Back-compat: eerste arg kan 'now' zijn
+    if isinstance(guild_id, datetime) and channel_id is None and now is None:
+        now = guild_id
+        guild_id = None
+        channel_id = None
     _ensure_dir()
     if now is None:
         now = datetime.now(pytz.timezone("Europe/Amsterdam"))
 
-    votes = await load_votes()
+    # Zonder IDs: legacy pad + lege telling is prima voor tests
+    votes = (
+        await load_votes(guild_id, channel_id)
+        if (guild_id is not None and channel_id is not None)
+        else {}
+    )
     telling = _build_counts_from_votes(votes)
     week, vr, za, zo = _week_dates_eu(now)
 
@@ -106,28 +149,46 @@ async def append_week_snapshot(now=None) -> None:
         telling["zondag"]["niet meedoen"],
     ]
 
-    write_header = not os.path.exists(ARCHIVE_CSV)
-    with open(ARCHIVE_CSV, "a", newline="", encoding="utf-8") as f:
+    csv_path = get_archive_path_scoped(guild_id, channel_id)
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if write_header:
             w.writerow(header)
         w.writerow(row)
 
 
-def archive_exists() -> bool:
-    return os.path.exists(ARCHIVE_CSV)
+def archive_exists_scoped(
+    guild_id: Optional[int | str] = None, channel_id: Optional[int | str] = None
+) -> bool:
+    """Bestaat het archief? Zonder IDs → legacy pad."""
+    return os.path.exists(get_archive_path_scoped(guild_id, channel_id))
 
 
-def open_archive_bytes() -> Tuple[str, bytes] | Tuple[None, None]:
-    if not archive_exists():
+def open_archive_bytes_scoped(
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+) -> Tuple[Optional[str], Optional[bytes]]:
+    """Open archief als bytes. Zonder IDs → legacy bestandsnaam."""
+    if not archive_exists_scoped(guild_id, channel_id):
         return None, None
-    with open(ARCHIVE_CSV, "rb") as f:
+    csv_path = get_archive_path_scoped(guild_id, channel_id)
+    if guild_id is None or channel_id is None:
+        filename = "dmk_archive.csv"
+    else:
+        filename = (
+            f"dmk_archive_{_sanitize_id(guild_id)}_{_sanitize_id(channel_id)}.csv"
+        )
+    with open(csv_path, "rb") as f:
         data = f.read()
-    return ("dmk_archive.csv", data)
+    return (filename, data)
 
 
-def delete_archive() -> bool:
-    if archive_exists():
-        os.remove(ARCHIVE_CSV)
+def delete_archive_scoped(
+    guild_id: Optional[int | str] = None, channel_id: Optional[int | str] = None
+) -> bool:
+    """Verwijder archief. Zonder IDs → legacy pad."""
+    if archive_exists_scoped(guild_id, channel_id):
+        os.remove(get_archive_path_scoped(guild_id, channel_id))
         return True
     return False

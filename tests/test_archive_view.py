@@ -61,11 +61,11 @@ class TestArchiveView(BaseTestCase):
         btn = view.children[0]
         assert btn.label == "🗑️ Verwijder archief"
         assert btn.style == archive_view.discord.ButtonStyle.danger
-        assert btn.custom_id == "delete_archive"
+        assert btn.custom_id == "delete_archive_scoped"
 
     async def test_button_callback_ok_with_message(self):
         """
-        delete_archive() → True:
+        delete_archive_scoped() → True:
         - response.send_message wordt aangeroepen met succes-tekst (ephemeral=True)
         - interaction.message is niet None → message.edit(view=None) wordt gedaan
         """
@@ -85,7 +85,7 @@ class TestArchiveView(BaseTestCase):
         view = archive_view.ArchiveDeleteView()
         btn = view.children[0]
 
-        with patch("apps.ui.archive_view.delete_archive", return_value=True):
+        with patch("apps.ui.archive_view.delete_archive_scoped", return_value=True):
             # cast naar Any voor Pylance
             await btn.callback(cast(Any, interaction))
 
@@ -95,7 +95,7 @@ class TestArchiveView(BaseTestCase):
 
     async def test_button_callback_ok_without_message(self):
         """
-        delete_archive() → True maar interaction.message is None:
+        delete_archive_scoped() → True maar interaction.message is None:
         - alleen response.send_message; geen edit
         """
         sent = []
@@ -109,7 +109,7 @@ class TestArchiveView(BaseTestCase):
         view = archive_view.ArchiveDeleteView()
         btn = view.children[0]
 
-        with patch("apps.ui.archive_view.delete_archive", return_value=True):
+        with patch("apps.ui.archive_view.delete_archive_scoped", return_value=True):
             await btn.callback(cast(Any, interaction))
 
         assert sent and "Archief verwijderd" in sent[0]["content"]
@@ -117,7 +117,7 @@ class TestArchiveView(BaseTestCase):
 
     async def test_button_callback_not_ok(self):
         """
-        delete_archive() → False:
+        delete_archive_scoped() → False:
         - response.send_message met waarschuwing
         - geen edit
         """
@@ -137,7 +137,7 @@ class TestArchiveView(BaseTestCase):
         view = archive_view.ArchiveDeleteView()
         btn = view.children[0]
 
-        with patch("apps.ui.archive_view.delete_archive", return_value=False):
+        with patch("apps.ui.archive_view.delete_archive_scoped", return_value=False):
             await btn.callback(cast(Any, interaction))
 
         assert sent and "geen archief" in sent[0]["content"]

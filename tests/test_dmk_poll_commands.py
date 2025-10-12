@@ -289,7 +289,7 @@ class TestDMKPollCommands(BaseTestCase):
         channel.fetch_message = AsyncMock(side_effect=fake_fetch)
 
         with patch(
-            "apps.commands.dmk_poll.append_week_snapshot", new=AsyncMock()
+            "apps.commands.dmk_poll.append_week_snapshot_scoped", new=AsyncMock()
         ), patch(
             "apps.commands.dmk_poll.get_message_id",
             side_effect=lambda cid, k: (
@@ -332,7 +332,7 @@ class TestDMKPollCommands(BaseTestCase):
         channel.fetch_message = AsyncMock(return_value=None)
 
         with patch(
-            "apps.commands.dmk_poll.append_week_snapshot", new=AsyncMock()
+            "apps.commands.dmk_poll.append_week_snapshot_scoped", new=AsyncMock()
         ), patch("apps.commands.dmk_poll.reset_votes", new=AsyncMock()), patch(
             "apps.commands.dmk_poll.get_message_id", return_value=None
         ), patch(
@@ -528,7 +528,7 @@ class TestDMKPollCommands(BaseTestCase):
         channel = MagicMock(id=1)
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.commands.dmk_poll.archive_exists", return_value=False):
+        with patch("apps.commands.dmk_poll.archive_exists_scoped", return_value=False):
             await self._run(self.cog.archief_download, interaction)
 
         interaction.followup.send.assert_called()
@@ -541,10 +541,14 @@ class TestDMKPollCommands(BaseTestCase):
         interaction = _mk_interaction(channel=channel, admin=True)
 
         # 1) ArchiveDeleteView is None
-        with patch("apps.commands.dmk_poll.archive_exists", return_value=True), patch(
-            "apps.commands.dmk_poll.open_archive_bytes",
+        with patch(
+            "apps.commands.dmk_poll.archive_exists_scoped", return_value=True
+        ), patch(
+            "apps.commands.dmk_poll.open_archive_bytes_scoped",
             return_value=("arch.csv", b"week,vr,za,zo\n"),
-        ), patch("apps.commands.dmk_poll.ArchiveDeleteView", None):
+        ), patch(
+            "apps.commands.dmk_poll.ArchiveDeleteView", None
+        ):
 
             await self._run(self.cog.archief_download, interaction)
             interaction.followup.send.assert_called()
@@ -553,10 +557,14 @@ class TestDMKPollCommands(BaseTestCase):
 
         # 2) ArchiveDeleteView bestaat
         interaction2 = _mk_interaction(channel=channel, admin=True)
-        with patch("apps.commands.dmk_poll.archive_exists", return_value=True), patch(
-            "apps.commands.dmk_poll.open_archive_bytes",
+        with patch(
+            "apps.commands.dmk_poll.archive_exists_scoped", return_value=True
+        ), patch(
+            "apps.commands.dmk_poll.open_archive_bytes_scoped",
             return_value=("arch.csv", b"week,vr,za,zo\n"),
-        ), patch("apps.commands.dmk_poll.ArchiveDeleteView") as ViewCls:
+        ), patch(
+            "apps.commands.dmk_poll.ArchiveDeleteView"
+        ) as ViewCls:
 
             ViewCls.return_value = MagicMock()
             await self._run(self.cog.archief_download, interaction2)
@@ -567,26 +575,29 @@ class TestDMKPollCommands(BaseTestCase):
     async def test_archief_verwijderen_true_and_false(self):
         interaction = _mk_interaction(channel=MagicMock(id=1), admin=True)
 
-        with patch("apps.commands.dmk_poll.delete_archive", return_value=True):
+        with patch("apps.commands.dmk_poll.delete_archive_scoped", return_value=True):
             await self._run(self.cog.archief_verwijderen, interaction)
             interaction.followup.send.assert_called()
             assert "verwijderd" in self._last_content(interaction.followup.send).lower()
 
         interaction2 = _mk_interaction(channel=MagicMock(id=1), admin=True)
-        with patch("apps.commands.dmk_poll.delete_archive", return_value=False):
+        with patch("apps.commands.dmk_poll.delete_archive_scoped", return_value=False):
             await self._run(self.cog.archief_verwijderen, interaction2)
             interaction2.followup.send.assert_called()
             assert (
                 "geen archief" in self._last_content(interaction2.followup.send).lower()
             )
 
-    # /dmk-poll-archief-download → open_archive_bytes() geeft geen data
+    # /dmk-poll-archief-download → open_archive_bytes_scoped() geeft geen data
     async def test_archief_download_open_bytes_none_sends_error(self):
         channel = MagicMock(id=123)
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.commands.dmk_poll.archive_exists", return_value=True), patch(
-            "apps.commands.dmk_poll.open_archive_bytes", return_value=("arch.csv", None)
+        with patch(
+            "apps.commands.dmk_poll.archive_exists_scoped", return_value=True
+        ), patch(
+            "apps.commands.dmk_poll.open_archive_bytes_scoped",
+            return_value=("arch.csv", None),
         ):
             await TestDMKPollCommands._run(
                 TestDMKPollCommands,  # type: ignore[attr-defined]

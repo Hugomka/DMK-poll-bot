@@ -34,17 +34,23 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
 
     async def test_append_week_snapshot_maakt_csv(self):
         await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
-        await ar.append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
-        self.assertTrue(ar.archive_exists())
+        await ar.append_week_snapshot_scoped(
+            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+        )
+        self.assertTrue(ar.archive_exists_scoped())
         self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
 
     async def test_append_leeg_snapshot(self):
-        await ar.append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
-        self.assertTrue(ar.archive_exists())
+        await ar.append_week_snapshot_scoped(
+            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+        )
+        self.assertTrue(ar.archive_exists_scoped())
 
     async def test_delete_archive_verwijdert_file(self):
-        await ar.append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
-        ok = ar.delete_archive()
+        await ar.append_week_snapshot_scoped(
+            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+        )
+        ok = ar.delete_archive_scoped()
         self.assertTrue(ok)
         self.assertFalse(os.path.exists(ar.ARCHIVE_CSV))
 
@@ -86,9 +92,13 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
     async def test_append_twice_writes_header_once(self):
         """Eerste append schrijft header; tweede append schrijft géén header opnieuw."""
         # Eerste snapshot
-        await ar.append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
+        await ar.append_week_snapshot_scoped(
+            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+        )
         # Tweede snapshot
-        await ar.append_week_snapshot(datetime.now(ZoneInfo("Europe/Amsterdam")))
+        await ar.append_week_snapshot_scoped(
+            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+        )
 
         self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
         with open(ar.ARCHIVE_CSV, "r", encoding="utf-8") as f:
@@ -101,19 +111,19 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
         self.assertNotEqual(rows[1], header)
 
     async def test_open_archive_bytes_when_missing(self):
-        """open_archive_bytes → (None, None) als archief ontbreekt."""
+        """open_archive_bytes_scoped → (None, None) als archief ontbreekt."""
         # Zeker weten dat file weg is
         if os.path.exists(ar.ARCHIVE_CSV):
             os.remove(ar.ARCHIVE_CSV)
-        name, data = ar.open_archive_bytes()
+        name, data = ar.open_archive_bytes_scoped()
         self.assertIsNone(name)
         self.assertIsNone(data)
 
     async def test_delete_archive_when_missing_returns_false(self):
-        """delete_archive → False als er niets te verwijderen valt."""
+        """delete_archive_scoped → False als er niets te verwijderen valt."""
         if os.path.exists(ar.ARCHIVE_CSV):
             os.remove(ar.ARCHIVE_CSV)
-        ok = ar.delete_archive()
+        ok = ar.delete_archive_scoped()
         self.assertFalse(ok)
 
     async def test_build_counts_increments_known_time(self):
@@ -140,15 +150,15 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
 
     async def test_append_week_snapshot_uses_default_now(self):
         """
-        append_week_snapshot zonder 'now' → gebruikt default Europe/Amsterdam now
+        append_week_snapshot_scoped zonder 'now' → gebruikt default Europe/Amsterdam now
         en schrijft het archief (dekt het now is None-pad).
         """
         # Zorg dat archief nog niet bestaat
         if os.path.exists(ar.ARCHIVE_CSV):
             os.remove(ar.ARCHIVE_CSV)
 
-        await ar.append_week_snapshot()  # now=None → default pad
-        self.assertTrue(ar.archive_exists())
+        await ar.append_week_snapshot_scoped()  # now=None → default pad
+        self.assertTrue(ar.archive_exists_scoped())
         self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
 
     async def test_open_archive_bytes_returns_name_and_bytes(self):
@@ -158,9 +168,9 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
         """
         # Maak zeker dat er een CSV is
         if not os.path.exists(ar.ARCHIVE_CSV):
-            await ar.append_week_snapshot()
+            await ar.append_week_snapshot_scoped()
 
-        name, data = ar.open_archive_bytes()
+        name, data = ar.open_archive_bytes_scoped()
         self.assertEqual(name, "dmk_archive.csv")
         # Houd Pylance tevreden: assert en cast naar bytes
         self.assertIsNotNone(data)
