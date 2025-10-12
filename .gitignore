@@ -52,3 +52,6 @@ venv/
 # VS Code editorconfiguratie
 .vscode/*
 !.vscode/settings.json
+
+# Claude Code AI assistant configuratie
+.claude/

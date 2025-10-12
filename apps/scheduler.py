@@ -20,7 +20,7 @@ from apps.utils.poll_message import (
     is_channel_disabled,
     schedule_poll_update,
 )
-from apps.utils.poll_storage import load_votes, reset_votes
+from apps.utils.poll_storage import load_votes, reset_votes, reset_votes_scoped
 
 # NL-tijdzone
 TZ = pytz.timezone("Europe/Amsterdam")
@@ -124,10 +124,38 @@ async def notify_non_voters_thursday(bot) -> None:
     Herinner leden die voor geen enkele dag hebben gestemd (donderdagavond).
     Dit wordt één keer per week verstuurd.
     """
+    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
+    deny_names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    allow_from_per_channel_only = os.getenv(
+        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+    ).lower() in {"1", "true", "yes", "y"}
+
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
-            if is_channel_disabled(getattr(channel, "id", 0)):
+            cid = getattr(channel, "id", 0)
+            if is_channel_disabled(cid):
                 continue
+
+            # Check DENY_CHANNEL_NAMES
+            ch_name = (getattr(channel, "name", "") or "").lower()
+            if ch_name in deny_names:
+                continue
+
+            # Check ALLOW_FROM_PER_CHANNEL_ONLY
+            if allow_from_per_channel_only:
+                try:
+                    has_poll = any(
+                        get_message_id(cid, key)
+                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
+                    )
+                    if not has_poll:
+                        continue
+                except Exception:
+                    continue
             scoped = (
                 await load_votes(getattr(guild, "id", "0"), getattr(channel, "id", "0"))
                 or {}
@@ -143,7 +171,8 @@ async def notify_non_voters_thursday(bot) -> None:
                             else uid
                         )
                         voted_ids.add(str(actual_uid))
-            members = getattr(channel, "members", None) or getattr(guild, "members", [])
+            # Alleen leden die toegang hebben tot dit specifieke kanaal
+            members = getattr(channel, "members", [])
             non_voters: list[str] = []
             for member in members:
                 if getattr(member, "bot", False):
@@ -199,16 +228,6 @@ async def _run_catch_up(bot) -> None:
     """
     now = datetime.now(TZ)
     state = _read_state()
-
-    def should_run(last_str: Optional[str], scheduled_dt: datetime) -> bool:
-        if last_str is None:
-            return True
-        try:
-            last = datetime.fromisoformat(last_str)
-        except Exception:
-            return True
-        return last < scheduled_dt
-
     missed: list[str] = []
 
     # Dagelijkse update (18:00)
@@ -295,8 +314,9 @@ async def _run_catch_up(bot) -> None:
         state["reminder_thursday"] = now.isoformat()
         missed.append("reminder_thursday")
 
-        _write_state(state)
-        log_startup(missed)
+    # Altijd state schrijven en loggen, ongeacht of Thursday reminder runde
+    _write_state(state)
+    log_startup(missed)
 
 
 async def _run_catch_up_with_lock(bot) -> None:
@@ -459,20 +479,61 @@ async def notify_non_voters(
     sent_any = False
     log_job("reminder", dag=dag or "(any)", status="executed")
 
+    # Als een specifiek kanaal is opgegeven (via commando), alleen dat kanaal gebruiken
+    if channel:
+        target_guild = getattr(channel, "guild", None)
+        if not target_guild:
+            return False
+        guilds_to_process = [target_guild]
+    else:
+        # Scheduler-modus: alle guilds
+        guilds_to_process = getattr(bot, "guilds", []) or []
+
+    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
+    deny_names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    allow_from_per_channel_only = os.getenv(
+        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+    ).lower() in {"1", "true", "yes", "y"}
+
     def channels_for_guild(guild):
-        if channel and getattr(channel, "guild", None) == guild:
-            return [channel]  # alleen dit kanaal (commando)
-        # alle actieve poll-kanalen (scheduler)
-        return [
+        if channel:
+            # Commando-modus: alleen het opgegeven kanaal
+            return [channel] if getattr(channel, "guild", None) == guild else []
+        # Scheduler-modus: alle actieve poll-kanalen
+        candidates = [
             ch
             for ch in (get_channels(guild) or [])
             if not is_channel_disabled(getattr(ch, "id", 0))
         ]
+        # Filter op DENY_CHANNEL_NAMES
+        filtered = []
+        for ch in candidates:
+            ch_name = (getattr(ch, "name", "") or "").lower()
+            if ch_name in deny_names:
+                continue
+            # Filter op ALLOW_FROM_PER_CHANNEL_ONLY
+            if allow_from_per_channel_only:
+                try:
+                    cid = int(getattr(ch, "id", 0))
+                    has_poll = any(
+                        get_message_id(cid, key)
+                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
+                    )
+                    if not has_poll:
+                        continue
+                except Exception:
+                    continue
+            filtered.append(ch)
+        return filtered
 
-    for guild in getattr(bot, "guilds", []) or []:
+    for guild in guilds_to_process:
         for ch in channels_for_guild(guild):
-            # leden server-breed; val terug op channel.members als guild.members ontbreekt
-            members_src = getattr(guild, "members", None) or getattr(ch, "members", [])
+            # Alleen leden die toegang hebben tot dit specifieke kanaal
+            members_src = getattr(ch, "members", [])
             all_members = [m for m in members_src if not getattr(m, "bot", False)]
 
             gid = getattr(guild, "id", "0")
@@ -553,10 +614,38 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
     KEY_19 = "om 19:00 uur"
     KEY_2030 = "om 20:30 uur"
 
+    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
+    deny_names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    allow_from_per_channel_only = os.getenv(
+        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+    ).lower() in {"1", "true", "yes", "y"}
+
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
-            if is_channel_disabled(getattr(channel, "id", 0)):
+            cid = getattr(channel, "id", 0)
+            if is_channel_disabled(cid):
                 continue
+
+            # Check DENY_CHANNEL_NAMES
+            ch_name = (getattr(channel, "name", "") or "").lower()
+            if ch_name in deny_names:
+                continue
+
+            # Check ALLOW_FROM_PER_CHANNEL_ONLY
+            if allow_from_per_channel_only:
+                try:
+                    has_poll = any(
+                        get_message_id(cid, key)
+                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
+                    )
+                    if not has_poll:
+                        continue
+                except Exception:
+                    continue
 
             scoped = (
                 await load_votes(
@@ -600,15 +689,13 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                 winnaar_txt = "19:00"
                 winner_set = voters_19
 
-            # Bouw mention-lijst op basis van member objects
+            # Bouw mention-lijst op basis van channel members (alleen wie toegang heeft)
+            channel_members = getattr(channel, "members", [])
+            channel_member_ids = {str(getattr(m, "id", "")): m for m in channel_members}
             mentions: List[str] = []
             for uid in winner_set:
                 try:
-                    member = (
-                        guild.get_member(int(uid))
-                        if hasattr(guild, "get_member")
-                        else None
-                    )
+                    member = channel_member_ids.get(str(uid))
                     if member and getattr(member, "mention", None):
                         mentions.append(member.mention)
                 except Exception:
@@ -662,25 +749,52 @@ async def reset_polls(bot) -> bool:
             log_job("reset_polls", status="skipped_already_reset")
             return False
 
-    # Uitvoeren
+    # Uitvoeren: reset alleen kanalen met actieve polls
     log_job("reset_polls", status="executed")
-    await reset_votes()
+    any_reset = False
+
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
             try:
                 cid = int(getattr(channel, "id"))
+                gid = int(getattr(guild, "id"))
             except Exception:
                 continue
 
-            # Wis alle bekende keys, exceptions negeren
+            # Check of dit kanaal actieve poll-berichten heeft
+            has_poll = False
             for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
                 try:
-                    _ = get_message_id(cid, key)
+                    if get_message_id(cid, key):
+                        has_poll = True
+                        break
+                except Exception:
+                    pass
+
+            if not has_poll:
+                continue  # Skip kanalen zonder actieve polls
+
+            # Reset votes voor dit specifieke kanaal
+            try:
+                await reset_votes_scoped(gid, cid)
+                any_reset = True
+            except Exception:
+                # Fallback naar lege votes voor dit kanaal
+                try:
+                    from apps.utils.poll_storage import save_votes_scoped
+                    await save_votes_scoped(gid, cid, {})
+                    any_reset = True
+                except Exception:
+                    pass
+
+            # Wis bekende message IDs
+            for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
+                try:
                     clear_message_id(cid, key)
                 except Exception:
                     pass
 
-            # Stuur resetbericht (@everyone) maar slik exceptions in
+            # Stuur resetbericht alleen in dit kanaal
             send_func = getattr(channel, "send", None)
             if send_func:
                 try:
@@ -691,6 +805,13 @@ async def reset_polls(bot) -> bool:
                     )
                 except Exception:
                     continue
+
+    # Als geen enkel kanaal gereset werd, val terug op globale reset
+    if not any_reset:
+        try:
+            await reset_votes()
+        except Exception:
+            pass
 
     # State bijwerken (nu is er wél gereset)
     try:

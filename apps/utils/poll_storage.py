@@ -13,6 +13,7 @@
 # - get_counts_for_day(dag, guild_id, channel_id) -> dict[str, int]
 # - get_votes_for_option(dag, tijd, guild_id, channel_id) -> int
 # - reset_votes() -> None
+# - reset_votes_scoped(guild_id, channel_id) -> None
 # - add_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
 # - remove_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
 
@@ -230,6 +231,27 @@ async def reset_votes() -> None:
     """Reset ALLE stemmen van alle guilds/channels."""
     async with _VOTES_LOCK:
         await _write_json(get_votes_path(), {})
+
+
+async def reset_votes_scoped(guild_id: int | str, channel_id: int | str) -> None:
+    """Reset stemmen voor één specifiek guild+channel."""
+    async with _VOTES_LOCK:
+        gid, cid = str(guild_id), str(channel_id)
+        root = await _get_root()
+        # Verwijder alleen deze channel uit de structuur
+        try:
+            if "guilds" in root and gid in root["guilds"]:
+                guild_data = root["guilds"][gid]
+                if "channels" in guild_data and cid in guild_data["channels"]:
+                    del guild_data["channels"][cid]
+                    # Als guild geen channels meer heeft, verwijder de guild ook
+                    if not guild_data.get("channels"):
+                        del root["guilds"][gid]
+            await _save_root(root)
+        except Exception:
+            # Bij fouten, val terug op lege dict voor dit kanaal
+            _set_scoped(root, gid, cid, {})
+            await _save_root(root)
 
 
 # === GASTEN ===============================================================

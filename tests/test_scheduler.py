@@ -414,8 +414,9 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 self.name = name
 
         class Guild:
-            def __init__(self, channels):
+            def __init__(self, channels, gid=1):
                 self._channels = channels
+                self.id = gid
 
             @property
             def text_channels(self):
@@ -444,7 +445,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "_within_reset_window", return_value=True),
-            # Belangrijk: forceer lege state zodat reset niet geskip’t wordt
+            # Belangrijk: forceer lege state zodat reset niet geskip't wordt
             patch.object(scheduler, "_read_state", return_value={}),
             patch.object(scheduler, "_write_state", lambda s: None),
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
@@ -453,6 +454,7 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
                 scheduler, "clear_message_id", side_effect=fake_clear_message_id
             ),
             patch.object(scheduler, "reset_votes", new_callable=AsyncMock),
+            patch.object(scheduler, "reset_votes_scoped", new_callable=AsyncMock),
         ):
             await scheduler.reset_polls(bot)
 
