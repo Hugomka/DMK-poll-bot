@@ -14,6 +14,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from apps.utils.discord_client import get_channels, safe_call
 from apps.utils.logger import log_job, log_startup
+from apps.utils.mention_utils import send_persistent_mention, send_temporary_mention
 from apps.utils.poll_message import (
     clear_message_id,
     get_message_id,
@@ -185,13 +186,13 @@ async def notify_non_voters_thursday(bot) -> None:
                     if mention:
                         non_voters.append(mention)
             if non_voters:
-                msg = (
-                    f"{', '.join(non_voters)} - jullie hebben nog niet gestemd voor dit weekend. "
-                    f"Graag stemmen vóór 18:00. Dank!"
-                )
-                send_func = getattr(channel, "send", None)
-                if send_func:
-                    await safe_call(send_func, msg)
+                # Gebruik tijdelijke mentions (2 seconden zichtbaar)
+                mentions_str = ", ".join(non_voters)
+                text = "Jullie hebben nog niet gestemd voor dit weekend. Graag stemmen vóór 18:00. Dank!"
+                try:
+                    await send_temporary_mention(channel, mentions=mentions_str, text=text)
+                except Exception:
+                    pass
 
 
 def _read_state() -> dict:
@@ -596,10 +597,13 @@ async def notify_non_voters(
             else:
                 header = "📣 DMK-poll – herinnering\nJe hebt nog niet gestemd voor dit weekend."
             footer = "Stem a.u.b. in deze poll zo snel mogelijk."
-            msg = f"{header}\n{', '.join(to_mention)}\n{footer}"
+
+            # Gebruik tijdelijke mentions (2 seconden zichtbaar)
+            mentions_str = ", ".join(to_mention)
+            text = f"{header}\n{footer}"
 
             try:
-                await safe_call(ch.send, msg)
+                await send_temporary_mention(ch, mentions=mentions_str, text=text)
                 sent_any = True
             except Exception:
                 pass
@@ -703,7 +707,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                 except Exception:
                     continue
 
-            # Berichttekst
+            # Berichttekst - gebruik persistente mentions (blijven tot 23:00)
             if mentions:
                 prefix = ", ".join(mentions)
                 message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
@@ -712,13 +716,11 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                     f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
                 )
 
-            send_func = getattr(channel, "send", None)
-            if send_func:
-                try:
-                    await safe_call(send_func, message)
-                except Exception:
-                    # Tests willen dat dit niet crasht
-                    return
+            try:
+                await send_persistent_mention(channel, message)
+            except Exception:
+                # Tests willen dat dit niet crasht
+                return
 
 
 async def reset_polls(bot) -> bool:

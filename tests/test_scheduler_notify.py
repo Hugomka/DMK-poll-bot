@@ -41,18 +41,19 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         self.assertTrue(result)
-        mock_call.assert_awaited_once()
-        # Controleer dat de message user 200 bevat (niet-stemmer)
-        args = mock_call.call_args[0]
-        self.assertIn("<@200>", args[1])
-        self.assertNotIn("<@100>", args[1])
+        mock_mention.assert_awaited_once()
+        # Controleer dat de mentions user 200 bevat (niet-stemmer)
+        args, kwargs = mock_mention.call_args
+        mentions = kwargs.get("mentions", args[1] if len(args) > 1 else "")
+        self.assertIn("<@200>", mentions)
+        self.assertNotIn("<@100>", mentions)
 
     async def test_notify_non_voters_without_dag_weekend_mode(self):
         """Test notify_non_voters zonder dag (weekend-breed)."""
@@ -99,7 +100,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -110,10 +111,11 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             result = await scheduler.notify_non_voters(bot, dag=None)
 
         self.assertTrue(result)
-        mock_call.assert_awaited_once()
-        args = mock_call.call_args[0]
-        self.assertIn("<@200>", args[1])
-        self.assertNotIn("<@100>", args[1])
+        mock_mention.assert_awaited_once()
+        args, kwargs = mock_mention.call_args
+        mentions = kwargs.get("mentions", args[1] if len(args) > 1 else "")
+        self.assertIn("<@200>", mentions)
+        self.assertNotIn("<@100>", mentions)
 
     async def test_notify_non_voters_guest_vote_owner_extraction(self):
         """Test dat gast-stemmen correct worden toegewezen aan de eigenaar."""
@@ -146,16 +148,17 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         self.assertTrue(result)
-        args = mock_call.call_args[0]
-        self.assertIn("<@200>", args[1])
-        self.assertNotIn("<@100>", args[1])
+        args, kwargs = mock_mention.call_args
+        mentions = kwargs.get("mentions", args[1] if len(args) > 1 else "")
+        self.assertIn("<@200>", mentions)
+        self.assertNotIn("<@100>", mentions)
 
     async def test_notify_non_voters_no_non_voters(self):
         """Test notify_non_voters als iedereen al heeft gestemd."""
@@ -184,14 +187,14 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         self.assertFalse(result)
-        mock_call.assert_not_awaited()
+        mock_mention.assert_not_awaited()
 
     # --- Nieuwe, eenvoudige tests zonder skip om coverage te verhogen ---
 
@@ -230,7 +233,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_persistent_mention", new_callable=AsyncMock) as mock_persistent,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -240,7 +243,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         ):
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
 
-        mock_call.assert_awaited_once()
+        mock_persistent.assert_awaited_once()
 
     async def test_notify_voters_if_avond_gaat_door_tie_current_behavior(self):
         """Gelijkstand 19:00 vs 20:30 → huidige gedrag: GEEN notificatie.
@@ -348,7 +351,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_persistent_mention", new_callable=AsyncMock) as mock_persistent,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -359,7 +362,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
 
         # Nu moet er 1 bericht zijn verstuurd
-        mock_call.assert_awaited_once()
+        mock_persistent.assert_awaited_once()
 
     async def test_notify_voters_if_avond_gaat_door_not_enough_votes(self):
         """Te weinig stemmen → geen notificatie."""
@@ -453,7 +456,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -463,7 +466,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         ):
             await scheduler.notify_non_voters_thursday(bot)
 
-        mock_call.assert_awaited_once()
+        mock_mention.assert_awaited_once()
 
     async def test_notify_for_channel_not_enough_votes(self):
         """Test notify_for_channel met te weinig stemmen."""
@@ -650,7 +653,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
@@ -658,8 +661,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         # User 200 moet in de lijst staan (ongeldige data = niet gestemd)
         self.assertTrue(result)
-        args = mock_call.call_args[0]
-        self.assertIn("<@200>", args[1])
+        args, kwargs = mock_mention.call_args
+        mentions = kwargs.get("mentions", args[1] if len(args) > 1 else "")
+        self.assertIn("<@200>", mentions)
 
     # --- Extra tests voor notify_voters_if_avond_gaat_door ---
 
@@ -698,7 +702,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "send_persistent_mention", new_callable=AsyncMock) as mock_persistent,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -708,11 +712,11 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         ):
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
 
-        # Assert: safe_call WEL aangeroepen
-        mock_call.assert_awaited_once()
+        # Assert: persistent mention WEL aangeroepen
+        mock_persistent.assert_awaited_once()
         # Assert: bericht bevat GEEN mentions (want geen members)
-        args = mock_call.call_args[0]
-        message = args[1]
+        args, kwargs = mock_persistent.call_args
+        message = args[1] if len(args) > 1 else ""
         self.assertNotIn("<@", message)
         # Assert: bericht bevat wel de dag en tijd
         self.assertIn("vrijdag", message)
@@ -1040,17 +1044,17 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         # User 100 heeft gestemd, 200 niet
         votes = {"100": {"vrijdag": ["om 19:00 uur"]}}
 
-        async def fake_safe_call(*_args, **_kwargs):
+        async def fake_mention(*_args, **_kwargs):
             raise RuntimeError("boom")
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "safe_call", side_effect=fake_safe_call),
+            patch.object(scheduler, "send_temporary_mention", side_effect=fake_mention),
         ):
             # Mag niet crashen, functie slikt de exception
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
-        # Assert: False (bericht niet verstuurd door exception)
+        # Assert: False returned because send failed, but no crash
         self.assertFalse(result)
