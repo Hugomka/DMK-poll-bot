@@ -150,6 +150,13 @@ class DMKPoll(commands.Cog):
                 # Niet hard falen als togglen mislukt; we gaan verder met plaatsen
                 pass
 
+            # Unpause if currently paused
+            try:
+                from apps.utils.poll_settings import set_paused
+                set_paused(getattr(channel, "id", 0), False)
+            except Exception:
+                pass
+
             # Eerste 3 berichten: ALLEEN TEKST, GEEN KNOPPEN
             guild = _get_attr(channel, "guild")
             for dag in dagen:

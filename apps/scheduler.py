@@ -21,6 +21,7 @@ from apps.utils.poll_message import (
     is_channel_disabled,
     schedule_poll_update,
 )
+from apps.utils.poll_settings import is_paused
 from apps.utils.poll_storage import (
     calculate_leading_time,
     load_votes,
@@ -146,6 +147,10 @@ async def notify_non_voters_thursday(bot) -> None:
         for channel in get_channels(guild):
             cid = getattr(channel, "id", 0)
             if is_channel_disabled(cid):
+                continue
+
+            # Skip if channel is paused
+            if is_paused(cid):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -487,6 +492,10 @@ async def update_all_polls(bot) -> None:
             if is_channel_disabled(cid):
                 continue
 
+            # Skip if channel is paused
+            if is_paused(cid):
+                continue
+
             ch_name = (getattr(channel, "name", "") or "").lower()
             if ch_name in deny_names:
                 continue
@@ -554,6 +563,7 @@ async def notify_non_voters(
             ch
             for ch in (get_channels(guild) or [])
             if not is_channel_disabled(getattr(ch, "id", 0))
+            and not is_paused(getattr(ch, "id", 0))
         ]
         # Filter op DENY_CHANNEL_NAMES
         filtered = []
@@ -686,6 +696,10 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
         for channel in get_channels(guild):
             cid = getattr(channel, "id", 0)
             if is_channel_disabled(cid):
+                continue
+
+            # Skip if channel is paused
+            if is_paused(cid):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -1001,6 +1015,10 @@ async def notify_misschien_voters(bot, dag: str) -> None:
             if is_channel_disabled(cid):
                 continue
 
+            # Skip if channel is paused
+            if is_paused(cid):
+                continue
+
             # Check DENY_CHANNEL_NAMES
             ch_name = (getattr(channel, "name", "") or "").lower()
             if ch_name in deny_names:
@@ -1117,6 +1135,10 @@ async def convert_remaining_misschien(bot, dag: str) -> None:
         for channel in get_channels(guild):
             cid = getattr(channel, "id", 0)
             if is_channel_disabled(cid):
+                continue
+
+            # Skip if channel is paused
+            if is_paused(cid):
                 continue
 
             # Check DENY_CHANNEL_NAMES
