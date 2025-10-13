@@ -17,7 +17,13 @@ TZ = pytz.timezone("Europe/Amsterdam")
 
 
 async def send_temporary_mention(
-    channel: Any, mentions: str, text: str, delay: float = 2.0
+    channel: Any,
+    mentions: str,
+    text: str,
+    delay: float = 2.0,
+    show_button: bool = False,
+    dag: str = "",
+    leading_time: str = "",
 ) -> None:
     """
     Stuur een tijdelijke mention via het notificatiebericht.
@@ -31,15 +37,32 @@ async def send_temporary_mention(
         mentions: Mentions string, bijv. "@user1, @user2"
         text: De tekst die onder de mentions verschijnt
         delay: Hoeveel seconden de mentions zichtbaar blijven (standaard 2.0)
+        show_button: Of de "Stem nu" knop getoond moet worden (Phase 4)
+        dag: De dag voor de Stem Nu knop
+        leading_time: De leidende tijd voor de Stem Nu knop
     """
-    # Stap 1: Update notificatiebericht met mentions
-    await update_notification_message(channel, mentions=mentions, text=text)
+    # Stap 1: Update notificatiebericht met mentions (en optioneel knop)
+    await update_notification_message(
+        channel,
+        mentions=mentions,
+        text=text,
+        show_button=show_button,
+        dag=dag,
+        leading_time=leading_time,
+    )
 
     # Stap 2: Wacht de delay periode
     await asyncio.sleep(delay)
 
-    # Stap 3: Verwijder mentions (tekst mag blijven of ook weg)
-    await update_notification_message(channel, mentions="", text=text)
+    # Stap 3: Verwijder mentions (tekst en knop blijven)
+    await update_notification_message(
+        channel,
+        mentions="",
+        text=text,
+        show_button=show_button,
+        dag=dag,
+        leading_time=leading_time,
+    )
 
 
 async def send_persistent_mention(channel: Any, message: str) -> Optional[Any]:

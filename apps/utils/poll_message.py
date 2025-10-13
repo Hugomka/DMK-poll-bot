@@ -123,7 +123,12 @@ async def create_notification_message(channel: Any) -> Optional[Any]:
 
 
 async def update_notification_message(
-    channel: Any, mentions: str = "", text: str = "", show_button: bool = False
+    channel: Any,
+    mentions: str = "",
+    text: str = "",
+    show_button: bool = False,
+    dag: str = "",
+    leading_time: str = "",
 ) -> None:
     """
     Update het notificatiebericht met mentions, text, en optioneel een knop.
@@ -133,6 +138,8 @@ async def update_notification_message(
         mentions: Mentions (lijn 2), bijv. "@user1 @user2"
         text: De tekst (lijn 3+)
         show_button: Of de "Stem nu" knop getoond moet worden
+        dag: De dag voor de Stem Nu knop (vereis als show_button=True)
+        leading_time: De leidende tijd (19:00 of 20:30) voor de knop
     """
     cid = int(getattr(channel, "id", 0))
     mid = get_message_id(cid, "notification")
@@ -149,9 +156,12 @@ async def update_notification_message(
     content += f"{mentions}\n" if mentions else "\n"
     content += f"{text}" if text else ""
 
-    # TODO: Add button support in Phase 4 (show_button parameter will be used then)
+    # Phase 4: Add Stem Nu button if requested
     view = None
-    _ = show_button  # Placeholder for Phase 4
+    if show_button and dag and leading_time:
+        from apps.ui.stem_nu_button import create_stem_nu_view
+
+        view = create_stem_nu_view(dag, leading_time)
 
     try:
         await safe_call(msg.edit, content=content, view=view)
