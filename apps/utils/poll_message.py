@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from apps.logic.decision import build_decision_line
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
-from apps.utils.poll_settings import should_hide_counts
+from apps.utils.poll_settings import is_paused, should_hide_counts
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
@@ -100,6 +100,82 @@ def clear_message_id(channel_id: int, key: str) -> None:
     _save(data)
 
 
+async def create_notification_message(channel: Any) -> Optional[Any]:
+    """
+    Creëer een leeg notificatiebericht met titel en lege regels.
+
+    Returns:
+        Het aangemaakte bericht, of None bij fout.
+    """
+    content = ":mega: Notificatie:\n\n"
+    send = getattr(channel, "send", None)
+    if send is None:
+        return None
+    try:
+        msg = await safe_call(send, content=content, view=None)
+        if msg is not None:
+            cid = int(getattr(channel, "id", 0))
+            save_message_id(cid, "notification", msg.id)
+        return msg
+    except Exception as e:  # pragma: no cover
+        print(f"❌ Fout bij aanmaken notificatiebericht: {e}")
+        return None
+
+
+async def update_notification_message(
+    channel: Any,
+    mentions: str = "",
+    text: str = "",
+    show_button: bool = False,
+    dag: str = "",
+    leading_time: str = "",
+) -> None:
+    """
+    Update het notificatiebericht met mentions, text, en optioneel een knop.
+
+    Args:
+        channel: Het Discord kanaal object
+        mentions: Mentions (lijn 2), bijv. "@user1 @user2"
+        text: De tekst (lijn 3+)
+        show_button: Of de "Stem nu" knop getoond moet worden
+        dag: De dag voor de Stem Nu knop (vereis als show_button=True)
+        leading_time: De leidende tijd (19:00 of 20:30) voor de knop
+    """
+    cid = int(getattr(channel, "id", 0))
+    mid = get_message_id(cid, "notification")
+
+    if not mid:
+        return
+
+    msg = await fetch_message_or_none(channel, mid)
+    if msg is None:
+        return
+
+    # Build content
+    content = ":mega: Notificatie:\n"
+    content += f"{mentions}\n" if mentions else "\n"
+    content += f"{text}" if text else ""
+
+    # Add Stem Nu button if requested
+    view = None
+    if show_button and dag and leading_time:
+        from apps.ui.stem_nu_button import create_stem_nu_view
+
+        view = create_stem_nu_view(dag, leading_time)
+
+    try:
+        await safe_call(msg.edit, content=content, view=view)
+    except Exception as e:  # pragma: no cover
+        print(f"❌ Fout bij updaten notificatiebericht: {e}")
+
+
+async def clear_notification_mentions(channel: Any) -> None:
+    """
+    Verwijder mentions uit het notificatiebericht (lijn 2 leegmaken).
+    """
+    await update_notification_message(channel, mentions="", text="", show_button=False)
+
+
 def schedule_poll_update(channel: Any, dag: str, delay: float = 0.3) -> asyncio.Task:
     """
     Plan een update voor (kanaal, dag) op de achtergrond met kleine debounce.
@@ -159,11 +235,13 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
 
             # Bepaal content (zowel voor edit als create)
             hide = should_hide_counts(cid_val, d, now)
+            paused = is_paused(cid_val)
             content = await build_poll_message_for_day_async(
                 d,
                 guild_id=gid_val,
                 channel_id=cid_val,
                 hide_counts=hide,
+                pauze=paused,
                 guild=getattr(channel, "guild", None),  # Voor namen
             )
 

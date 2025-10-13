@@ -19,12 +19,12 @@ class TestPollStorage(BaseTestCase):
     def setUp(self):
         # handige defaults voor opties in meerdere tests
         self.default_options = [
-            opt("vrijdag", "19:00"),
-            opt("vrijdag", "20:30"),
-            opt("zaterdag", "19:00"),
-            opt("zaterdag", "20:30"),
-            opt("zondag", "19:00"),
-            opt("zondag", "20:30"),
+            opt("vrijdag", "om 19:00 uur"),
+            opt("vrijdag", "om 20:30 uur"),
+            opt("zaterdag", "om 19:00 uur"),
+            opt("zaterdag", "om 20:30 uur"),
+            opt("zondag", "om 19:00 uur"),
+            opt("zondag", "om 20:30 uur"),
         ]
 
     # --------------------------
@@ -228,3 +228,91 @@ class TestPollStorage(BaseTestCase):
                 )
                 self.assertEqual(removed2, [])
                 self.assertEqual(notfound2, ["Alice"])
+
+    # ----------------------------------------------------
+    # calculate_leading_time: Phase 3 vote analysis logic
+    # ----------------------------------------------------
+    async def test_calculate_leading_time_no_votes_returns_none(self):
+        """Test met geen stemmen → None"""
+        result = await poll_storage.calculate_leading_time(1, 2, "vrijdag")
+        self.assertIsNone(result)
+
+    async def test_calculate_leading_time_only_19_returns_19(self):
+        """Test met alleen 19:00 stemmen → 19:00"""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # Voeg 3 stemmen toe voor 19:00
+            await poll_storage.add_vote("u1", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u2", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u3", "vrijdag", "om 19:00 uur", 1, 2)
+
+            result = await poll_storage.calculate_leading_time(1, 2, "vrijdag")
+            self.assertEqual(result, "19:00")
+
+    async def test_calculate_leading_time_only_2030_returns_2030(self):
+        """Test met alleen 20:30 stemmen → 20:30"""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # Voeg 3 stemmen toe voor 20:30
+            await poll_storage.add_vote("u1", "vrijdag", "om 20:30 uur", 1, 2)
+            await poll_storage.add_vote("u2", "vrijdag", "om 20:30 uur", 1, 2)
+            await poll_storage.add_vote("u3", "vrijdag", "om 20:30 uur", 1, 2)
+
+            result = await poll_storage.calculate_leading_time(1, 2, "vrijdag")
+            self.assertEqual(result, "20:30")
+
+    async def test_calculate_leading_time_tie_prefers_2030(self):
+        """Test met gelijkspel → 20:30 wint (tie-breaker regel)"""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # 2 stemmen voor 19:00
+            await poll_storage.add_vote("u1", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u2", "vrijdag", "om 19:00 uur", 1, 2)
+            # 2 stemmen voor 20:30
+            await poll_storage.add_vote("u3", "vrijdag", "om 20:30 uur", 1, 2)
+            await poll_storage.add_vote("u4", "vrijdag", "om 20:30 uur", 1, 2)
+
+            result = await poll_storage.calculate_leading_time(1, 2, "vrijdag")
+            self.assertEqual(result, "20:30")
+
+    async def test_calculate_leading_time_2030_wins_with_more_votes(self):
+        """Test met meer stemmen voor 20:30 → 20:30 wint"""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # 2 stemmen voor 19:00
+            await poll_storage.add_vote("u1", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u2", "vrijdag", "om 19:00 uur", 1, 2)
+            # 3 stemmen voor 20:30
+            await poll_storage.add_vote("u3", "vrijdag", "om 20:30 uur", 1, 2)
+            await poll_storage.add_vote("u4", "vrijdag", "om 20:30 uur", 1, 2)
+            await poll_storage.add_vote("u5", "vrijdag", "om 20:30 uur", 1, 2)
+
+            result = await poll_storage.calculate_leading_time(1, 2, "vrijdag")
+            self.assertEqual(result, "20:30")
+
+    async def test_calculate_leading_time_19_wins_with_more_votes(self):
+        """Test met meer stemmen voor 19:00 → 19:00 wint"""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # 5 stemmen voor 19:00
+            await poll_storage.add_vote("u1", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u2", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u3", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u4", "vrijdag", "om 19:00 uur", 1, 2)
+            await poll_storage.add_vote("u5", "vrijdag", "om 19:00 uur", 1, 2)
+            # 2 stemmen voor 20:30
+            await poll_storage.add_vote("u6", "vrijdag", "om 20:30 uur", 1, 2)
+            await poll_storage.add_vote("u7", "vrijdag", "om 20:30 uur", 1, 2)
+
+            result = await poll_storage.calculate_leading_time(1, 2, "vrijdag")
+            self.assertEqual(result, "19:00")

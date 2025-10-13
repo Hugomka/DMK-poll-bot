@@ -1,0 +1,16 @@
+@everyone
+# 🎮 **Welkom bij de DMK-poll!**
+
+Elke week organiseren we DMK-avonden op vrijdag, zaterdag en zondag. Stem hieronder op de avonden waarop jij mee wilt doen! De stemmen blijven verborgen tot de deadline van 18:00 uur. Heb je nog niet gestemd of misschien gestemd? Dan krijg je 1 uur voor de deadline een herinnering. Als je dan nog niet stemt, wordt je stem automatisch omgezet naar 'niet meedoen'. Dus wees op tijd als je graag mee wilt doen, en zet de meldingen voor dit kanaal aan.
+
+ℹ️ **Stem alsjeblieft op elke dag, ook als je denkt niet mee te doen. Zo blijft het overzicht duidelijk.**
+
+📅 **Hoe werkt het?**
+• Klik op **🗳️ Stemmen** om je keuzes aan te geven  
+• Je kunt meerdere tijden kiezen  
+• Je kunt je stem altijd aanpassen
+
+👥 **Gasten meebrengen?**  
+Gebruik `/gast-add` om gasten toe te voegen aan je stem.
+
+Veel plezier! 🎉

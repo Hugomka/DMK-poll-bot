@@ -12,6 +12,7 @@
 # - remove_vote(user_id, dag, tijd, guild_id, channel_id) -> None
 # - get_counts_for_day(dag, guild_id, channel_id) -> dict[str, int]
 # - get_votes_for_option(dag, tijd, guild_id, channel_id) -> int
+# - calculate_leading_time(guild_id, channel_id, dag) -> str | None
 # - reset_votes() -> None
 # - reset_votes_scoped(guild_id, channel_id) -> None
 # - add_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
@@ -225,6 +226,44 @@ async def get_votes_for_option(
 ) -> int:
     counts = await get_counts_for_day(dag, guild_id, channel_id)
     return counts.get(tijd, 0)
+
+
+async def calculate_leading_time(
+    guild_id: int | str, channel_id: int | str, dag: str
+) -> str | None:
+    """
+    Bepaal de winnende tijd (19:00 of 20:30) voor een specifieke dag.
+
+    Regels:
+    - Alleen "om 19:00 uur" en "om 20:30 uur" doen mee
+    - ❌ "niet meedoen" telt NIET mee (wordt uitgefilterd door get_counts_for_day)
+    - Bij gelijkspel wint 20:30
+    - Returns "19:00", "20:30", of None als er geen stemmen zijn
+
+    Args:
+        guild_id: Guild ID
+        channel_id: Channel ID
+        dag: De dag (vrijdag, zaterdag, zondag)
+
+    Returns:
+        "19:00", "20:30", of None als er geen stemmen zijn
+    """
+    T19 = "om 19:00 uur"
+    T2030 = "om 20:30 uur"
+
+    counts = await get_counts_for_day(dag, guild_id, channel_id)
+    c19 = counts.get(T19, 0)
+    c2030 = counts.get(T2030, 0)
+
+    # Geen stemmen? Geen winnaar
+    if c19 == 0 and c2030 == 0:
+        return None
+
+    # Bij gelijkspel of meer stemmen voor 20:30 → 20:30 wint
+    if c2030 >= c19:
+        return "20:30"
+    else:
+        return "19:00"
 
 
 async def reset_votes() -> None:
