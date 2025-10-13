@@ -261,10 +261,16 @@ class DMKPoll(commands.Cog):
                 if s_msg is not None:
                     save_message_id(channel.id, key, s_msg.id)
 
-            # Vijfde bericht: notificatiebericht (leeg, voor later gebruik)
+            # Zesde bericht: notificatiebericht (leeg, voor later gebruik)
             n_mid = get_message_id(channel.id, "notification")
-            if not n_mid:
-                # Alleen aanmaken als het nog niet bestaat
+            if n_mid:
+                # Check if message still exists
+                n_msg = await fetch_message_or_none(channel, n_mid)
+                if n_msg is None:
+                    # Message is gone, create new one
+                    await create_notification_message(channel)
+            else:
+                # No message ID, create new one
                 await create_notification_message(channel)
 
             await interaction.followup.send(
