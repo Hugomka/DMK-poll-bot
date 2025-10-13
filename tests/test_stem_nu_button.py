@@ -15,6 +15,7 @@ from apps.ui.stem_nu_button import (
     StemNuView,
     create_stem_nu_view,
 )
+from tests.test_mention_utils import _consume_coro_task
 
 
 class StemNuButtonTestCase(unittest.IsolatedAsyncioTestCase):
@@ -217,6 +218,7 @@ class JaButtonTestCase(unittest.IsolatedAsyncioTestCase):
         self, mock_create_task, mock_add_vote, mock_remove_vote
     ):
         """Test dat Ja-button stem update naar 20:30."""
+        mock_create_task.side_effect = _consume_coro_task()
         mock_remove_vote.return_value = AsyncMock()
         mock_add_vote.return_value = AsyncMock()
 
@@ -277,6 +279,7 @@ class NeeButtonTestCase(unittest.IsolatedAsyncioTestCase):
         self, mock_create_task, mock_add_vote, mock_remove_vote
     ):
         """Test dat Nee-button stem update naar 'niet meedoen'."""
+        mock_create_task.side_effect = _consume_coro_task()
         mock_remove_vote.return_value = AsyncMock()
         mock_add_vote.return_value = AsyncMock()
 

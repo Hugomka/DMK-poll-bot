@@ -107,8 +107,8 @@ class TestDMKPollCommands(BaseTestCase):
 
             # Vrijdag ge-edit, zaterdag/zondag ge-sent + id opgeslagen
             msg_vr.edit.assert_awaited_with(content="DAGCONTENT", view=None)
-            # Save_message_id zou 2x aangeroepen moeten zijn (za/zo) en 1x voor 'stemmen'
-            assert save_mid.call_count == 3
+            # Save_message_id zou 1x voor opening + 2x (za/zo) + 1x voor 'stemmen' zijn
+            assert save_mid.call_count == 4
 
             # Followup verstuurd
             interaction.followup.send.assert_called()
@@ -183,10 +183,10 @@ class TestDMKPollCommands(BaseTestCase):
             interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
             await self._run(self.cog.on, interaction)
 
-        # 4x opslaan: 3 dagen + 1x 'stemmen'
-        assert save_mid.call_count == 4
-        # send minstens 4x aangeroepen (3 dagen + 1 stemmen)
-        assert channel.send.await_count >= 4
+        # 5x opslaan: 1 opening + 3 dagen + 1x 'stemmen'
+        assert save_mid.call_count == 5
+        # send minstens 5x aangeroepen (1 opening + 3 dagen + 1 stemmen)
+        assert channel.send.await_count >= 5
         interaction.followup.send.assert_called()
 
     # _status_impl: niet-admin → géén view meegeven

@@ -4,9 +4,8 @@
 Tests for mention utility functions (temporary and persistent mentions).
 """
 
-import asyncio
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytz
@@ -18,6 +17,24 @@ from apps.utils.mention_utils import (
 )
 
 TZ = pytz.timezone("Europe/Amsterdam")
+
+
+def _consume_coro_task():
+    """
+    Returns a side_effect for asyncio.create_task that safely closes the
+    coroutine to avoid 'was never awaited' warnings during tests.
+    """
+
+    def _consume(coro, *args, **kwargs):
+        try:
+            coro.close()
+        except RuntimeError:
+            pass
+        dummy = MagicMock()
+        dummy.cancelled.return_value = False
+        return dummy
+
+    return _consume
 
 
 class TemporaryMentionTestCase(unittest.IsolatedAsyncioTestCase):
@@ -102,6 +119,8 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self, mock_create_task, mock_datetime, mock_safe_call
     ):
         """Test persistent mention sent before 23:00 schedules cleanup."""
+        mock_create_task.side_effect = _consume_coro_task()
+
         # Mock current time as 20:00
         mock_now = datetime(2025, 1, 15, 20, 0, 0, tzinfo=TZ)
         mock_datetime.now.return_value = mock_now
@@ -122,10 +141,6 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify cleanup was scheduled
         mock_create_task.assert_called_once()
 
-        # Verify delay calculation (3 hours = 10800 seconds)
-        call_args = mock_create_task.call_args[0][0]
-        # Should be a coroutine for _cleanup_mentions_at_23
-
     @patch("apps.utils.mention_utils.safe_call")
     @patch("apps.utils.mention_utils.datetime")
     @patch("asyncio.create_task")
@@ -133,6 +148,8 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self, mock_create_task, mock_datetime, mock_safe_call
     ):
         """Test persistent mention sent after 23:00 does NOT schedule cleanup."""
+        mock_create_task.side_effect = _consume_coro_task()
+
         # Mock current time as 23:30
         mock_now = datetime(2025, 1, 15, 23, 30, 0, tzinfo=TZ)
         mock_datetime.now.return_value = mock_now
@@ -163,7 +180,9 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
 
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_send_persistent_mention_returns_none_on_failure(self, mock_safe_call):
+    async def test_send_persistent_mention_returns_none_on_failure(
+        self, mock_safe_call
+    ):
         """Test persistent mention returns None when safe_call fails."""
         mock_safe_call.return_value = None
 
@@ -180,7 +199,9 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_cleanup_mentions_removes_user_mentions(self, mock_safe_call, mock_sleep):
+    async def test_cleanup_mentions_removes_user_mentions(
+        self, mock_safe_call, mock_sleep
+    ):
         """Test that cleanup removes user mentions from message."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
@@ -205,7 +226,9 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_cleanup_mentions_removes_role_mentions(self, mock_safe_call, mock_sleep):
+    async def test_cleanup_mentions_removes_role_mentions(
+        self, mock_safe_call, mock_sleep
+    ):
         """Test that cleanup removes role mentions from message."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
@@ -223,7 +246,9 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_cleanup_mentions_removes_everyone_here(self, mock_safe_call, mock_sleep):
+    async def test_cleanup_mentions_removes_everyone_here(
+        self, mock_safe_call, mock_sleep
+    ):
         """Test that cleanup removes @everyone and @here mentions."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
