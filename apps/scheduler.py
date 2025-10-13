@@ -200,7 +200,9 @@ async def notify_non_voters_thursday(bot) -> None:
                 mentions_str = ", ".join(non_voters)
                 text = "Jullie hebben nog niet gestemd voor dit weekend. Graag stemmen vóór 18:00. Dank!"
                 try:
-                    await send_temporary_mention(channel, mentions=mentions_str, text=text)
+                    await send_temporary_mention(
+                        channel, mentions=mentions_str, text=text
+                    )
                 except Exception:
                     pass
 
@@ -601,7 +603,9 @@ async def notify_non_voters(
                 try:
                     leading_time = await calculate_leading_time(gid, cid, dag)
                     if leading_time:
-                        print(f"📊 Leading time voor {dag} in channel {cid}: {leading_time}")
+                        print(
+                            f"📊 Leading time voor {dag} in channel {cid}: {leading_time}"
+                        )
                 except Exception:
                     pass  # Silent fail, this is informational only
 
@@ -1087,8 +1091,8 @@ async def notify_misschien_voters(bot, dag: str) -> None:
             # Send temporary mention with button
             mentions_str = ", ".join(misschien_voters)
             text = (
-                f"Wil je vanavond meedoen?\n"
-                f"Klik op **Stem nu** om je stem te bevestigen."
+                "Wil je vanavond meedoen?\n"
+                "Klik op **Stem nu** om je stem te bevestigen."
             )
 
             try:
@@ -1171,7 +1175,7 @@ async def convert_remaining_misschien(bot, dag: str) -> None:
                 if "misschien" in tijden:
                     # Convert to "niet meedoen"
                     try:
-                        from apps.utils.poll_storage import remove_vote, add_vote
+                        from apps.utils.poll_storage import add_vote, remove_vote
 
                         await remove_vote(str(uid), dag, "misschien", gid, cid)
                         await add_vote(str(uid), dag, "niet meedoen", gid, cid)
