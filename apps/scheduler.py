@@ -21,7 +21,12 @@ from apps.utils.poll_message import (
     is_channel_disabled,
     schedule_poll_update,
 )
-from apps.utils.poll_storage import load_votes, reset_votes, reset_votes_scoped
+from apps.utils.poll_storage import (
+    calculate_leading_time,
+    load_votes,
+    reset_votes,
+    reset_votes_scoped,
+)
 
 # NL-tijdzone
 TZ = pytz.timezone("Europe/Amsterdam")
@@ -542,6 +547,15 @@ async def notify_non_voters(
             gid = getattr(guild, "id", "0")
             cid = getattr(ch, "id", "0") or "0"
             votes = await load_votes(gid, cid) or {}
+
+            # Phase 3: Calculate leading time at 17:00 (for potential use in Phase 4)
+            if dag:
+                try:
+                    leading_time = await calculate_leading_time(gid, cid, dag)
+                    if leading_time:
+                        print(f"📊 Leading time voor {dag} in channel {cid}: {leading_time}")
+                except Exception:
+                    pass  # Silent fail, this is informational only
 
             # Bepaal stemmers
             voted_ids: set[int] = set()
