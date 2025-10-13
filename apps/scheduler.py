@@ -46,6 +46,8 @@ def _load_poll_config() -> None:
     global REMINDER_HOUR, RESET_DAY_OF_WEEK, RESET_HOUR
     global MIN_NOTIFY_VOTES, REMINDER_DAYS, EARLY_REMINDER_DAY
     global EARLY_REMINDER_HOUR
+    if not CONFIG_PATH or not os.path.exists(CONFIG_PATH):
+        return
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -782,6 +784,7 @@ async def reset_polls(bot) -> bool:
                 # Fallback naar lege votes voor dit kanaal
                 try:
                     from apps.utils.poll_storage import save_votes_scoped
+
                     await save_votes_scoped(gid, cid, {})
                     any_reset = True
                 except Exception:

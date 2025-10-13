@@ -1,221 +1,1056 @@
-# tests/test_scheduler_notify.py
-
+import os
+import unittest
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
+import discord
+
 from apps import scheduler
-from apps.scheduler import notify_voters_if_avond_gaat_door
-from tests.base import BaseTestCase
 
 
-class FakeMember:
-    def __init__(self, uid):
-        self.id = uid
-        self.mention = f"<@{uid}>"
+class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
+    async def test_notify_non_voters_with_specific_channel(self):
+        """Test notify_non_voters met een specifiek kanaal (commando-modus)."""
 
+        class FakeMember:
+            def __init__(self, id, bot=False):
+                self.id = id
+                self.bot = bot
+                self.mention = f"<@{id}>"
 
-class FakeChannel:
-    def __init__(self, id=999, name="chan"):
-        self.id = id
-        self.name = name
-        self.sent = []
+        class FakeChannel:
+            def __init__(self, id, guild):
+                self.id = id
+                self.guild = guild
+                self.members = [
+                    FakeMember(100),
+                    FakeMember(200),
+                    FakeMember(300, bot=True),
+                ]
+                self.send = AsyncMock()
 
-    async def send(self, content):
-        self.sent.append(content)
+        class FakeGuild:
+            def __init__(self, id):
+                self.id = id
 
+        guild = FakeGuild(1)
+        channel = FakeChannel(10, guild)
 
-class FakeGuild:
-    def __init__(self, gid, channels, members_map=None):
-        self.id = gid
-        self._channels = channels
-        self._members = members_map or {}
+        # Votes: user 100 heeft gestemd voor vrijdag, 200 niet
+        votes = {"100": {"vrijdag": ["om 19:00 uur"]}}
 
-    def get_member(self, uid):
-        return self._members.get(uid)
-
-    @property
-    def text_channels(self):
-        return self._channels
-
-
-class FakeBot:
-    def __init__(self, guilds):
-        self.guilds = guilds
-
-
-class TestSchedulerNotify(BaseTestCase):
-    async def asyncSetUp(self):
-        await super().asyncSetUp()
-
-    async def test_notify_sends_when_6_or_more_votes(self):
-        votes = {
-            "1": {"vrijdag": ["om 20:30 uur"]},
-            "2": {"vrijdag": ["om 20:30 uur"]},
-            "3": {"vrijdag": ["om 20:30 uur"]},
-            "4": {"vrijdag": ["om 20:30 uur"]},
-            "5": {"vrijdag": ["om 20:30 uur"]},
-            "6": {"vrijdag": ["om 20:30 uur"]},
-        }
-
-        async def fake_load_votes(*args, **kwargs):
-            return votes
-
-        with patch("apps.scheduler.get_message_id", return_value=111), patch(
-            "apps.scheduler.load_votes", side_effect=fake_load_votes
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
         ):
-            channel = FakeChannel()
-            g = FakeGuild(
-                1,
-                [channel],
-                members_map={int(i): FakeMember(int(i)) for i in votes.keys()},
+            result = await scheduler.notify_non_voters(
+                None, "vrijdag", cast(discord.TextChannel, channel)
             )
-            bot = FakeBot([g])
 
-            await notify_voters_if_avond_gaat_door(bot, "vrijdag")
+        self.assertTrue(result)
+        mock_call.assert_awaited_once()
+        # Controleer dat de message user 200 bevat (niet-stemmer)
+        args = mock_call.call_args[0]
+        self.assertIn("<@200>", args[1])
+        self.assertNotIn("<@100>", args[1])
 
-            ch = g.text_channels[0]
-            assert len(ch.sent) == 1
-            assert "20:30" in ch.sent[0]
+    async def test_notify_non_voters_without_dag_weekend_mode(self):
+        """Test notify_non_voters zonder dag (weekend-breed)."""
 
-    async def test_notify_skips_disabled_and_non_list(self):
-        g = FakeGuild(1, [FakeChannel(5, "dmk")])
-        bot = FakeBot([g])
+        class Member:
+            def __init__(self, id, bot=False):
+                self.id = id
+                self.bot = bot
+                self.mention = f"<@{id}>"
 
-        # Stemmen: tijden voor 'vrijdag' is géén lijst → skip
-        votes = {"123": {"vrijdag": "om 19:00 uur"}}
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = [Member(100), Member(200)]
+                self.send = AsyncMock()
 
-        async def fake_load_votes(*args, **kwargs):
-            return votes
+            @property
+            def guild(self):
+                return Guild(1)
 
-        with patch.object(
-            scheduler, "get_channels", side_effect=lambda guild: guild.text_channels
-        ), patch.object(
-            scheduler, "is_channel_disabled", side_effect=lambda cid: True
-        ), patch.object(
-            scheduler, "load_votes", side_effect=fake_load_votes
-        ), patch.object(
-            scheduler, "safe_call", new_callable=AsyncMock
-        ) as mock_safe:
-            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            mock_safe.assert_not_awaited()  # Disabled → geen send
+        class Guild:
+            def __init__(self, id):
+                self.id = id
 
-    async def test_notify_guest_collapse_counts_and_continue_when_under_6(self):
-        ch = FakeChannel(7, "dmk")
-        g = FakeGuild(1, [ch])
-        bot = FakeBot([g])
+            @property
+            def text_channels(self):
+                return [Channel(10)]
 
-        # 2 gasten voor 19:00 moeten samentellen als 1 owner
-        votes = {
-            "111_guest::42": {"vrijdag": ["om 19:00 uur"]},
-            "222_guest::42": {"vrijdag": ["om 19:00 uur"]},
-            "333": {"vrijdag": ["om 20:30 uur"]},  # 1 voor 20:30
-        }
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
 
-        async def fake_load_votes(*args, **kwargs):
-            return votes
+        bot = Bot()
 
-        with patch.object(
-            scheduler, "get_channels", side_effect=lambda guild: guild.text_channels
-        ), patch.object(
-            scheduler, "is_channel_disabled", return_value=False
-        ), patch.object(
-            scheduler, "load_votes", side_effect=fake_load_votes
-        ), patch.object(
-            scheduler, "safe_call", new_callable=AsyncMock
-        ) as mock_safe:
-            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            # Totaal 1 (owner 42) vs 1 → beide < 6 → geen melding
-            mock_safe.assert_not_awaited()
-            assert len(ch.sent) == 0
+        # User 100 heeft ergens gestemd, user 200 niet
+        votes = {"100": {"zaterdag": ["om 20:30 uur"]}}
 
-    async def test_notify_winner_19_and_exception_in_member_lookup_and_channel_send(
-        self,
-    ):
-        ch = FakeChannel(9, "speelavond")
-        # Voeg een member 7 toe; 'NaN' zal except-pad raken
-        members = {7: type("M", (), {"mention": "<@7>"})()}
-        g = FakeGuild(1, [ch], members_map=members)
-        bot = FakeBot([g])
+        def fake_get_channels(guild):
+            return guild.text_channels
 
-        # 6 stemmers voor 19:00 (inclusief een 'NaN' voor except-pad), 0 voor 20:30
-        votes = {
-            "1": {"vrijdag": ["om 19:00 uur"]},
-            "2": {"vrijdag": ["om 19:00 uur"]},
-            "3": {"vrijdag": ["om 19:00 uur"]},
-            "4": {"vrijdag": ["om 19:00 uur"]},
-            "5": {"vrijdag": ["om 19:00 uur"]},
-            "NaN": {"vrijdag": ["om 19:00 uur"]},  # int('NaN') → except → continue
-        }
+        def fake_get_message_id(cid, key):
+            return 999  # Polls bestaan
 
-        async def fake_load_votes(*args, **kwargs):
-            return votes
-
-        async def failing_safe_call(func, content):
-            # Forceer except in outer try/except
-            raise RuntimeError("send kapot")
-
-        with patch.object(
-            scheduler, "get_channels", side_effect=lambda guild: guild.text_channels
-        ), patch.object(
-            scheduler, "is_channel_disabled", return_value=False
-        ), patch.object(
-            scheduler, "load_votes", side_effect=fake_load_votes
-        ), patch.object(
-            scheduler, "safe_call", side_effect=failing_safe_call
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
         ):
-            # Moet niet crashen ondanks except in safe_call; winner is 19:00
-            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            # Geen exceptions bubbelen door; ch.sent blijft leeg omdat safe_call faalde
-            assert len(ch.sent) == 0
+            result = await scheduler.notify_non_voters(bot, dag=None)
 
-    async def test_notify_non_list_tijden_skips_when_channel_enabled(self):
-        ch = FakeChannel(5, "dmk")
-        g = FakeGuild(1, [ch])
-        bot = FakeBot([g])
+        self.assertTrue(result)
+        mock_call.assert_awaited_once()
+        args = mock_call.call_args[0]
+        self.assertIn("<@200>", args[1])
+        self.assertNotIn("<@100>", args[1])
 
-        # Tijden is géén lijst → moet worden overgeslagen
-        votes = {"u1": {"vrijdag": "om 20:30 uur"}}
+    async def test_notify_non_voters_guest_vote_owner_extraction(self):
+        """Test dat gast-stemmen correct worden toegewezen aan de eigenaar."""
 
-        async def fake_load_votes(*_, **__):
-            return votes
+        class FakeMember:
+            def __init__(self, id, bot=False):
+                self.id = id
+                self.bot = bot
+                self.mention = f"<@{id}>"
 
-        with patch.object(
-            scheduler, "get_channels", side_effect=lambda guild: guild.text_channels
-        ), patch.object(
-            scheduler, "is_channel_disabled", return_value=False
-        ), patch.object(
-            scheduler, "load_votes", side_effect=fake_load_votes
-        ), patch.object(
-            scheduler, "safe_call", new_callable=AsyncMock
-        ) as mock_safe:
-            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            mock_safe.assert_not_awaited()
-            assert len(ch.sent) == 0
+        class FakeChannel:
+            def __init__(self, id, guild):
+                self.id = id
+                self.guild = guild
+                self.members = [FakeMember(100), FakeMember(200)]
+                self.send = AsyncMock()
 
-    async def test_notify_guest_collapse_for_2030_under_threshold(self):
-        ch = FakeChannel(6, "dmk")
-        g = FakeGuild(1, [ch])
-        bot = FakeBot([g])
+        class FakeGuild:
+            def __init__(self, id):
+                self.id = id
 
-        # Twee gasten voor 20:30 met dezelfde owner → telt als 1 stem 20:30
+        guild = FakeGuild(1)
+        channel = FakeChannel(10, guild)
+
+        # User 100 heeft gestemd (inclusief gast), user 200 niet
         votes = {
-            "g1_guest::42": {"vrijdag": ["om 20:30 uur"]},
-            "g2_guest::42": {"vrijdag": ["om 20:30 uur"]},
-            "u3": {"vrijdag": ["om 19:00 uur"]},  # 1 stem 19:00
+            "100": {"vrijdag": ["om 19:00 uur"]},
+            "100_guest::Alice": {"vrijdag": ["om 19:00 uur"]},
         }
 
-        async def fake_load_votes(*_, **__):
-            return votes
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+        ):
+            result = await scheduler.notify_non_voters(
+                None, "vrijdag", cast(discord.TextChannel, channel)
+            )
+
+        self.assertTrue(result)
+        args = mock_call.call_args[0]
+        self.assertIn("<@200>", args[1])
+        self.assertNotIn("<@100>", args[1])
+
+    async def test_notify_non_voters_no_non_voters(self):
+        """Test notify_non_voters als iedereen al heeft gestemd."""
+
+        class Member:
+            def __init__(self, id, bot=False):
+                self.id = id
+                self.bot = bot
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, guild):
+                self.id = id
+                self.guild = guild
+                self.members = [Member(100)]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+        guild = Guild(1)
+        channel = Channel(10, guild)
+
+        votes = {"100": {"vrijdag": ["om 19:00 uur"]}}
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+        ):
+            result = await scheduler.notify_non_voters(
+                None, "vrijdag", cast(discord.TextChannel, channel)
+            )
+
+        self.assertFalse(result)
+        mock_call.assert_not_awaited()
+
+    # --- Nieuwe, eenvoudige tests zonder skip om coverage te verhogen ---
+
+    async def test_notify_voters_if_avond_gaat_door_basic(self):
+        """Eenvoudige happy-path test: genoeg stemmen → 1 bericht."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 6 stemmen op vrijdag (drempel gehaald)
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        mock_call.assert_awaited_once()
+
+    async def test_notify_voters_if_avond_gaat_door_tie_current_behavior(self):
+        """Gelijkstand 19:00 vs 20:30 → huidige gedrag: GEEN notificatie.
+        TODO: Als tie-breaker (20:30 voorrang) later wordt geïmplementeerd,
+        verander deze test om wél een notificatie te verwachten.
+        """
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 3 stemmen 19:00 en 3 stemmen 20:30 → gelijkstand
+        votes = {
+            "100": {"vrijdag": ["om 19:00 uur"]},
+            "101": {"vrijdag": ["om 19:00 uur"]},
+            "102": {"vrijdag": ["om 19:00 uur"]},
+            "103": {"vrijdag": ["om 20:30 uur"]},
+            "104": {"vrijdag": ["om 20:30 uur"]},
+            "105": {"vrijdag": ["om 20:30 uur"]},
+        }
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Huidig gedrag: bij gelijkstand geen bericht
+        mock_call.assert_not_awaited()
+
+    async def test_notify_voters_if_avond_gaat_door_prefers_2030_when_more_votes(self):
+        """Als 20:30 strikt meer stemmen heeft dan 19:00 → notificatie."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 5 stemmen 19:00 en 7 stemmen 20:30 → 20:30 wint duidelijk (haalt drempel)
+        votes = {
+            "100": {"vrijdag": ["om 19:00 uur"]},
+            "101": {"vrijdag": ["om 19:00 uur"]},
+            "102": {"vrijdag": ["om 19:00 uur"]},
+            "103": {"vrijdag": ["om 19:00 uur"]},
+            "104": {"vrijdag": ["om 19:00 uur"]},
+            "105": {"vrijdag": ["om 20:30 uur"]},
+            "106": {"vrijdag": ["om 20:30 uur"]},
+            "107": {"vrijdag": ["om 20:30 uur"]},
+            "108": {"vrijdag": ["om 20:30 uur"]},
+            "109": {"vrijdag": ["om 20:30 uur"]},
+            "110": {"vrijdag": ["om 20:30 uur"]},
+            "111": {"vrijdag": ["om 20:30 uur"]},
+        }
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Nu moet er 1 bericht zijn verstuurd
+        mock_call.assert_awaited_once()
+
+    async def test_notify_voters_if_avond_gaat_door_not_enough_votes(self):
+        """Te weinig stemmen → geen notificatie."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # Slechts 3 stemmen
+        votes = {
+            "100": {"vrijdag": ["om 19:00 uur"]},
+            "101": {"vrijdag": ["om 19:00 uur"]},
+            "102": {"vrijdag": ["om 19:00 uur"]},
+        }
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        mock_call.assert_not_awaited()
+
+    async def test_notify_non_voters_thursday_basic(self):
+        """Donderdag-herinnering: er zijn niet-stemmers → één bericht."""
+
+        class Member:
+            def __init__(self, id, bot=False):
+                self.id = id
+                self.bot = bot
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = [Member(100), Member(200)]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # Alleen 100 heeft ergens gestemd → 200 is non-voter
+        votes = {"100": {"vrijdag": ["om 19:00 uur"]}}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_non_voters_thursday(bot)
+
+        mock_call.assert_awaited_once()
+
+    async def test_notify_for_channel_not_enough_votes(self):
+        """Test notify_for_channel met te weinig stemmen."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.send = AsyncMock()
+
+            @property
+            def guild(self):
+                return Guild(1)
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+        channel = Channel(10)
+
+        # Slechts 2 stemmen
+        votes = {
+            "100": {"vrijdag": ["om 19:00 uur"]},
+            "101": {"vrijdag": ["om 19:00 uur"]},
+        }
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            result = await scheduler.notify_for_channel(channel, "vrijdag")
+
+        self.assertFalse(result)
+        mock_call.assert_not_awaited()
+
+    async def test_notify_for_channel_basic(self):
+        """Genoeg stemmen in specifiek kanaal → één bericht."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.send = AsyncMock()
+
+            @property
+            def guild(self):
+                return Guild(1)
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+        channel = Channel(10)
+
+        # 6 stemmen → drempel gehaald
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            result = await scheduler.notify_for_channel(channel, "vrijdag")
+
+        self.assertTrue(result)
+        mock_call.assert_awaited_once()
+
+    async def test_notify_for_channel_disabled_channel(self):
+        """Test notify_for_channel met uitgeschakeld kanaal."""
+
+        class Channel:
+            def __init__(self, id):
+                self.id = id
+
+        channel = Channel(10)
+
+        with patch.object(scheduler, "is_channel_disabled", return_value=True):
+            result = await scheduler.notify_for_channel(channel, "vrijdag")
+
+        self.assertFalse(result)
+
+    async def test_notify_for_channel_denied_channel(self):
+        """Test notify_for_channel met geweigerd kanaal."""
+
+        class Channel:
+            def __init__(self, id, name="general"):
+                self.id = id
+                self.name = name
+
+        channel = Channel(10)
+
+        with (
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.dict(os.environ, {"DENY_CHANNEL_NAMES": "general"}, clear=False),
+        ):
+            result = await scheduler.notify_for_channel(channel, "vrijdag")
+
+        self.assertFalse(result)
+
+    async def test_notify_for_channel_no_active_poll(self):
+        """Test notify_for_channel zonder actieve poll."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+
+        channel = Channel(10)
+
+        def fake_get_message_id(cid, key):
+            return None  # Geen polls
+
+        with (
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            result = await scheduler.notify_for_channel(channel, "vrijdag")
+
+        self.assertFalse(result)
+
+    async def test_notify_for_channel_exception_returns_false(self):
+        """Test dat exceptions in notify_for_channel False teruggeven."""
+
+        class Channel:
+            def __init__(self, id):
+                self.id = id
+
+        channel = Channel(10)
 
         with patch.object(
-            scheduler, "get_channels", side_effect=lambda guild: guild.text_channels
-        ), patch.object(
-            scheduler, "is_channel_disabled", return_value=False
-        ), patch.object(
-            scheduler, "load_votes", side_effect=fake_load_votes
-        ), patch.object(
-            scheduler, "safe_call", new_callable=AsyncMock
-        ) as mock_safe:
+            scheduler, "is_channel_disabled", side_effect=RuntimeError("boom")
+        ):
+            result = await scheduler.notify_for_channel(channel, "vrijdag")
+
+        self.assertFalse(result)
+
+    async def test_notify_non_voters_handles_invalid_votes_gracefully(self):
+        """Test dat ongeldige vote-data niet crasht."""
+
+        class Member:
+            def __init__(self, id):
+                self.id = id
+                self.bot = False
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, guild):
+                self.id = id
+                self.guild = guild
+                self.members = [Member(100), Member(200)]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+        guild = Guild(1)
+        channel = Channel(10, guild)
+
+        # Ongeldige data: niet-dict dagen_map, niet-list tijden
+        votes = {
+            "100": {"vrijdag": ["om 19:00 uur"]},
+            "invalid_user": "not_a_dict",  # Ongeldig
+            "200": {"vrijdag": "not_a_list"},  # Ongeldig
+        }
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+        ):
+            result = await scheduler.notify_non_voters(
+                None, "vrijdag", cast(discord.TextChannel, channel)
+            )
+
+        # User 200 moet in de lijst staan (ongeldige data = niet gestemd)
+        self.assertTrue(result)
+        args = mock_call.call_args[0]
+        self.assertIn("<@200>", args[1])
+
+    # --- Extra tests voor notify_voters_if_avond_gaat_door ---
+
+    async def test_notify_voters_no_members_found_sends_message_without_mentions(self):
+        """Test dat bericht zonder mentions wordt verzonden als er geen members zijn."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []  # Geen members
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 7 stemmen op vrijdag (drempel gehaald: 20:30 >= 6)
+        votes = {str(i): {"vrijdag": ["om 20:30 uur"]} for i in range(100, 107)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
             await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
-            # Beide < 6 → geen bericht; maar branch 277-278 is geraakt
-            mock_safe.assert_not_awaited()
-            assert len(ch.sent) == 0
+
+        # Assert: safe_call WEL aangeroepen
+        mock_call.assert_awaited_once()
+        # Assert: bericht bevat GEEN mentions (want geen members)
+        args = mock_call.call_args[0]
+        message = args[1]
+        self.assertNotIn("<@", message)
+        # Assert: bericht bevat wel de dag en tijd
+        self.assertIn("vrijdag", message)
+        self.assertIn("20:30", message)
+
+    async def test_notify_voters_send_missing_no_crash(self):
+        """Test dat ontbrekend send attribuut niet crasht."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                # Geen send attribuut
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 6 stemmen op vrijdag (drempel gehaald)
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            # Mag niet crashen
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Assert: safe_call NIET aangeroepen (want geen send)
+        mock_call.assert_not_awaited()
+
+    async def test_notify_voters_safe_call_exception_returns_early(self):
+        """Test dat exception in safe_call wordt afgehandeld."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 6 stemmen op vrijdag (drempel gehaald)
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        async def fake_safe_call(*args, **kwargs):
+            raise RuntimeError("boom")
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", side_effect=fake_safe_call),
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            # Mag niet crashen, functie keert terug
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+    async def test_notify_voters_deny_channel_names_within_function(self):
+        """Test dat DENY_CHANNEL_NAMES binnen notify_voters_if_avond_gaat_door wordt gecontroleerd."""
+
+        class Channel:
+            def __init__(self, id, name):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10, "general")]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 6 stemmen
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(os.environ, {"DENY_CHANNEL_NAMES": "general"}, clear=False),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Assert: safe_call NIET aangeroepen (kanaal geskipt door DENY)
+        mock_call.assert_not_awaited()
+
+    async def test_notify_voters_allow_per_channel_no_poll_skip(self):
+        """Test dat ALLOW_FROM_PER_CHANNEL_ONLY=true en geen poll → skip."""
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return None  # Geen polls
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Assert: safe_call NIET aangeroepen (geen poll → skip)
+        mock_call.assert_not_awaited()
+
+    # --- Extra tests voor notify_non_voters ---
+
+    async def test_notify_non_voters_channel_without_guild_returns_false(self):
+        """Test commando-modus: channel zonder guild → False."""
+
+        class Channel:
+            def __init__(self, id):
+                self.id = id
+                # Geen guild attribuut
+
+        channel = Channel(10)
+
+        result = await scheduler.notify_non_voters(
+            None, "vrijdag", cast(discord.TextChannel, channel)
+        )
+
+        # Assert: False teruggegeven
+        self.assertFalse(result)
+
+    async def test_notify_non_voters_scheduler_mode_deny_channel(self):
+        """Test scheduler-modus met DENY_CHANNEL_NAMES."""
+
+        class Channel:
+            def __init__(self, id, name):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10, "general")]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        with (
+            patch.object(scheduler, "load_votes", return_value={}),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.dict(os.environ, {"DENY_CHANNEL_NAMES": "general"}, clear=False),
+        ):
+            result = await scheduler.notify_non_voters(bot, "vrijdag")
+
+        # Assert: False (geen berichten verstuurd)
+        self.assertFalse(result)
+        mock_call.assert_not_awaited()
+
+    async def test_notify_non_voters_scheduler_mode_allow_and_no_polls(self):
+        """Test scheduler-modus: ALLOW_FROM_PER_CHANNEL_ONLY=true en geen polls → skip."""
+
+        class Channel:
+            def __init__(self, id, name):
+                self.id = id
+                self.name = name
+                self.members = []
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10, "dmk")]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(_cid, _key):
+            return None  # Geen polls
+
+        with (
+            patch.object(scheduler, "load_votes", return_value={}),
+            patch.object(scheduler, "safe_call", new_callable=AsyncMock) as mock_call,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            result = await scheduler.notify_non_voters(bot, "vrijdag")
+
+        # Assert: False (geen berichten verstuurd)
+        self.assertFalse(result)
+        mock_call.assert_not_awaited()
+
+    async def test_notify_non_voters_safe_call_exception_swallowed(self):
+        """Test dat safe_call exception wordt geslikt."""
+
+        class Member:
+            def __init__(self, id):
+                self.id = id
+                self.bot = False
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, guild):
+                self.id = id
+                self.guild = guild
+                self.members = [Member(100), Member(200)]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+        guild = Guild(1)
+        channel = Channel(10, guild)
+
+        # User 100 heeft gestemd, 200 niet
+        votes = {"100": {"vrijdag": ["om 19:00 uur"]}}
+
+        async def fake_safe_call(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(scheduler, "safe_call", side_effect=fake_safe_call),
+        ):
+            # Mag niet crashen, functie slikt de exception
+            result = await scheduler.notify_non_voters(
+                None, "vrijdag", cast(discord.TextChannel, channel)
+            )
+
+        # Assert: False (bericht niet verstuurd door exception)
+        self.assertFalse(result)
