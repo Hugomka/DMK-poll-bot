@@ -5,7 +5,7 @@
 # - Persistente mentions (tot 23:00)
 
 import asyncio
-from datetime import datetime, time as dt_time
+from datetime import datetime
 from typing import Any, Optional
 
 import pytz
@@ -37,7 +37,7 @@ async def send_temporary_mention(
         mentions: Mentions string, bijv. "@user1, @user2"
         text: De tekst die onder de mentions verschijnt
         delay: Hoeveel seconden de mentions zichtbaar blijven (standaard 2.0)
-        show_button: Of de "Stem nu" knop getoond moet worden 
+        show_button: Of de "Stem nu" knop getoond moet worden
         dag: De dag voor de Stem Nu knop
         leading_time: De leidende tijd voor de Stem Nu knop
     """
