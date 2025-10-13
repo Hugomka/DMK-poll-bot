@@ -143,8 +143,9 @@ class StemNuButtonTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("nog niet gestemd", call_args[0][0])
         self.assertTrue(call_args[1]["ephemeral"])
 
+    @patch("builtins.print")
     @patch("apps.ui.stem_nu_button.get_user_votes")
-    async def test_stem_nu_button_handles_exception(self, mock_get_votes):
+    async def test_stem_nu_button_handles_exception(self, mock_get_votes, mock_print):
         """Test dat button exceptions netjes afhandelt."""
         mock_get_votes.side_effect = Exception("Test error")
 
@@ -186,6 +187,7 @@ class JaButtonTestCase(unittest.IsolatedAsyncioTestCase):
         self, mock_create_task, mock_add_vote, mock_remove_vote
     ):
         """Test dat Ja-button stem update naar 19:00."""
+        mock_create_task.side_effect = _consume_coro_task()
         mock_remove_vote.return_value = AsyncMock()
         mock_add_vote.return_value = AsyncMock()
 
@@ -239,8 +241,9 @@ class JaButtonTestCase(unittest.IsolatedAsyncioTestCase):
             "123456", "zaterdag", "om 20:30 uur", 789, 456
         )
 
+    @patch("builtins.print")
     @patch("apps.ui.stem_nu_button.remove_vote")
-    async def test_ja_button_handles_exception(self, mock_remove_vote):
+    async def test_ja_button_handles_exception(self, mock_remove_vote, mock_print):
         """Test dat Ja-button exceptions netjes afhandelt."""
         mock_remove_vote.side_effect = Exception("Test error")
 
@@ -305,8 +308,9 @@ class NeeButtonTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("niet mee te doen", call_args[1]["content"])
         self.assertIsNone(call_args[1]["view"])
 
+    @patch("builtins.print")
     @patch("apps.ui.stem_nu_button.remove_vote")
-    async def test_nee_button_handles_exception(self, mock_remove_vote):
+    async def test_nee_button_handles_exception(self, mock_remove_vote, mock_print):
         """Test dat Nee-button exceptions netjes afhandelt."""
         mock_remove_vote.side_effect = Exception("Test error")
 

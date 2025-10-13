@@ -143,16 +143,22 @@ class TestNotifyFallbackCommand(BaseTestCase):
             assert "ging iets mis" in (interaction.followup.last_text or "").lower()
 
     async def test_notify_fallback_zonder_dag_stuurt_reset(self):
-        interaction, channel, patcher = _mk_inter()
-        with patcher:
+        interaction, _channel, patcher = _mk_inter()
+        with patcher, patch(
+            "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
+        ) as mock_send:
             cog = dmk_poll.DMKPoll(MagicMock())
             await _invoke(dmk_poll.DMKPoll.notify_fallback, cog, interaction)
-            sent_args, _ = channel.send.await_args
-            assert any(
-                "de poll is zojuist gereset" in str(a).lower()
-                or "@everyone" in str(a).lower()
-                for a in sent_args
-            )
+            # Verify send_temporary_mention was called with correct parameters
+            mock_send.assert_awaited_once()
+            call_args = mock_send.call_args
+            if call_args:
+                args, kwargs = call_args
+                # Check that mentions contains @everyone and text contains reset message
+                mentions = kwargs.get("mentions", "")
+                text = kwargs.get("text", "")
+                assert "@everyone" in mentions, f"Expected @everyone in mentions, got: {mentions}"
+                assert "de poll is zojuist gereset" in text.lower(), f"Expected reset message in text, got: {text}"
 
     async def test_notify_fallback_verboden_kanaal(self):
         interaction, _channel = _mk_interaction(channel_name="welkom", forbid=True)

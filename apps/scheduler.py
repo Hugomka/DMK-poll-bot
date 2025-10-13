@@ -869,17 +869,15 @@ async def reset_polls(bot) -> bool:
                 except Exception:
                     pass
 
-            # Stuur resetbericht alleen in dit kanaal
-            send_func = getattr(channel, "send", None)
-            if send_func:
-                try:
-                    await safe_call(
-                        send_func,
-                        "⬆️@everyone De poll is zojuist gereset voor het nieuwe weekend. "
-                        "Je kunt weer stemmen. Veel plezier!",
-                    )
-                except Exception:
-                    continue
+            # Stuur resetbericht alleen in dit kanaal via notificatiebericht
+            try:
+                await send_temporary_mention(
+                    channel,
+                    mentions="@everyone",
+                    text="De poll is zojuist gereset voor het nieuwe weekend. Je kunt weer stemmen. Veel plezier!",
+                )
+            except Exception:
+                continue
 
     # Als geen enkel kanaal gereset werd, val terug op globale reset
     if not any_reset:

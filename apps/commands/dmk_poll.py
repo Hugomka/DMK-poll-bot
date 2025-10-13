@@ -821,8 +821,10 @@ class DMKPoll(commands.Cog):
                     )
                 return
 
-            # Geen dag → algemene melding
-            await safe_call(channel.send, RESET_TEXT)
+            # Geen dag → algemene melding via notificatiebericht
+            from apps.utils.mention_utils import send_temporary_mention
+
+            await send_temporary_mention(channel, mentions="@everyone", text=RESET_TEXT.replace("@everyone ", ""))
             await interaction.followup.send(
                 "Algemene melding is verstuurd.", ephemeral=True
             )

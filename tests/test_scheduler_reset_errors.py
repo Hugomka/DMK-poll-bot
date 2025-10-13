@@ -37,6 +37,9 @@ class ResetErrorsTestCase(BaseTestCase):
 
         bot = type("B", (), {"guilds": [FakeGuild()]})()
 
+        async def fake_send_temp_mention(*args, **kwargs):
+            raise RuntimeError("send failed")
+
         with patch.object(scheduler, "datetime", FixedDateTime), patch.object(
             scheduler, "get_channels", side_effect=lambda g: g.text_channels
         ), patch.object(
@@ -45,6 +48,8 @@ class ResetErrorsTestCase(BaseTestCase):
             scheduler, "clear_message_id"
         ), patch.object(
             scheduler, "TZ", TZ
+        ), patch.object(
+            scheduler, "send_temporary_mention", side_effect=fake_send_temp_mention
         ):
             # save_message_id bestaat niet in scheduler → niet patchen
             await scheduler.reset_polls(bot)  # mag niet crashen
@@ -88,7 +93,7 @@ class ResetErrorsTestCase(BaseTestCase):
             ),
             patch("apps.utils.poll_storage.save_votes_scoped", mock_save),
             patch.object(scheduler, "clear_message_id"),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock),
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock),
         ):
             result = await scheduler.reset_polls(bot)
 
@@ -134,7 +139,7 @@ class ResetErrorsTestCase(BaseTestCase):
             patch.object(
                 scheduler, "clear_message_id", side_effect=fake_clear_message_id
             ),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock),
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock),
         ):
             result = await scheduler.reset_polls(bot)
 
@@ -143,8 +148,8 @@ class ResetErrorsTestCase(BaseTestCase):
         # Assert: reset_votes_scoped wel aangeroepen
         mock_reset.assert_awaited_once()
 
-    async def test_reset_polls_safe_call_exception_continue(self):
-        """Test dat exception in safe_call (resetbericht) wordt genegeerd."""
+    async def test_reset_polls_send_temporary_mention_exception_continue(self):
+        """Test dat exception in send_temporary_mention (resetbericht) wordt genegeerd."""
 
         class Channel:
             def __init__(self, id):
@@ -165,8 +170,8 @@ class ResetErrorsTestCase(BaseTestCase):
         def fake_get_message_id(_cid, _key):
             return 999
 
-        async def fake_safe_call(*_args, **_kwargs):
-            raise RuntimeError("safe_call failed")
+        async def fake_send_temp_mention(*_args, **_kwargs):
+            raise RuntimeError("send_temporary_mention failed")
 
         with (
             patch.object(scheduler, "_within_reset_window", return_value=True),
@@ -178,11 +183,11 @@ class ResetErrorsTestCase(BaseTestCase):
                 scheduler, "reset_votes_scoped", new_callable=AsyncMock
             ) as mock_reset,
             patch.object(scheduler, "clear_message_id"),
-            patch.object(scheduler, "safe_call", side_effect=fake_safe_call),
+            patch.object(scheduler, "send_temporary_mention", side_effect=fake_send_temp_mention),
         ):
             result = await scheduler.reset_polls(bot)
 
-        # Assert: True geretourneerd (exception in safe_call genegeerd)
+        # Assert: True geretourneerd (exception in send_temporary_mention genegeerd)
         self.assertTrue(result)
         # Assert: reset_votes_scoped wel aangeroepen
         mock_reset.assert_awaited_once()
@@ -222,7 +227,7 @@ class ResetErrorsTestCase(BaseTestCase):
                 scheduler, "reset_votes_scoped", new_callable=AsyncMock
             ) as mock_reset,
             patch.object(scheduler, "clear_message_id"),
-            patch.object(scheduler, "safe_call", new_callable=AsyncMock),
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock),
         ):
             result = await scheduler.reset_polls(bot)
 
