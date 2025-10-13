@@ -38,6 +38,7 @@ from apps.utils.message_builder import (
 )
 from apps.utils.poll_message import (
     clear_message_id,
+    create_notification_message,
     get_message_id,
     is_channel_disabled,
     save_message_id,
@@ -79,7 +80,7 @@ def _is_poll_channel(channel) -> bool:
         return False
     if not cid:
         return False
-    for key in ("vrijdag", "zaterdag", "zondag", "stemmen"):
+    for key in ("vrijdag", "zaterdag", "zondag", "stemmen", "notification"):
         try:
             if get_message_id(cid, key):
                 return True
@@ -185,7 +186,7 @@ class DMKPoll(commands.Cog):
                 # Direct updaten volgens zichtbaarheid + beslissingsregel
                 await update_poll_message(channel, dag)
 
-            # Vierde bericht: één vaste knop “🗳️ Stemmen”
+            # Vierde bericht: één vaste knop "🗳️ Stemmen"
             key = "stemmen"
             tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
             s_mid = get_message_id(channel.id, key)
@@ -211,6 +212,13 @@ class DMKPoll(commands.Cog):
                 )
                 if s_msg is not None:
                     save_message_id(channel.id, key, s_msg.id)
+
+            # Vijfde bericht: notificatiebericht (leeg, voor later gebruik)
+            n_mid = get_message_id(channel.id, "notification")
+            if not n_mid:
+                # Alleen aanmaken als het nog niet bestaat
+                await create_notification_message(channel)
+
             await interaction.followup.send(
                 "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
                 ephemeral=True,
@@ -410,7 +418,7 @@ class DMKPoll(commands.Cog):
                 # Key altijd opschonen
                 clear_message_id(channel.id, dag)
 
-            # 2) Losse “Stemmen”-bericht ook opruimen
+            # 2) Losse "Stemmen"-bericht ook opruimen
             s_mid = get_message_id(channel.id, "stemmen")
             if s_mid:
                 s_msg = await fetch_message_or_none(channel, s_mid)
@@ -424,13 +432,27 @@ class DMKPoll(commands.Cog):
                         )
                 clear_message_id(channel.id, "stemmen")
 
-            # 3) Kanaal permanent uitzetten voor scheduler (altijd doen)
+            # 3) Notificatiebericht ook opruimen
+            n_mid = get_message_id(channel.id, "notification")
+            if n_mid:
+                n_msg = await fetch_message_or_none(channel, n_mid)
+                if n_msg is not None:
+                    try:
+                        await safe_call(n_msg.delete)
+                    except Exception:
+                        # Als delete niet mag, dan in elk geval neutraliseren
+                        await safe_call(
+                            n_msg.edit, content="📴 Notificaties gesloten.", view=None
+                        )
+                clear_message_id(channel.id, "notification")
+
+            # 4) Kanaal permanent uitzetten voor scheduler (altijd doen)
             try:
                 set_channel_disabled(getattr(channel, "id", 0), True)
             except Exception:
                 pass
 
-            # 4) Terugkoppeling
+            # 5) Terugkoppeling
             if gevonden:
                 await interaction.followup.send(
                     "✅ Polls verwijderd. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
