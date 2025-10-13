@@ -156,7 +156,7 @@ async def update_notification_message(
     content += f"{mentions}\n" if mentions else "\n"
     content += f"{text}" if text else ""
 
-    # Phase 4: Add Stem Nu button if requested
+    # Add Stem Nu button if requested
     view = None
     if show_button and dag and leading_time:
         from apps.ui.stem_nu_button import create_stem_nu_view

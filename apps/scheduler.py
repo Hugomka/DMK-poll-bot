@@ -418,6 +418,44 @@ def setup_scheduler(bot) -> None:
         args=[bot],
         name="Herinnering donderdag",
     )
+    # Misschien voter notifications (17:05, after regular reminders)
+    scheduler.add_job(
+        notify_misschien_voters,
+        CronTrigger(day_of_week="fri", hour=17, minute=5),
+        args=[bot, "vrijdag"],
+        name="Misschien notificatie vrijdag",
+    )
+    scheduler.add_job(
+        notify_misschien_voters,
+        CronTrigger(day_of_week="sat", hour=17, minute=5),
+        args=[bot, "zaterdag"],
+        name="Misschien notificatie zaterdag",
+    )
+    scheduler.add_job(
+        notify_misschien_voters,
+        CronTrigger(day_of_week="sun", hour=17, minute=5),
+        args=[bot, "zondag"],
+        name="Misschien notificatie zondag",
+    )
+    # Convert remaining Misschien votes to ❌ at 18:00
+    scheduler.add_job(
+        convert_remaining_misschien,
+        CronTrigger(day_of_week="fri", hour=18, minute=0),
+        args=[bot, "vrijdag"],
+        name="Convert Misschien vrijdag",
+    )
+    scheduler.add_job(
+        convert_remaining_misschien,
+        CronTrigger(day_of_week="sat", hour=18, minute=0),
+        args=[bot, "zaterdag"],
+        name="Convert Misschien zaterdag",
+    )
+    scheduler.add_job(
+        convert_remaining_misschien,
+        CronTrigger(day_of_week="sun", hour=18, minute=0),
+        args=[bot, "zondag"],
+        name="Convert Misschien zondag",
+    )
     scheduler.start()
     asyncio.create_task(_run_catch_up_with_lock(bot))
 
@@ -548,7 +586,7 @@ async def notify_non_voters(
             cid = getattr(ch, "id", "0") or "0"
             votes = await load_votes(gid, cid) or {}
 
-            # Phase 3: Calculate leading time at 17:00 (for potential use in Phase 4)
+            # Calculate leading time at 17:00 for vote analysis
             if dag:
                 try:
                     leading_time = await calculate_leading_time(gid, cid, dag)
@@ -924,3 +962,219 @@ async def notify_for_channel(channel, dag: str) -> bool:
     except Exception:
         # In commands willen we nooit crashen
         return False
+
+
+# ========================================================================
+# Misschien Confirmation Flow (17:00 - 18:00)
+# ========================================================================
+
+
+async def notify_misschien_voters(bot, dag: str) -> None:
+    """
+    Notify "Misschien" voters at 17:00 with Stem Nu button.
+
+    Flow:
+    1. Find all users with "misschien" vote for this dag
+    2. Calculate leading time (19:00 or 20:30)
+    3. Send temporary mention with "Stem nu" button
+    4. Button persists until 18:00
+
+    Args:
+        bot: Discord bot instance
+        dag: Day to notify for (vrijdag, zaterdag, zondag)
+    """
+    log_job("misschien_notify", dag=dag, status="executed")
+
+    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
+    deny_names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    allow_from_per_channel_only = os.getenv(
+        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+    ).lower() in {"1", "true", "yes", "y"}
+
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            cid = getattr(channel, "id", 0)
+            if is_channel_disabled(cid):
+                continue
+
+            # Check DENY_CHANNEL_NAMES
+            ch_name = (getattr(channel, "name", "") or "").lower()
+            if ch_name in deny_names:
+                continue
+
+            # Check ALLOW_FROM_PER_CHANNEL_ONLY
+            if allow_from_per_channel_only:
+                try:
+                    has_poll = any(
+                        get_message_id(cid, key)
+                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
+                    )
+                    if not has_poll:
+                        continue
+                except Exception:
+                    continue
+
+            gid = getattr(guild, "id", "0")
+            votes = await load_votes(gid, cid) or {}
+
+            # Find "misschien" voters for this dag
+            misschien_voter_ids: set[str] = set()
+            channel_members = getattr(channel, "members", [])
+            channel_member_ids = {str(getattr(m, "id", "")): m for m in channel_members}
+
+            for uid, per_dag in votes.items():
+                tijden = (per_dag or {}).get(dag, [])
+                if not isinstance(tijden, list):
+                    continue
+
+                if "misschien" in tijden:
+                    # Extract owner ID (handle guests)
+                    actual_uid = (
+                        uid.split("_guest::", 1)[0]
+                        if isinstance(uid, str) and "_guest::" in uid
+                        else uid
+                    )
+                    misschien_voter_ids.add(str(actual_uid))
+
+            # Convert IDs to mentions (deduplicated)
+            misschien_voters: list[str] = []
+            for uid in misschien_voter_ids:
+                try:
+                    member = channel_member_ids.get(uid)
+                    if member and not getattr(member, "bot", False):
+                        mention = getattr(member, "mention", None)
+                        if mention:
+                            misschien_voters.append(mention)
+                except Exception:
+                    continue
+
+            if not misschien_voters:
+                continue  # No misschien voters in this channel
+
+            # Calculate leading time
+            leading_time = None
+            try:
+                leading_time = await calculate_leading_time(gid, cid, dag)
+            except Exception:
+                pass
+
+            if not leading_time:
+                # No clear winner yet, skip for now
+                continue
+
+            # Send temporary mention with button
+            mentions_str = ", ".join(misschien_voters)
+            text = (
+                f"Wil je vanavond meedoen?\n"
+                f"Klik op **Stem nu** om je stem te bevestigen."
+            )
+
+            try:
+                await send_temporary_mention(
+                    channel,
+                    mentions=mentions_str,
+                    text=text,
+                    show_button=True,
+                    dag=dag,
+                    leading_time=leading_time,
+                )
+            except Exception:
+                # Silent fail
+                pass
+
+
+async def convert_remaining_misschien(bot, dag: str) -> None:
+    """
+    Convert remaining "Misschien" votes to ❌ at 18:00.
+
+    Flow:
+    1. Find all users still with "misschien" vote for this dag
+    2. Convert their votes to "niet meedoen"
+    3. Update poll messages
+    4. Clear button from notification message
+
+    Args:
+        bot: Discord bot instance
+        dag: Day to convert for (vrijdag, zaterdag, zondag)
+    """
+    log_job("convert_misschien", dag=dag, status="executed")
+
+    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
+    deny_names = set(
+        n.strip().lower()
+        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
+        if n.strip()
+    )
+    allow_from_per_channel_only = os.getenv(
+        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
+    ).lower() in {"1", "true", "yes", "y"}
+
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            cid = getattr(channel, "id", 0)
+            if is_channel_disabled(cid):
+                continue
+
+            # Check DENY_CHANNEL_NAMES
+            ch_name = (getattr(channel, "name", "") or "").lower()
+            if ch_name in deny_names:
+                continue
+
+            # Check ALLOW_FROM_PER_CHANNEL_ONLY
+            if allow_from_per_channel_only:
+                try:
+                    has_poll = any(
+                        get_message_id(cid, key)
+                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
+                    )
+                    if not has_poll:
+                        continue
+                except Exception:
+                    continue
+
+            gid = getattr(guild, "id", "0")
+            votes = await load_votes(gid, cid) or {}
+
+            # Find remaining "misschien" voters and convert them
+            converted_any = False
+            for uid, per_dag in votes.items():
+                tijden = (per_dag or {}).get(dag, [])
+                if not isinstance(tijden, list):
+                    continue
+
+                if "misschien" in tijden:
+                    # Convert to "niet meedoen"
+                    try:
+                        from apps.utils.poll_storage import remove_vote, add_vote
+
+                        await remove_vote(str(uid), dag, "misschien", gid, cid)
+                        await add_vote(str(uid), dag, "niet meedoen", gid, cid)
+                        converted_any = True
+                    except Exception:
+                        continue
+
+            # Update poll message if we converted anyone
+            if converted_any:
+                try:
+                    await schedule_poll_update(channel, dag, delay=0.0)
+                except Exception:
+                    pass
+
+            # Clear button from notification (set show_button=False)
+            try:
+                from apps.utils.poll_message import update_notification_message
+
+                await update_notification_message(
+                    channel,
+                    mentions="",
+                    text="",
+                    show_button=False,
+                    dag="",
+                    leading_time="",
+                )
+            except Exception:
+                pass

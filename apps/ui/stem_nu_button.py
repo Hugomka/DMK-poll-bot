@@ -1,6 +1,6 @@
 # apps/ui/stem_nu_button.py
 #
-# Phase 4: "Stem Nu" button voor Misschien-bevestiging (17:00-18:00)
+# "Stem Nu" button voor Misschien-bevestiging (17:00-18:00)
 #
 # Flow:
 # 1. Gebruiker klikt "Stem nu"
