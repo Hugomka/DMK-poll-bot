@@ -194,11 +194,14 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify sleep was called
         mock_sleep.assert_called_once_with(0.01)
 
-        # Verify edit was called with cleaned content
+        # Verify safe_call was called with edit function and cleaned content
         mock_safe_call.assert_called_once()
-        call_args = mock_safe_call.call_args
-        self.assertIn("Please respond", call_args[0])
-        self.assertNotIn("<@", str(call_args))
+        call_kwargs = mock_safe_call.call_args[1]
+        self.assertIn("content", call_kwargs)
+        cleaned_content = call_kwargs["content"]
+        self.assertIn("Please respond", cleaned_content)
+        self.assertNotIn("<@123456>", cleaned_content)
+        self.assertNotIn("<@!789012>", cleaned_content)
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
