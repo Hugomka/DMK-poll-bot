@@ -8,20 +8,20 @@
 ![Stars](https://img.shields.io/github/stars/Hugomka/DMK-poll-bot?style=social)
 [![Coverage](https://img.shields.io/codecov/c/github/Hugomka/DMK-poll-bot?label=Coverage)](https://codecov.io/gh/Hugomka/DMK-poll-bot)
 
-**DMK-poll-bot** is een slimme, volledig automatische Discord-bot om weekenden te plannen voor **Deaf Mario Kart (DMK)**.  
-Deze bot is speciaal gemaakt voor de DMK-community, zodat het organiseren van game-avonden soepel en eerlijk gaat.  
+**DMK-poll-bot** is een slimme, volledig automatische Discord-bot om weekenden te plannen voor **Deaf Mario Kart (DMK)**.
+Deze bot is speciaal gemaakt voor de DMK-community, zodat het organiseren van game-avonden soepel en eerlijk gaat.
 Je hoeft niet langer te puzzelen met reacties: de bot regelt de poll, verzamelt stemmen en communiceert duidelijk de uitkomst.
 
 ---
 
 ## 🔰 Introductie
 
-DMK-poll-bot helpt de **DMK club** bij het plannen van races in het weekend. Elke week start de bot een nieuwe poll voor **vrijdag**, **zaterdag** en **zondag**.  
-Leden stemmen met knopjes, de stemmen blijven tot de deadline verborgen, en de bot beslist automatisch of er genoeg animo is.  
-Ook is er ondersteuning voor **gaststemmen** en een **CSV-archief** van resultaten. Kortom: een toegankelijke, gebruiksvriendelijke poll die past bij onze Discord-community 😊.
+DMK-poll-bot helpt de **DMK club** bij het plannen van races in het weekend. Elke week start de bot een nieuwe poll voor **vrijdag**, **zaterdag** en **zondag**.
+Leden stemmen met knopjes, de stemmen blijven tot de deadline verborgen, en de bot beslist automatisch of er genoeg animo is.
+Ook is er ondersteuning voor **gaststemmen** en een **CSV-archief** van resultaten. Kortom: een toegankelijke, gebruiksvriendelijke poll die past bij onze Discord-community.
 
-**Waarom deze bot?**  
-Vroeger deden we dit met handmatige polls of reacties. Dat was onoverzichtelijk en kostte tijd.  
+**Waarom deze bot?**
+Vroeger deden we dit met handmatige polls of reacties. Dat was onoverzichtelijk en kostte tijd.
 Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met één klik stemmen, resultaten komen precies op tijd, en de beslissing volgt vaste DMK-regels.
 
 ---
@@ -33,13 +33,15 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **🗳️ Stemmen per dag** | Voor vrijdag, zaterdag en zondag elk een eigen poll met opties. |
 | **✅ Aanpasbare pollopties** | Tijden/opties via `poll_options.json` (standaard 19:00, 20:30, misschien, niet meedoen). |
 | **🔒 Veilige opslag** | Stemmen in `votes.json` met async lock, zodat alles stabiel en snel blijft. |
-| **⏰ Automatische scheduler** | Nieuwe week op maandag, dag-updates om 18:00, notificaties bij “gaat door”. |
+| **⏰ Automatische scheduler** | Nieuwe week op dinsdag 20:00, dag-updates om 18:00, herinneringen om 17:00, notificaties bij "gaat door". |
 | **🏁 Automatische beslissing** | Op de dag zelf na de deadline: ≥6 stemmen nodig; bij gelijkstand wint **20:30**. |
-| **📢 Notificaties naar stemmers** | Als een avond doorgaat, mentiont de bot alle stemmers van het winnende tijdstip. |
+| **📢 Slimme notificaties** | Herinneringen voor niet-stemmers, Misschien-bevestiging, en mentions bij doorgaan-berichten. |
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
-| **💬 Slash commando's** | `/dmk-poll on/reset/pauze/verwijderen/stemmen/status`, archief downloaden/verwijderen, en gast-commando's. |
+| **💬 Slash commando's** | `/dmk-poll-on/reset/pauze/verwijderen/stemmen/status/notify`, archief downloaden/verwijderen, en gast-commando's. |
 | **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen en optioneel namen. |
+| **🔄 Misschien-conversie** | Wie om 17:00 "misschien" heeft gestemd krijgt een bevestigingsknop; om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen". |
+| **🔔 Privacy-vriendelijke mentions** | Tijdelijke mentions (2 sec zichtbaar voor herinneringen), persistente mentions (tot 23:00 voor "gaat door"-berichten). |
 
 ---
 
@@ -49,14 +51,15 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 
 | Commando | Uitleg |
 |---|---|
-| **`/dmk-poll-on`** *(default: admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten en een 4e bericht met de **🗳️ Stemmen**-knop in het huidige kanaal. |
-| **`/dmk-poll-reset`** *(default: admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. Namen-uit standaard. |
+| **`/dmk-poll-on`** *(default: admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten, een openingsbericht met `@everyone`, de **🗳️ Stemmen**-knop en een notificatiebericht in het huidige kanaal. |
+| **`/dmk-poll-reset`** *(default: admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. |
 | **`/dmk-poll-pauze`** *(default: admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
 | **`/dmk-poll-verwijderen`** *(default: admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-archief-download`** *(default: admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |
 | **`/dmk-poll-archief-verwijderen`** *(default: admin/mod)* | Verwijder het volledige CSV-archief. |
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
+| **`/dmk-poll-notify`** *(default: admin/mod)* | Stuur handmatig een notificatie. Zonder dag: algemene resetmelding. Met dag: notificatie voor niet-stemmers van die specifieke dag. |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
 
@@ -66,7 +69,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 
 ## 🔐 Rechten per server instellen
 
-De defaults staan in de bot (sommige commands *(default: admin/mod)*, andere voor iedereen).  
+De defaults staan in de bot (sommige commands *(default: admin/mod)*, andere voor iedereen).
 Beheerders en moderators kunnen dit per server **aanpassen** via Discord:
 
 1. Ga naar **Server Settings → Integrations → [jouw bot] → Commands**.
@@ -79,18 +82,22 @@ Beheerders en moderators kunnen dit per server **aanpassen** via Discord:
 
 ## 👥 Stemmen met gasten
 
-- **Gast toevoegen:**  
-  Voorbeeld:  
-```/gast-add slot:"Zaterdag 19:00" namen:"Anna, Piet"```
+- **Gast toevoegen:**
+  Voorbeeld:
+```
+/gast-add slot:"Zaterdag 19:00" namen:"Anna, Piet"
+```
 
 Je kunt meerdere namen scheiden met komma's of `;`. De bot meldt welke gasten zijn toegevoegd en welke al bestonden.
 
-- **Gast verwijderen:**  
-Voorbeeld:  
-```/gast-remove slot:"Zaterdag 19:00" namen:"Piet"```
+- **Gast verwijderen:**
+Voorbeeld:
+```
+/gast-remove slot:"Zaterdag 19:00" namen:"Piet"
+```
 De bot meldt welke namen zijn verwijderd of niet gevonden.
 
-**Hoe telt dit mee?** Elke gast telt als een **extra stem** op dat tijdstip, gekoppeld aan jouw account. In de openbare poll zie je alleen aantallen. In `/dmk-poll-status` worden stemmen gegroepeerd per eigenaar, bv.:  
+**Hoe telt dit mee?** Elke gast telt als een **extra stem** op dat tijdstip, gekoppeld aan jouw account. In de openbare poll zie je alleen aantallen. In `/dmk-poll-status` worden stemmen gegroepeerd per eigenaar, bv.:
 `@Johan (@Johan: Tim, Kim), @Piet`
 
 ---
@@ -101,20 +108,20 @@ De stemopties staan in **`poll_options.json`**. Standaard:
 
 ```json
 [
-{ "dag": "vrijdag",  "tijd": "om 19:00 uur", "emoji": "🔴" },
-{ "dag": "vrijdag",  "tijd": "om 20:30 uur", "emoji": "🟠" },
-{ "dag": "vrijdag",  "tijd": "misschien",    "emoji": "Ⓜ️" },
-{ "dag": "vrijdag",  "tijd": "niet meedoen", "emoji": "❌" },
+  { "dag": "vrijdag",  "tijd": "om 19:00 uur", "emoji": "🔴" },
+  { "dag": "vrijdag",  "tijd": "om 20:30 uur", "emoji": "🟠" },
+  { "dag": "vrijdag",  "tijd": "misschien",    "emoji": "Ⓜ️" },
+  { "dag": "vrijdag",  "tijd": "niet meedoen", "emoji": "❌" },
 
-{ "dag": "zaterdag", "tijd": "om 19:00 uur", "emoji": "🟡" },
-{ "dag": "zaterdag", "tijd": "om 20:30 uur", "emoji": "⚪" },
-{ "dag": "zaterdag", "tijd": "misschien",    "emoji": "Ⓜ️" },
-{ "dag": "zaterdag", "tijd": "niet meedoen", "emoji": "❌" },
+  { "dag": "zaterdag", "tijd": "om 19:00 uur", "emoji": "🟡" },
+  { "dag": "zaterdag", "tijd": "om 20:30 uur", "emoji": "⚪" },
+  { "dag": "zaterdag", "tijd": "misschien",    "emoji": "Ⓜ️" },
+  { "dag": "zaterdag", "tijd": "niet meedoen", "emoji": "❌" },
 
-{ "dag": "zondag",   "tijd": "om 19:00 uur", "emoji": "🟢" },
-{ "dag": "zondag",   "tijd": "om 20:30 uur", "emoji": "🔵" },
-{ "dag": "zondag",   "tijd": "misschien",    "emoji": "Ⓜ️" },
-{ "dag": "zondag",   "tijd": "niet meedoen", "emoji": "❌" }
+  { "dag": "zondag",   "tijd": "om 19:00 uur", "emoji": "🟢" },
+  { "dag": "zondag",   "tijd": "om 20:30 uur", "emoji": "🔵" },
+  { "dag": "zondag",   "tijd": "misschien",    "emoji": "Ⓜ️" },
+  { "dag": "zondag",   "tijd": "niet meedoen", "emoji": "❌" }
 ]
 ```
 
@@ -205,14 +212,41 @@ journalctl -u dmk-bot -f
 
 ## 🔧 Technische details
 
-**Map-structuur**
+### Map-structuur
 
-* `apps/commands/` – Slash commando's (o.a. `dmk_poll.py`).
-* `apps/ui/` – Discord UI: knoppen en views (bv. stemmen, naam-toggle, archief-knop).
-* `apps/utils/` – Opslag (`poll_storage.py`, `poll_settings.py`), berichtenbouw (`message_builder.py`), scheduler (`scheduler.py`), archief (`archive.py`).
-* `main.py` – Start de bot, registreert scheduler en commando's.
+```
+DMK-poll-bot/
+├── apps/
+│   ├── commands/           # Slash commando's
+│   │   └── dmk_poll.py    # Alle /dmk-poll-* commando's en /gast-* commando's
+│   ├── ui/                 # Discord UI componenten
+│   │   ├── poll_buttons.py        # Poll stemknoppen en views
+│   │   ├── stem_nu_button.py      # "Stem Nu" knop voor Misschien-bevestiging
+│   │   └── archive_view.py        # Archief download view met verwijder-knop
+│   ├── utils/              # Hulpfuncties
+│   │   ├── poll_storage.py        # Stem-opslag (votes.json)
+│   │   ├── poll_settings.py       # Poll-instellingen (pauze, zichtbaarheid)
+│   │   ├── poll_message.py        # Bericht-ID opslag en updates
+│   │   ├── message_builder.py     # Poll-bericht constructie
+│   │   ├── archive.py              # CSV-archief beheer
+│   │   ├── mention_utils.py       # Tijdelijke/persistente mentions
+│   │   ├── discord_client.py      # Discord API helpers
+│   │   └── logger.py               # Logging utilities
+│   ├── logic/              # Business logic
+│   │   ├── decision.py             # Beslissingsregels (wie wint?)
+│   │   └── visibility.py           # Zichtbaarheidslogica (verbergen/tonen)
+│   ├── entities/           # Data models
+│   │   └── poll_option.py          # Poll optie dataclass
+│   └── scheduler.py        # APScheduler taken (reset, herinneringen, notificaties)
+├── tests/                  # Unittests (100+ tests)
+├── main.py                 # Bot entry point
+├── poll_options.json       # Config van stemopties
+├── opening_message.txt     # Aanpasbare openingstekst voor polls
+├── requirements.txt        # Runtime dependencies
+└── dev-requirements.txt    # Development dependencies (tests, linting)
+```
 
-**Belangrijke data-bestanden**
+### Belangrijke data-bestanden
 
 | Bestand/map               | Doel                                                                             |
 | ------------------------- | -------------------------------------------------------------------------------- |
@@ -221,32 +255,64 @@ journalctl -u dmk-bot -f
 | `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen.        |
 | `poll_message.json`       | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
 | `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
+| `opening_message.txt`     | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
+| `.scheduler_state.json`   | State van de scheduler (laatste uitvoering van jobs).                            |
 
-**Archief**
-Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen. Downloaden en wissen kan met de archief-commando's.
+### Archief
 
-**Beslissingsregels**
+Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen. Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/{guild_id}/{channel_id}/dmk_archive.csv`.
 
-* Beslissing alleen op de **dag zelf** na de **deadline**.
-* **Minimaal 6 stemmen** nodig.
+### Beslissingsregels
+
+* Beslissing alleen op de **dag zelf** na de **deadline** (standaard 18:00).
+* **Minimaal 6 stemmen** nodig (configureerbaar via `MIN_NOTIFY_VOTES`).
 * **Gelijk aantal? → 20:30 wint.**
 * Anders wint het tijdstip met de meeste stemmen.
-* Te weinig stemmen? → “Gaat niet door.”
+* Te weinig stemmen? → "Gaat niet door."
 
-**Tijdzone**
+### Tijdzone
+
 Alle tijden zijn in **Europe/Amsterdam** (CET/CEST).
 
 ---
 
 ## ⏰ Automatisering (scheduler)
 
-* **Maandag 00:00** – Nieuwe week: stemmen leeg + (optioneel) nieuwe poll klaarzetten.
-* **Vrij/Za/Zo 18:00** –
+De bot gebruikt APScheduler voor automatische taken:
 
-  * Aantallen in kanaal tonen (voorheen verborgen).
-  * Beslissingsregel toevoegen onder de poll.
-  * **Notificatie** sturen met mentions van stemmers op de winnende tijd (alleen bij ≥6).
-* Archiveren gebeurt automatisch bij het resetmoment/nieuwe week.
+| Tijdstip | Dag | Taak | Beschrijving |
+|---|---|---|---|
+| **Dinsdag 20:00** | Wekelijks | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
+| **17:00** | Vrijdag, Zaterdag, Zondag | Herinnering niet-stemmers | Mention sturen naar leden die nog niet gestemd hebben voor die dag (tijdelijk, 2 sec) |
+| **17:05** | Vrijdag, Zaterdag, Zondag | Misschien-bevestiging | "Stem Nu" knop sturen naar Misschien-stemmers met leidende tijd |
+| **18:00** | Dagelijks | Poll-update | Aantallen tonen, beslissingsregel toevoegen onder de poll |
+| **18:00** | Vrijdag, Zaterdag, Zondag | Misschien-conversie | Resterende "misschien"-stemmen omzetten naar "niet meedoen" |
+| **18:05** | Vrijdag, Zaterdag, Zondag | Doorgaan-notificatie | Mentions van stemmers op winnende tijd (≥6), bericht blijft tot 23:00 |
+| **20:00** | Donderdag | Vroege herinnering | Mention naar leden die nog helemaal niet gestemd hebben (tijdelijk, 2 sec) |
+| **23:00** | Automatisch | Mention cleanup | Verwijder mentions uit "gaat door"-berichten |
+
+### Notificatiesysteem
+
+De bot heeft een slim notificatiesysteem met privacy in gedachten:
+
+1. **Tijdelijke mentions** (2 seconden zichtbaar):
+   - Herinneringen voor niet-stemmers
+   - Reset-meldingen (@everyone)
+   - Gebruikers krijgen wel een notificatie op hun apparaat, maar de mention verdwijnt snel uit het kanaal
+
+2. **Persistente mentions** (tot 23:00):
+   - "Gaat door"-berichten voor deelnemers
+   - Blijven zichtbaar tot 23:00, daarna worden mentions automatisch verwijderd
+   - Dit zorgt ervoor dat deelnemers de hele dag kunnen zien wie er meedoet
+
+3. **Misschien-bevestiging** (17:00-18:00):
+   - Stemmers met "misschien" krijgen een "Stem Nu" knop
+   - Kunnen bevestigen (Ja → winnende tijd) of afzeggen (Nee → niet meedoen)
+   - Om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen"
+
+### Catch-up mechanisme
+
+Bij herstart voert de bot automatisch **gemiste jobs** uit (maximaal 1x per job). Dit voorkomt dubbele uitvoeringen bij snelle herstarts. State wordt bijgehouden in `.scheduler_state.json` met file-locking via `.scheduler.lock`.
 
 De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laag).
 
@@ -254,21 +320,24 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ## 📊 Status & archief
 
-**Status bekijken** (`/dmk-poll-status`)
+### Status bekijken (`/dmk-poll-status`)
 
 * Ephemeral bericht (alleen jij ziet het).
 * Toont pauze-/namen-status en per dag de aantallen.
 * Namen kunnen ook getoond worden (gegroepeerd met gasten), afhankelijk van je instelling.
 
-**Archief**
+### Archief
 
-* **Download:** `/dmk-poll-archief-download` → bot uploadt `dmk_archive.csv`.
-* **Verwijderen:** `/dmk-poll-archief-verwijderen` → wist het CSV-archief.
+* **Download:** `/dmk-poll-archief-download` → bot uploadt `dmk_archive.csv` voor dit kanaal.
+* **Verwijderen:** `/dmk-poll-archief-verwijderen` → wist het CSV-archief voor dit kanaal.
 * Archief groeit met 1 regel per week (na reset).
+* Archief is **per guild en per kanaal**, zodat meerdere Discord-servers of meerdere kanalen op dezelfde server hun eigen archief hebben.
 
 ---
 
 ## 🧪 Testen en dekking
+
+De bot heeft **100+ unittests** met uitgebreide dekking van alle functionaliteit.
 
 Alle unittests draaien met:
 ```bash
@@ -282,19 +351,103 @@ coverage report
 coverage xml
 ```
 
-> De coverage‑badge bovenaan werkt zodra de CI een `coverage.xml` heeft geüpload naar Codecov.
+> De coverage-badge bovenaan werkt zodra de CI een `coverage.xml` heeft geüpload naar Codecov.
+
+### Test-overzicht
+
+De tests dekken onder andere:
+- Poll-opslag (stemmen toevoegen/verwijderen/resetten)
+- Poll-settings (pauze, zichtbaarheid, namen tonen)
+- Message builder (bericht-constructie met verborgen aantallen)
+- Beslissingslogica (winnaar bepalen, gelijkstand, minimum stemmen)
+- Scheduler (catch-up, reset venster, gemiste jobs)
+- UI components (poll buttons, Stem Nu button, archief view)
+- Gaststemmen (toevoegen, verwijderen, groepering)
+- Notificaties (tijdelijk, persistent, Misschien-flow)
+- Discord client mocking (veilige API calls)
 
 ---
 
-## 📁 Technische details
+## 🎨 Aanpasbaar openingsbericht
 
-(dit deel blijft zoals in je oorspronkelijke README – mapstructuur, archief, beslissingsregels, tijdzone, enz.)
+Het openingsbericht boven de polls kan aangepast worden via `opening_message.txt`. Dit bestand kan:
+- `@everyone` mentions bevatten
+- Markdown opmaak gebruiken (vet, italic, kopjes)
+- Emoji's bevatten
+- Meerdere regels hebben
+
+**Standaard bericht:**
+```
+@everyone
+# 🎮 **Welkom bij de DMK-poll!**
+
+Elke week organiseren we DMK-avonden op vrijdag, zaterdag en zondag. Stem hieronder op de avonden waarop jij mee wilt doen! De stemmen blijven verborgen tot de deadline van 18:00 uur. Heb je nog niet gestemd of misschien gestemd? Dan krijg je 1 uur voor de deadline een herinnering. Als je dan nog niet stemt, wordt je stem automatisch omgezet naar 'niet meedoen'. Dus wees op tijd als je graag mee wilt doen, en zet de meldingen voor dit kanaal aan.
+
+ℹ️ **Stem alsjeblieft op elke dag, ook als je denkt niet mee te doen. Zo blijft het overzicht duidelijk.**
+
+📅 **Hoe werkt het?**
+• Klik op **🗳️ Stemmen** om je keuzes aan te geven
+• Je kunt meerdere tijden kiezen
+• Je kunt je stem altijd aanpassen
+
+👥 **Gasten meebrengen?**
+Gebruik `/gast-add` om gasten toe te voegen aan je stem.
+
+Veel plezier! 🎉
+```
+
+Als het bestand niet bestaat of niet gelezen kan worden, gebruikt de bot een fallback-bericht.
 
 ---
 
 ## 🔮 Toekomst / tips
 
 * Extra dagen of andere tijden? Pas `poll_options.json` aan (let op archieflogica).
-* Mogelijke uitbreiding: reminders sturen naar niet-stemmers.
+* Scheduler-tijden aanpassen? Bewerk `poll_settings.json` (niet-gedocumenteerd, zie `apps/scheduler.py` voor details).
 * De bot is op maat voor DMK, maar kan met kleine aanpassingen ook elders gebruikt worden.
-* Feedback/ideeën zijn welkom. Veel race-plezier! 🎮🏁
+* Feedback/ideeën zijn welkom via GitHub Issues. Veel race-plezier! 🎮🏁
+
+---
+
+## 📝 Ontwikkeltips
+
+### Code-stijl
+
+De bot volgt Python best practices:
+- Type hints voor alle functies
+- Docstrings voor publieke API's
+- Async/await voor alle I/O operaties
+- Exception handling met fallbacks
+- Defensive programming (safe_call helpers)
+
+### Nieuwe features toevoegen
+
+1. Schrijf eerst tests in `tests/`
+2. Implementeer de feature
+3. Update de README
+4. Test met `python -m unittest discover -v`
+5. Check coverage met `coverage report`
+
+### Debugging
+
+De bot logt alle scheduler-jobs naar stdout. Bij problemen:
+```bash
+# Lokaal draaien met logs
+python main.py
+
+# Systemd logs bekijken
+journalctl -u dmk-bot -f
+
+# Scheduler state checken
+cat .scheduler_state.json
+```
+
+---
+
+## 📄 Licentie
+
+Deze bot is open source. Zie [LICENSE](LICENSE) voor details.
+
+---
+
+**Gemaakt met ❤️ voor de Deaf Mario Kart community**
