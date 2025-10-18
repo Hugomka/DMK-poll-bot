@@ -5,18 +5,15 @@ Tests for mention utility functions (temporary and persistent mentions).
 """
 
 import unittest
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytz
-
 from apps.utils.mention_utils import (
-    _cleanup_mentions_at_23,
+    _delete_message_after_delay,
+    _remove_mentions_after_delay,
+    _remove_persistent_mentions_after_delay,
     send_persistent_mention,
     send_temporary_mention,
 )
-
-TZ = pytz.timezone("Europe/Amsterdam")
 
 
 def _consume_coro_task():
@@ -40,96 +37,141 @@ def _consume_coro_task():
 class TemporaryMentionTestCase(unittest.IsolatedAsyncioTestCase):
     """Test temporary mention functionality."""
 
-    @patch("apps.utils.mention_utils.update_notification_message")
-    @patch("asyncio.sleep")
-    async def test_send_temporary_mention_basic(self, mock_sleep, mock_update):
-        """Test that temporary mention shows and then hides mentions."""
-        mock_update.return_value = AsyncMock()
-        mock_sleep.return_value = AsyncMock()
+    @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_send_temporary_mention_basic(
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
+    ):
+        """Test that temporary mention sends new message and schedules tasks."""
+        mock_create_task.side_effect = _consume_coro_task()
+        mock_get_msg_id.return_value = None  # No previous message
+
+        # Mock sent message
+        mock_message = MagicMock()
+        mock_message.id = 123
+        mock_safe_call.return_value = mock_message
 
         channel = MagicMock()
+        channel.id = 456
+        channel.send = AsyncMock()
+
         mentions = "@user1, @user2"
         text = "Please vote!"
 
-        await send_temporary_mention(channel, mentions, text, delay=2.0)
+        await send_temporary_mention(channel, mentions, text, delay=5.0)
 
-        # Verify update_notification_message was called twice
-        self.assertEqual(mock_update.call_count, 2)
+        # Verify message was sent
+        mock_safe_call.assert_called_once()
+        call_args = mock_safe_call.call_args[0]
+        self.assertEqual(call_args[0], channel.send)
+        # Verify content includes mentions and text
+        content = mock_safe_call.call_args[1]["content"]
+        self.assertIn(mentions, content)
+        self.assertIn(text, content)
 
-        # First call: with mentions
-        first_call = mock_update.call_args_list[0]
-        self.assertEqual(first_call[0][0], channel)
-        self.assertEqual(first_call[1]["mentions"], mentions)
-        self.assertEqual(first_call[1]["text"], text)
-        self.assertEqual(first_call[1]["show_button"], False)
+        # Verify message ID was saved
+        mock_save_msg_id.assert_called_once_with(456, "notification", 123)
 
-        # Verify sleep was called
-        mock_sleep.assert_called_once_with(2.0)
+        # Verify two tasks were created (privacy removal and auto-delete)
+        self.assertEqual(mock_create_task.call_count, 2)
 
-        # Second call: without mentions
-        second_call = mock_update.call_args_list[1]
-        self.assertEqual(second_call[0][0], channel)
-        self.assertEqual(second_call[1]["mentions"], "")
-        self.assertEqual(second_call[1]["text"], text)
+    @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_send_temporary_mention_deletes_previous(
+        self,
+        mock_safe_call,
+        mock_fetch,
+        mock_get_msg_id,
+        mock_save_msg_id,
+        mock_create_task,
+    ):
+        """Test that temporary mention deletes previous notification."""
+        mock_create_task.side_effect = _consume_coro_task()
 
-    @patch("apps.utils.mention_utils.update_notification_message")
-    @patch("asyncio.sleep")
-    async def test_send_temporary_mention_with_button(self, mock_sleep, mock_update):
-        """Test temporary mention with Stem Nu button."""
-        mock_update.return_value = AsyncMock()
-        mock_sleep.return_value = AsyncMock()
+        # Mock previous message exists
+        old_msg = MagicMock()
+        old_msg.delete = AsyncMock()
+        mock_get_msg_id.return_value = 999
+        mock_fetch.return_value = old_msg
+
+        # Mock new message
+        new_msg = MagicMock()
+        new_msg.id = 123
+        mock_safe_call.return_value = new_msg
 
         channel = MagicMock()
-        mentions = "@user1"
-        text = "Vote now!"
+        channel.id = 456
+        channel.send = AsyncMock()
+
+        await send_temporary_mention(channel, "@user1", "Vote now!")
+
+        # Verify old message was fetched and deleted
+        mock_fetch.assert_called_once()
+        self.assertEqual(mock_safe_call.call_count, 2)  # delete + send
+
+    @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_send_temporary_mention_with_button(
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
+    ):
+        """Test temporary mention with Stem Nu button."""
+        mock_create_task.side_effect = _consume_coro_task()
+        mock_get_msg_id.return_value = None
+
+        mock_message = MagicMock()
+        mock_message.id = 123
+        mock_safe_call.return_value = mock_message
+
+        channel = MagicMock()
+        channel.id = 456
+        channel.send = AsyncMock()
 
         await send_temporary_mention(
             channel,
-            mentions,
-            text,
-            delay=3.0,
+            "@user1",
+            "Vote now!",
+            delay=5.0,
             show_button=True,
             dag="vrijdag",
             leading_time="19:00",
         )
 
-        # Verify both calls included button parameters
-        self.assertEqual(mock_update.call_count, 2)
+        # Verify message was sent with button view
+        mock_safe_call.assert_called_once()
+        self.assertIsNotNone(mock_safe_call.call_args[1].get("view"))
 
-        first_call = mock_update.call_args_list[0]
-        self.assertEqual(first_call[1]["show_button"], True)
-        self.assertEqual(first_call[1]["dag"], "vrijdag")
-        self.assertEqual(first_call[1]["leading_time"], "19:00")
-
-        second_call = mock_update.call_args_list[1]
-        self.assertEqual(second_call[1]["show_button"], True)
-        self.assertEqual(second_call[1]["dag"], "vrijdag")
-        self.assertEqual(second_call[1]["leading_time"], "19:00")
-
-        mock_sleep.assert_called_once_with(3.0)
+        # Verify two tasks were created
+        self.assertEqual(mock_create_task.call_count, 2)
 
 
 class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
     """Test persistent mention functionality."""
 
-    @patch("apps.utils.mention_utils.safe_call")
-    @patch("apps.utils.mention_utils.datetime")
     @patch("asyncio.create_task")
-    async def test_send_persistent_mention_before_23(
-        self, mock_create_task, mock_datetime, mock_safe_call
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_send_persistent_mention_schedules_tasks(
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
     ):
-        """Test persistent mention sent before 23:00 schedules cleanup."""
+        """Test persistent mention schedules privacy removal and auto-delete."""
         mock_create_task.side_effect = _consume_coro_task()
-
-        # Mock current time as 20:00
-        mock_now = datetime(2025, 1, 15, 20, 0, 0, tzinfo=TZ)
-        mock_datetime.now.return_value = mock_now
+        mock_get_msg_id.return_value = None
 
         # Mock sent message
         mock_message = MagicMock()
+        mock_message.id = 123
         mock_safe_call.return_value = mock_message
 
         channel = MagicMock()
+        channel.id = 456
         channel.send = AsyncMock()
 
         result = await send_persistent_mention(channel, "@user1 Test message")
@@ -138,37 +180,48 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, mock_message)
         mock_safe_call.assert_called_once()
 
-        # Verify cleanup was scheduled
-        mock_create_task.assert_called_once()
+        # Verify message ID was saved
+        mock_save_msg_id.assert_called_once_with(456, "notification", 123)
 
-    @patch("apps.utils.mention_utils.safe_call")
-    @patch("apps.utils.mention_utils.datetime")
+        # Verify two tasks were scheduled (privacy removal + 5 hour delete)
+        self.assertEqual(mock_create_task.call_count, 2)
+
     @patch("asyncio.create_task")
-    async def test_send_persistent_mention_after_23(
-        self, mock_create_task, mock_datetime, mock_safe_call
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_send_persistent_mention_deletes_previous(
+        self,
+        mock_safe_call,
+        mock_fetch,
+        mock_get_msg_id,
+        mock_save_msg_id,
+        mock_create_task,
     ):
-        """Test persistent mention sent after 23:00 does NOT schedule cleanup."""
+        """Test persistent mention deletes previous notification."""
         mock_create_task.side_effect = _consume_coro_task()
 
-        # Mock current time as 23:30
-        mock_now = datetime(2025, 1, 15, 23, 30, 0, tzinfo=TZ)
-        mock_datetime.now.return_value = mock_now
+        # Mock previous message exists
+        old_msg = MagicMock()
+        old_msg.delete = AsyncMock()
+        mock_get_msg_id.return_value = 999
+        mock_fetch.return_value = old_msg
 
-        # Mock sent message
-        mock_message = MagicMock()
-        mock_safe_call.return_value = mock_message
+        # Mock new message
+        new_msg = MagicMock()
+        new_msg.id = 123
+        mock_safe_call.return_value = new_msg
 
         channel = MagicMock()
+        channel.id = 456
         channel.send = AsyncMock()
 
-        result = await send_persistent_mention(channel, "@user1 Test message")
+        await send_persistent_mention(channel, "@user1 Test")
 
-        # Verify message was sent
-        self.assertEqual(result, mock_message)
-        mock_safe_call.assert_called_once()
-
-        # Verify cleanup was NOT scheduled
-        mock_create_task.assert_not_called()
+        # Verify old message was deleted
+        mock_fetch.assert_called_once()
+        self.assertEqual(mock_safe_call.call_count, 2)  # delete + send
 
     async def test_send_persistent_mention_no_send_method(self):
         """Test persistent mention with channel that has no send method."""
@@ -179,14 +232,19 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         # Should return None
         self.assertIsNone(result)
 
+    @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
     @patch("apps.utils.mention_utils.safe_call")
     async def test_send_persistent_mention_returns_none_on_failure(
-        self, mock_safe_call
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
     ):
         """Test persistent mention returns None when safe_call fails."""
+        mock_get_msg_id.return_value = None
         mock_safe_call.return_value = None
 
         channel = MagicMock()
+        channel.id = 456
         channel.send = AsyncMock()
 
         result = await send_persistent_mention(channel, "@user1 Test")
@@ -194,15 +252,38 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
 
 
-class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test mention cleanup functionality."""
+class RemoveMentionsTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test mention removal functionality."""
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_cleanup_mentions_removes_user_mentions(
-        self, mock_safe_call, mock_sleep
-    ):
-        """Test that cleanup removes user mentions from message."""
+    async def test_remove_mentions_after_delay(self, mock_safe_call, mock_sleep):
+        """Test that mentions are removed after delay."""
+        mock_sleep.return_value = AsyncMock()
+        mock_safe_call.return_value = AsyncMock()
+
+        mock_message = MagicMock()
+        mock_message.edit = AsyncMock()
+        mock_view = MagicMock()
+
+        await _remove_mentions_after_delay(
+            mock_message, 5.0, "Please vote!", mock_view, True
+        )
+
+        # Verify sleep was called
+        mock_sleep.assert_called_once_with(5.0)
+
+        # Verify message was edited
+        mock_safe_call.assert_called_once()
+        call_kwargs = mock_safe_call.call_args[1]
+        self.assertIn("content", call_kwargs)
+        self.assertIn("Please vote!", call_kwargs["content"])
+        self.assertEqual(call_kwargs["view"], mock_view)
+
+    @patch("asyncio.sleep")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_remove_persistent_mentions(self, mock_safe_call, mock_sleep):
+        """Test that persistent mentions are removed."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
 
@@ -210,10 +291,10 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_message.content = "<@123456> <@!789012> Please respond"
         mock_message.edit = AsyncMock()
 
-        await _cleanup_mentions_at_23(mock_message, 0.01)
+        await _remove_persistent_mentions_after_delay(mock_message, 5.0)
 
         # Verify sleep was called
-        mock_sleep.assert_called_once_with(0.01)
+        mock_sleep.assert_called_once_with(5.0)
 
         # Verify safe_call was called with edit function and cleaned content
         mock_safe_call.assert_called_once()
@@ -226,10 +307,10 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_cleanup_mentions_removes_role_mentions(
+    async def test_remove_mentions_removes_role_mentions(
         self, mock_safe_call, mock_sleep
     ):
-        """Test that cleanup removes role mentions from message."""
+        """Test that cleanup removes role mentions."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
 
@@ -237,7 +318,7 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_message.content = "<@&123456> Important announcement"
         mock_message.edit = AsyncMock()
 
-        await _cleanup_mentions_at_23(mock_message, 0.01)
+        await _remove_persistent_mentions_after_delay(mock_message, 5.0)
 
         mock_safe_call.assert_called_once()
         # Verify role mention was removed
@@ -246,7 +327,7 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_cleanup_mentions_removes_everyone_here(
+    async def test_remove_mentions_removes_everyone_here(
         self, mock_safe_call, mock_sleep
     ):
         """Test that cleanup removes @everyone and @here mentions."""
@@ -257,7 +338,7 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_message.content = "@everyone @here Important message"
         mock_message.edit = AsyncMock()
 
-        await _cleanup_mentions_at_23(mock_message, 0.01)
+        await _remove_persistent_mentions_after_delay(mock_message, 5.0)
 
         mock_safe_call.assert_called_once()
         # Verify @everyone and @here were removed
@@ -265,31 +346,33 @@ class CleanupMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("@everyone", call_args)
         self.assertNotIn("@here", call_args)
 
+
+class DeleteMessageTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test message deletion functionality."""
+
+    @patch("apps.utils.poll_message.clear_message_id")
     @patch("asyncio.sleep")
-    async def test_cleanup_mentions_empty_content(self, mock_sleep):
-        """Test that cleanup handles empty content gracefully."""
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_delete_message_after_delay(
+        self, mock_safe_call, mock_sleep, mock_clear
+    ):
+        """Test that message is deleted after delay."""
         mock_sleep.return_value = AsyncMock()
+        mock_safe_call.return_value = AsyncMock()
 
         mock_message = MagicMock()
-        mock_message.content = ""
-        mock_message.edit = AsyncMock()
+        mock_message.delete = AsyncMock()
 
-        # Should not raise an error
-        await _cleanup_mentions_at_23(mock_message, 0.01)
+        await _delete_message_after_delay(mock_message, 3600.0, 456)
 
-        # Edit should not be called for empty content
-        mock_message.edit.assert_not_called()
+        # Verify sleep was called
+        mock_sleep.assert_called_once_with(3600.0)
 
-    @patch("asyncio.sleep")
-    async def test_cleanup_mentions_no_edit_method(self, mock_sleep):
-        """Test that cleanup handles message without edit method gracefully."""
-        mock_sleep.return_value = AsyncMock()
+        # Verify message was deleted
+        mock_safe_call.assert_called_once()
 
-        mock_message = MagicMock(spec=["content"])  # No edit method
-        mock_message.content = "<@123> Test"
-
-        # Should not raise an error
-        await _cleanup_mentions_at_23(mock_message, 0.01)
+        # Verify message ID was cleared
+        mock_clear.assert_called_once_with(456, "notification")
 
 
 if __name__ == "__main__":

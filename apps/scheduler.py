@@ -38,7 +38,7 @@ CONFIG_PATH = os.getenv("POLL_SETTINGS_FILE", "poll_settings.json")
 MIN_NOTIFY_VOTES = 6
 
 # Nieuw: herinneringstijd en resetinstellingen
-REMINDER_HOUR = 17  # 17:00 uur - stuur herinnering vóór de deadline
+REMINDER_HOUR = 16  # 16:00 uur - stuur herinnering vóór de deadline
 RESET_DAY_OF_WEEK = 1  # 0=ma, 1=di … reset op dinsdag
 RESET_HOUR = 20  # 20:00 uur - resetmoment
 REMINDER_DAYS = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
@@ -196,7 +196,7 @@ async def notify_non_voters_thursday(bot) -> None:
                     if mention:
                         non_voters.append(mention)
             if non_voters:
-                # Gebruik tijdelijke mentions (2 seconden zichtbaar)
+                # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
                 mentions_str = ", ".join(non_voters)
                 text = "Jullie hebben nog niet gestemd voor dit weekend. Graag stemmen vóór 18:00. Dank!"
                 try:
@@ -425,22 +425,22 @@ def setup_scheduler(bot) -> None:
         args=[bot],
         name="Herinnering donderdag",
     )
-    # Misschien voter notifications (17:05, after regular reminders)
+    # Misschien voter notifications (17:00, after regular reminders at 16:00)
     scheduler.add_job(
         notify_misschien_voters,
-        CronTrigger(day_of_week="fri", hour=17, minute=5),
+        CronTrigger(day_of_week="fri", hour=17, minute=0),
         args=[bot, "vrijdag"],
         name="Misschien notificatie vrijdag",
     )
     scheduler.add_job(
         notify_misschien_voters,
-        CronTrigger(day_of_week="sat", hour=17, minute=5),
+        CronTrigger(day_of_week="sat", hour=17, minute=0),
         args=[bot, "zaterdag"],
         name="Misschien notificatie zaterdag",
     )
     scheduler.add_job(
         notify_misschien_voters,
-        CronTrigger(day_of_week="sun", hour=17, minute=5),
+        CronTrigger(day_of_week="sun", hour=17, minute=0),
         args=[bot, "zondag"],
         name="Misschien notificatie zondag",
     )
@@ -664,7 +664,7 @@ async def notify_non_voters(
                 header = "📣 DMK-poll – herinnering\nJe hebt nog niet gestemd voor dit weekend."
             footer = "Stem a.u.b. in deze poll zo snel mogelijk."
 
-            # Gebruik tijdelijke mentions (2 seconden zichtbaar)
+            # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
             mentions_str = ", ".join(to_mention)
             text = f"{header}\n{footer}"
 
@@ -1188,17 +1188,17 @@ async def convert_remaining_misschien(bot, dag: str) -> None:
                 except Exception:
                     pass
 
-            # Clear button from notification (set show_button=False)
+            # Delete notification message if it still exists (should auto-delete after 1 hour anyway)
+            # Since misschien notification is at 17:00 and conversion is at 18:00,
+            # the notification will be auto-deleted. This is a safety cleanup.
             try:
-                from apps.utils.poll_message import update_notification_message
+                from apps.utils.discord_client import fetch_message_or_none
 
-                await update_notification_message(
-                    channel,
-                    mentions="",
-                    text="",
-                    show_button=False,
-                    dag="",
-                    leading_time="",
-                )
+                msg_id = get_message_id(cid, "notification")
+                if msg_id:
+                    msg = await fetch_message_or_none(channel, msg_id)
+                    if msg is not None:
+                        await safe_call(msg.delete)
+                    clear_message_id(cid, "notification")
             except Exception:
                 pass

@@ -206,7 +206,7 @@ class TestSchedulerMisschienFlow(BaseTestCase):
         self.assertEqual(add_args[2], "niet meedoen")  # tijd
 
     async def test_convert_remaining_misschien_clears_button(self):
-        """Test convert_remaining_misschien verwijdert button van notificatiebericht."""
+        """Test convert_remaining_misschien verwijdert notificatiebericht."""
 
         bot = SimpleNamespace(guilds=[])
         guild = SimpleNamespace(id=1)
@@ -217,30 +217,36 @@ class TestSchedulerMisschienFlow(BaseTestCase):
         )
         bot.guilds = [guild]
 
-        # Geen misschien voters, maar check of button wordt verwijderd
+        # Geen misschien voters, maar check of notification wordt verwijderd
         votes = {}
 
         def fake_get_channels(g):
             return [channel] if g == guild else []
 
-        mock_update_notification = AsyncMock()
+        mock_fetch_message = AsyncMock()
+        mock_message = MagicMock()
+        mock_message.delete = AsyncMock()
+        mock_fetch_message.return_value = mock_message
+        mock_safe_call = AsyncMock()
 
         with (
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
             patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
-            patch("apps.utils.poll_message.update_notification_message", mock_update_notification),
+            patch("apps.utils.discord_client.fetch_message_or_none", mock_fetch_message),
+            patch.object(scheduler, "safe_call", mock_safe_call),
+            patch.object(scheduler, "clear_message_id") as mock_clear,
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
         ):
             await scheduler.convert_remaining_misschien(bot, "vrijdag")
 
-        # Assert: update_notification_message aangeroepen met show_button=False
-        mock_update_notification.assert_awaited_once()
-        args, kwargs = mock_update_notification.call_args
-        self.assertFalse(kwargs.get("show_button", True))
+        # Assert: notification bericht werd opgehaald en verwijderd
+        mock_fetch_message.assert_awaited_once_with(channel, 999)
+        mock_safe_call.assert_awaited_once()
+        mock_clear.assert_called_once_with(10, "notification")
 
     async def test_notify_misschien_voters_handles_guest_votes(self):
         """Test notify_misschien_voters extraheert eigenaar van gastenstemmen correct."""
