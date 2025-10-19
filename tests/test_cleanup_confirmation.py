@@ -2,7 +2,7 @@
 #
 # Unit tests voor CleanupConfirmationView en knoppen
 
-from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from discord.ui import Button
@@ -13,6 +13,14 @@ from apps.ui.cleanup_confirmation import (
     YesButton,
 )
 from tests.base import BaseTestCase
+
+
+def _mk_mock_interaction() -> Any:
+    """Maakt een mock interaction object voor testing."""
+    interaction = MagicMock()
+    interaction.response.edit_message = AsyncMock()
+    interaction.followup.send = AsyncMock()
+    return interaction
 
 
 class TestCleanupConfirmationView(BaseTestCase):
@@ -44,7 +52,7 @@ class TestCleanupConfirmationView(BaseTestCase):
 
         on_confirm_called = False
 
-        async def mock_on_confirm(interaction):
+        async def mock_on_confirm(interaction):  # type: ignore
             nonlocal on_confirm_called
             on_confirm_called = True
 
@@ -54,17 +62,14 @@ class TestCleanupConfirmationView(BaseTestCase):
         )
 
         # Mock interaction
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(edit_message=AsyncMock()),
-            followup=SimpleNamespace(send=AsyncMock()),
-        )
+        interaction = _mk_mock_interaction()
 
         yes_button = view.children[0]
         self.assertIsInstance(yes_button, YesButton)
 
         # Suppress emoji print errors
         with patch("builtins.print"):
-            await yes_button.callback(interaction)
+            await yes_button.callback(interaction)  # type: ignore
 
         # Assert: knoppen disabled
         for item in view.children:
@@ -94,18 +99,14 @@ class TestCleanupConfirmationView(BaseTestCase):
         )
 
         # Mock interaction met fout in edit_message
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(
-                edit_message=AsyncMock(side_effect=RuntimeError("Edit failed"))
-            ),
-            followup=SimpleNamespace(send=AsyncMock()),
-        )
+        interaction = _mk_mock_interaction()
+        interaction.response.edit_message = AsyncMock(side_effect=RuntimeError("Edit failed"))
 
         yes_button = view.children[0]
 
         # Suppress print output
         with patch("builtins.print") as mock_print:
-            await yes_button.callback(interaction)
+            await yes_button.callback(interaction)  # type: ignore
 
         # Assert: error geprint
         mock_print.assert_called()
@@ -133,21 +134,16 @@ class TestCleanupConfirmationView(BaseTestCase):
         )
 
         # Mock interaction met fouten in zowel edit als followup
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(
-                edit_message=AsyncMock(side_effect=RuntimeError("Edit failed"))
-            ),
-            followup=SimpleNamespace(
-                send=AsyncMock(side_effect=RuntimeError("Followup failed"))
-            ),
-        )
+        interaction = _mk_mock_interaction()
+        interaction.response.edit_message = AsyncMock(side_effect=RuntimeError("Edit failed"))
+        interaction.followup.send = AsyncMock(side_effect=RuntimeError("Followup failed"))
 
         yes_button = view.children[0]
 
         # Suppress print output
         with patch("builtins.print"):
             # Should not raise
-            await yes_button.callback(interaction)
+            await yes_button.callback(interaction)  # type: ignore
 
         # Assert: no crash, graceful failure
         # (test passes if geen exception gegooid wordt)
@@ -158,7 +154,7 @@ class TestCleanupConfirmationView(BaseTestCase):
         on_confirm = AsyncMock()
         on_cancel_called = False
 
-        async def mock_on_cancel(interaction):
+        async def mock_on_cancel(interaction):  # type: ignore
             nonlocal on_cancel_called
             on_cancel_called = True
 
@@ -167,17 +163,14 @@ class TestCleanupConfirmationView(BaseTestCase):
         )
 
         # Mock interaction
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(edit_message=AsyncMock()),
-            followup=SimpleNamespace(send=AsyncMock()),
-        )
+        interaction = _mk_mock_interaction()
 
         no_button = view.children[1]
         self.assertIsInstance(no_button, NoButton)
 
         # Suppress emoji print errors
         with patch("builtins.print"):
-            await no_button.callback(interaction)
+            await no_button.callback(interaction)  # type: ignore
 
         # Assert: knoppen disabled
         for item in view.children:
@@ -207,18 +200,14 @@ class TestCleanupConfirmationView(BaseTestCase):
         )
 
         # Mock interaction met fout in edit_message
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(
-                edit_message=AsyncMock(side_effect=RuntimeError("Edit failed"))
-            ),
-            followup=SimpleNamespace(send=AsyncMock()),
-        )
+        interaction = _mk_mock_interaction()
+        interaction.response.edit_message = AsyncMock(side_effect=RuntimeError("Edit failed"))
 
         no_button = view.children[1]
 
         # Suppress print output
         with patch("builtins.print") as mock_print:
-            await no_button.callback(interaction)
+            await no_button.callback(interaction)  # type: ignore
 
         # Assert: error geprint
         mock_print.assert_called()
@@ -246,21 +235,16 @@ class TestCleanupConfirmationView(BaseTestCase):
         )
 
         # Mock interaction met fouten in zowel edit als followup
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(
-                edit_message=AsyncMock(side_effect=RuntimeError("Edit failed"))
-            ),
-            followup=SimpleNamespace(
-                send=AsyncMock(side_effect=RuntimeError("Followup failed"))
-            ),
-        )
+        interaction = _mk_mock_interaction()
+        interaction.response.edit_message = AsyncMock(side_effect=RuntimeError("Edit failed"))
+        interaction.followup.send = AsyncMock(side_effect=RuntimeError("Followup failed"))
 
         no_button = view.children[1]
 
         # Suppress print output
         with patch("builtins.print"):
             # Should not raise
-            await no_button.callback(interaction)
+            await no_button.callback(interaction)  # type: ignore
 
         # Assert: no crash, graceful failure
         # (test passes if geen exception gegooid wordt)
@@ -275,9 +259,11 @@ class TestCleanupConfirmationView(BaseTestCase):
 
         yes_button = view.children[0]
         self.assertIsInstance(yes_button, YesButton)
-        self.assertEqual(yes_button.label, "✅ Ja, verwijder")
-        self.assertEqual(yes_button.style.value, 4)  # ButtonStyle.danger = 4
-        self.assertEqual(yes_button.custom_id, "cleanup_yes")
+        # Cast to YesButton to access properties
+        if isinstance(yes_button, YesButton):
+            self.assertEqual(yes_button.label, "✅ Ja, verwijder")
+            self.assertEqual(yes_button.style.value, 4)  # ButtonStyle.danger = 4
+            self.assertEqual(yes_button.custom_id, "cleanup_yes")
 
     async def test_no_button_properties(self):
         """Test NoButton label, style en custom_id."""
@@ -289,9 +275,11 @@ class TestCleanupConfirmationView(BaseTestCase):
 
         no_button = view.children[1]
         self.assertIsInstance(no_button, NoButton)
-        self.assertEqual(no_button.label, "❌ Nee, behoud")
-        self.assertEqual(no_button.style.value, 2)  # ButtonStyle.secondary = 2
-        self.assertEqual(no_button.custom_id, "cleanup_no")
+        # Cast to NoButton to access properties
+        if isinstance(no_button, NoButton):
+            self.assertEqual(no_button.label, "❌ Nee, behoud")
+            self.assertEqual(no_button.style.value, 2)  # ButtonStyle.secondary = 2
+            self.assertEqual(no_button.custom_id, "cleanup_no")
 
     async def test_both_buttons_disable_all_items(self):
         """Test dat beide knoppen alle items in de view disablen."""
@@ -301,15 +289,12 @@ class TestCleanupConfirmationView(BaseTestCase):
             on_confirm=on_confirm, on_cancel=on_cancel, message_count=10
         )
 
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(edit_message=AsyncMock()),
-            followup=SimpleNamespace(send=AsyncMock()),
-        )
+        interaction = _mk_mock_interaction()
 
         # Test Yes button
         yes_button = view.children[0]
         with patch("builtins.print"):
-            await yes_button.callback(interaction)
+            await yes_button.callback(interaction)  # type: ignore
 
         for item in view.children:
             if isinstance(item, Button):
@@ -323,7 +308,7 @@ class TestCleanupConfirmationView(BaseTestCase):
         # Test No button
         no_button = view.children[1]
         with patch("builtins.print"):
-            await no_button.callback(interaction)
+            await no_button.callback(interaction)  # type: ignore
 
         for item in view.children:
             if isinstance(item, Button):

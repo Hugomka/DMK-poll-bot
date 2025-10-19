@@ -5,8 +5,9 @@ Uitgebreide tests voor poll_lifecycle.py om coverage te verhogen van 12% naar 80
 
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from apps.commands.poll_lifecycle import PollLifecycle, _load_opening_message
 from tests.base import BaseTestCase
-from apps.commands.poll_lifecycle import PollLifecycle
 
 
 def _mk_interaction(channel: Any = None, admin: bool = True, guild: Any = None):
@@ -67,7 +68,7 @@ class TestPollLifecycleOn(BaseTestCase):
         old_msg1 = MagicMock()
         old_msg2 = MagicMock()
 
-        async def mock_history(limit):
+        async def mock_history(limit):  # type: ignore
             """Yield oude berichten"""
             for msg in [old_msg1, old_msg2]:
                 yield msg
@@ -93,7 +94,7 @@ class TestPollLifecycleOn(BaseTestCase):
         channel.send = AsyncMock(return_value=MagicMock(id=789))
 
         # Geen oude berichten
-        async def mock_empty_history(limit):
+        async def mock_empty_history(limit):  # type: ignore
             """Geen berichten"""
             return
             yield  # Unreachable maar nodig voor async generator
@@ -102,13 +103,18 @@ class TestPollLifecycleOn(BaseTestCase):
 
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.utils.poll_message.set_channel_disabled"), \
-             patch("apps.utils.poll_message.get_message_id", return_value=None), \
-             patch("apps.utils.poll_message.save_message_id"), \
-             patch("apps.utils.poll_message.create_notification_message", new=AsyncMock()), \
-             patch("apps.utils.poll_message.update_poll_message", new=AsyncMock()), \
-             patch("apps.utils.poll_settings.is_paused", return_value=False), \
-             patch("apps.utils.message_builder.build_poll_message_for_day_async", new=AsyncMock(return_value="TEST")):
+        with patch("apps.utils.poll_message.set_channel_disabled"), patch(
+            "apps.utils.poll_message.get_message_id", return_value=None
+        ), patch("apps.utils.poll_message.save_message_id"), patch(
+            "apps.utils.poll_message.create_notification_message", new=AsyncMock()
+        ), patch(
+            "apps.utils.poll_message.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.utils.poll_settings.is_paused", return_value=False
+        ), patch(
+            "apps.utils.message_builder.build_poll_message_for_day_async",
+            new=AsyncMock(return_value="TEST"),
+        ):
 
             await self._run(self.cog.on, interaction)
 
@@ -125,20 +131,25 @@ class TestPollLifecycleOn(BaseTestCase):
         channel.send = AsyncMock(return_value=MagicMock(id=789))
 
         # History gooit exception
-        def mock_failing_history(limit):
+        def mock_failing_history(limit):  # type: ignore
             raise RuntimeError("Scan failed")
 
         channel.history = mock_failing_history
 
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.utils.poll_message.set_channel_disabled"), \
-             patch("apps.utils.poll_message.get_message_id", return_value=None), \
-             patch("apps.utils.poll_message.save_message_id"), \
-             patch("apps.utils.poll_message.create_notification_message", new=AsyncMock()), \
-             patch("apps.utils.poll_message.update_poll_message", new=AsyncMock()), \
-             patch("apps.utils.poll_settings.is_paused", return_value=False), \
-             patch("apps.utils.message_builder.build_poll_message_for_day_async", new=AsyncMock(return_value="TEST")):
+        with patch("apps.utils.poll_message.set_channel_disabled"), patch(
+            "apps.utils.poll_message.get_message_id", return_value=None
+        ), patch("apps.utils.poll_message.save_message_id"), patch(
+            "apps.utils.poll_message.create_notification_message", new=AsyncMock()
+        ), patch(
+            "apps.utils.poll_message.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.utils.poll_settings.is_paused", return_value=False
+        ), patch(
+            "apps.utils.message_builder.build_poll_message_for_day_async",
+            new=AsyncMock(return_value="TEST"),
+        ):
 
             await self._run(self.cog.on, interaction)
 
@@ -186,10 +197,13 @@ class TestPollLifecycleReset(BaseTestCase):
         channel.guild = guild
         interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
 
-        with patch("apps.utils.archive.append_week_snapshot_scoped", new=AsyncMock()), \
-             patch("apps.utils.poll_storage.reset_votes_scoped", new=AsyncMock()), \
-             patch("apps.utils.poll_message.get_message_id", return_value=None), \
-             patch("apps.utils.poll_settings.is_paused", return_value=False):
+        with patch(
+            "apps.utils.archive.append_week_snapshot_scoped", new=AsyncMock()
+        ), patch("apps.utils.poll_storage.reset_votes_scoped", new=AsyncMock()), patch(
+            "apps.utils.poll_message.get_message_id", return_value=None
+        ), patch(
+            "apps.utils.poll_settings.is_paused", return_value=False
+        ):
 
             await self._run(self.cog.reset, interaction)
 
@@ -211,18 +225,26 @@ class TestPollLifecycleReset(BaseTestCase):
         msg_vrijdag = MagicMock()
         msg_vrijdag.edit = AsyncMock()
 
-        async def mock_fetch(mid):
+        async def mock_fetch(mid):  # type: ignore
             if mid == 111:
                 return msg_vrijdag
             return None
 
-        with patch("apps.utils.archive.append_week_snapshot_scoped", new=AsyncMock()), \
-             patch("apps.utils.poll_storage.reset_votes_scoped", new=AsyncMock()), \
-             patch("apps.utils.poll_message.get_message_id", side_effect=lambda cid, key: 111 if key == "vrijdag" else None), \
-             patch("apps.utils.discord_client.fetch_message_or_none", new=mock_fetch), \
-             patch("apps.utils.poll_settings.is_paused", return_value=False), \
-             patch("apps.utils.poll_settings.should_hide_counts", return_value=False), \
-             patch("apps.utils.message_builder.build_poll_message_for_day_async", new=AsyncMock(return_value="RESET")):
+        with patch(
+            "apps.utils.archive.append_week_snapshot_scoped", new=AsyncMock()
+        ), patch("apps.utils.poll_storage.reset_votes_scoped", new=AsyncMock()), patch(
+            "apps.utils.poll_message.get_message_id",
+            side_effect=lambda cid, key: 111 if key == "vrijdag" else None,
+        ), patch(
+            "apps.utils.discord_client.fetch_message_or_none", new=mock_fetch
+        ), patch(
+            "apps.utils.poll_settings.is_paused", return_value=False
+        ), patch(
+            "apps.utils.poll_settings.should_hide_counts", return_value=False
+        ), patch(
+            "apps.utils.message_builder.build_poll_message_for_day_async",
+            new=AsyncMock(return_value="RESET"),
+        ):
 
             await self._run(self.cog.reset, interaction)
 
@@ -270,9 +292,9 @@ class TestPollLifecyclePauze(BaseTestCase):
         channel.send = AsyncMock(return_value=MagicMock(id=999))
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.utils.poll_settings.toggle_paused", return_value=True), \
-             patch("apps.utils.poll_message.get_message_id", return_value=None), \
-             patch("apps.utils.poll_message.save_message_id"):
+        with patch("apps.utils.poll_settings.toggle_paused", return_value=True), patch(
+            "apps.utils.poll_message.get_message_id", return_value=None
+        ), patch("apps.utils.poll_message.save_message_id"):
 
             await self._run(self.cog.pauze, interaction)
 
@@ -324,15 +346,21 @@ class TestPollLifecycleVerwijderen(BaseTestCase):
         msg_vr = MagicMock()
         msg_vr.delete = AsyncMock()
 
-        async def mock_fetch(mid):
+        async def mock_fetch(mid):  # type: ignore
             if mid == 111:
                 return msg_vr
             return None
 
-        with patch("apps.utils.poll_message.get_message_id", side_effect=lambda cid, key: 111 if key == "vrijdag" else None), \
-             patch("apps.utils.discord_client.fetch_message_or_none", new=mock_fetch), \
-             patch("apps.utils.poll_message.clear_message_id"), \
-             patch("apps.utils.poll_message.set_channel_disabled"):
+        with patch(
+            "apps.utils.poll_message.get_message_id",
+            side_effect=lambda cid, key: 111 if key == "vrijdag" else None,
+        ), patch(
+            "apps.utils.discord_client.fetch_message_or_none", new=mock_fetch
+        ), patch(
+            "apps.utils.poll_message.clear_message_id"
+        ), patch(
+            "apps.utils.poll_message.set_channel_disabled"
+        ):
 
             await self._run(self.cog.verwijderbericht, interaction)
 
@@ -352,15 +380,21 @@ class TestPollLifecycleVerwijderen(BaseTestCase):
         msg.delete = AsyncMock(side_effect=Exception("Cannot delete"))
         msg.edit = AsyncMock()
 
-        async def mock_fetch(mid):
+        async def mock_fetch(mid):  # type: ignore
             if mid == 111:
                 return msg
             return None
 
-        with patch("apps.utils.poll_message.get_message_id", side_effect=lambda cid, key: 111 if key == "vrijdag" else None), \
-             patch("apps.utils.discord_client.fetch_message_or_none", new=mock_fetch), \
-             patch("apps.utils.poll_message.clear_message_id"), \
-             patch("apps.utils.poll_message.set_channel_disabled"):
+        with patch(
+            "apps.utils.poll_message.get_message_id",
+            side_effect=lambda cid, key: 111 if key == "vrijdag" else None,
+        ), patch(
+            "apps.utils.discord_client.fetch_message_or_none", new=mock_fetch
+        ), patch(
+            "apps.utils.poll_message.clear_message_id"
+        ), patch(
+            "apps.utils.poll_message.set_channel_disabled"
+        ):
 
             await self._run(self.cog.verwijderbericht, interaction)
 
@@ -384,7 +418,7 @@ class TestPollLifecycleHelpers(BaseTestCase):
         msg1 = MagicMock()
         msg2 = MagicMock()
 
-        async def mock_history(limit):
+        async def mock_history(limit):  # type: ignore
             for msg in [msg1, msg2]:
                 yield msg
 
@@ -400,7 +434,7 @@ class TestPollLifecycleHelpers(BaseTestCase):
         """Test dat _scan_oude_berichten exceptions afvangt"""
         channel = MagicMock()
 
-        def mock_failing_history(limit):
+        def mock_failing_history(limit):  # type: ignore
             raise RuntimeError("Failed")
 
         channel.history = mock_failing_history
@@ -410,6 +444,39 @@ class TestPollLifecycleHelpers(BaseTestCase):
         assert result == []
 
 
+class TestLoadOpeningMessage(BaseTestCase):
+    """Tests voor _load_opening_message functie"""
+
+    async def test_load_opening_message_file_not_exists(self):
+        """Test dat DEFAULT_MESSAGE wordt geretourneerd als bestand niet bestaat"""
+        with patch("os.path.exists", return_value=False):
+            result = _load_opening_message()
+            assert "Welkom bij de Deaf Mario Kart-poll" in result
+
+    async def test_load_opening_message_file_read_raises(self):
+        """Test dat DEFAULT_MESSAGE wordt geretourneerd als open() faalt"""
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.open", side_effect=IOError("Cannot read")
+        ):
+            result = _load_opening_message()
+            assert "Welkom bij de Deaf Mario Kart-poll" in result
+
+    async def test_load_opening_message_success(self):
+        """Test dat bestand succesvol wordt gelezen"""
+        mock_file = MagicMock()
+        mock_file.read.return_value = "Custom message content"
+
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.open", return_value=mock_file
+        ):
+            mock_file.__enter__ = lambda self: self
+            mock_file.__exit__ = lambda *args: None
+            result = _load_opening_message()
+            # Should return the custom content (stripped)
+            assert result == "Custom message content"
+
+
 if __name__ == "__main__":
     import unittest
+
     unittest.main()
