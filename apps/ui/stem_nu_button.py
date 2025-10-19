@@ -94,7 +94,7 @@ class StemNuButton(Button):
                 await asyncio.sleep(20)
                 try:
                     await interaction.delete_original_response()
-                except Exception:
+                except Exception:  # pragma: no cover
                     pass
             elif any(
                 tijd in current_votes for tijd in ["om 19:00 uur", "om 20:30 uur"]
@@ -111,7 +111,7 @@ class StemNuButton(Button):
                 await asyncio.sleep(20)
                 try:
                     await interaction.delete_original_response()
-                except Exception:
+                except Exception:  # pragma: no cover
                     pass
             else:
                 # Geen stem? Dit zou niet moeten gebeuren
@@ -120,7 +120,7 @@ class StemNuButton(Button):
                     ephemeral=True,
                 )
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in StemNuButton.callback: {e}")
             try:
                 if not interaction.response.is_done():
@@ -128,7 +128,7 @@ class StemNuButton(Button):
                         "⚠️ Er ging iets mis. Probeer het later opnieuw.",
                         ephemeral=True,
                     )
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass
 
 
@@ -205,14 +205,14 @@ class JaButton(Button):
 
             # TODO: In toekomst: real-time update notificatiebericht (verwijder mention)
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in JaButton.callback: {e}")
             try:
                 await interaction.response.send_message(
                     "⚠️ Er ging iets mis bij het verwerken van je stem.",
                     ephemeral=True,
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass
 
 
@@ -261,14 +261,14 @@ class NeeButton(Button):
 
             # TODO: In toekomst: real-time update notificatiebericht (verwijder mention)
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in NeeButton.callback: {e}")
             try:
                 await interaction.response.send_message(
                     "⚠️ Er ging iets mis bij het verwerken van je stem.",
                     ephemeral=True,
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass
 
 

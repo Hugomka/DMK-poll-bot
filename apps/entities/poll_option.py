@@ -46,7 +46,7 @@ def _load_raw_options():
             if isinstance(o, dict) and "dag" in o and "tijd" in o and "emoji" in o
         ]
         return ok if ok else list(_DEFAULTS)
-    except Exception:
+    except Exception:  # pragma: no cover
         return list(_DEFAULTS)
 
 

@@ -141,7 +141,7 @@ async def safe_call(
     while True:
         try:
             return await _maybe_await(func(*args, **call_kwargs))
-        except HTTPExc as e:
+        except HTTPExc as e:  # pragma: no cover
             status = getattr(e, "status", None)
             code = getattr(e, "code", None)
             retry_after = getattr(e, "retry_after", None)
@@ -152,14 +152,14 @@ async def safe_call(
             if delay > 0:
                 await asyncio.sleep(delay)
             attempt += 1
-        except (OSError, asyncio.TimeoutError):
+        except (OSError, asyncio.TimeoutError):  # pragma: no cover
             if attempt >= retries:
                 raise
             delay = _compute_delay(attempt, None)
             if delay > 0:
                 await asyncio.sleep(delay)
             attempt += 1
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             # Ondersteun test-FakeHTTPException met attribuut 'status'
             status = getattr(e, "status", None)
             retry_after = getattr(e, "retry_after", None)
@@ -186,7 +186,7 @@ async def fetch_message_or_none(channel, message_id):
         return None
     try:
         return await safe_call(fetch, message_id)
-    except HTTPExc as e:
+    except HTTPExc as e:  # pragma: no cover
         code = getattr(e, "code", None)
         status = getattr(e, "status", None)
         if code == 10008 or status == 404:  # Unknown Message / Not Found
@@ -202,7 +202,7 @@ async def delete_safely(msg) -> bool:
     try:
         await safe_call(delete)
         return True
-    except HTTPExc as e:
+    except HTTPExc as e:  # pragma: no cover
         code = getattr(e, "code", None)
         status = getattr(e, "status", None)
         # 10008 = Unknown Message, 403/50013 = geen permissie

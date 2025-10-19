@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-from apps.commands.dmk_poll import DMKPoll
+from apps.commands.poll_status import PollStatus
 from apps.utils.poll_storage import toggle_vote
 from tests.base import BaseTestCase
 
@@ -12,7 +12,7 @@ class TestStatusCommand(BaseTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.mock_bot = MagicMock()
-        self.cog = DMKPoll(self.mock_bot)
+        self.cog = PollStatus(self.mock_bot)
 
     async def test_status_embed_toon_namen(self):
         # Zet naamweergave aan

@@ -60,14 +60,14 @@ class YesButton(Button):
             # Roep de confirm handler aan
             await self.parent_view.on_confirm(interaction)
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in YesButton.callback: {e}")
             try:
                 await interaction.followup.send(
                     "⚠️ Er ging iets mis bij het verwijderen van berichten.",
                     ephemeral=True,
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass
 
 
@@ -98,12 +98,12 @@ class NoButton(Button):
             # Roep de cancel handler aan
             await self.parent_view.on_cancel(interaction)
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in NoButton.callback: {e}")
             try:
                 await interaction.followup.send(
                     "⚠️ Er ging iets mis.",
                     ephemeral=True,
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass

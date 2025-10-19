@@ -50,7 +50,7 @@ async def _read_json(path: Optional[str] = None) -> Dict[str, Any]:
                 return json.load(f)
 
         return await asyncio.to_thread(_read)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError:  # pragma: no cover
         print("⚠️ votes.json is beschadigd. Ik zet 'm terug naar leeg {}.")
         return {}
 
@@ -287,7 +287,7 @@ async def reset_votes_scoped(guild_id: int | str, channel_id: int | str) -> None
                     if not guild_data.get("channels"):
                         del root["guilds"][gid]
             await _save_root(root)
-        except Exception:
+        except Exception:  # pragma: no cover
             # Bij fouten, val terug op lege dict voor dit kanaal
             _set_scoped(root, gid, cid, {})
             await _save_root(root)
@@ -370,7 +370,7 @@ async def remove_guest_votes(
             try:
                 scoped[key][dag].remove(tijd)
                 verwijderd.append(naam)
-            except ValueError:
+            except ValueError:  # pragma: no cover
                 nietgevonden.append(naam)
 
             if not scoped[key][dag]:

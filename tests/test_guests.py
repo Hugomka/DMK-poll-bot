@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from apps.commands.dmk_poll import DMKPoll
+from apps.commands.poll_status import PollStatus
 from apps.utils.poll_storage import (
     add_guest_votes,
     get_votes_for_option,
@@ -24,7 +24,7 @@ class TestGasten(BaseTestCase):
         await super().asyncSetUp()
         # Cog + bot mock
         self.mock_bot = MagicMock()
-        self.cog = DMKPoll(self.mock_bot)
+        self.cog = PollStatus(self.mock_bot)
 
     # --- /gast-add: gasten worden toegevoegd en tellen mee ---
     async def test_gast_add_telt_mee(self):
