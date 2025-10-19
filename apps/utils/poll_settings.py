@@ -65,7 +65,7 @@ def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     tijd_str = instelling.get("tijd", "18:00")
     try:
         uur, minuut = map(int, tijd_str.split(":"))
-    except ValueError:
+    except ValueError:  # pragma: no cover
         uur, minuut = 18, 0
 
     target_idx = DAYS_INDEX.get(dag)

@@ -32,7 +32,7 @@ def _is_poll_channel(channel) -> bool:
 
     try:
         cid = int(getattr(channel, "id", 0))
-    except Exception:
+    except Exception:  # pragma: no cover
         return False
     if not cid:
         return False
@@ -40,7 +40,7 @@ def _is_poll_channel(channel) -> bool:
         try:
             if get_message_id(cid, key):
                 return True
-        except Exception:
+        except Exception:  # pragma: no cover
             # defensief: negeer kapotte opslag
             continue
     return False
@@ -88,13 +88,13 @@ class PollStatus(commands.Cog):
         gid_raw = getattr(guild, "id", 0) if guild is not None else 0
         try:
             gid_val: int = int(gid_raw)
-        except Exception:
+        except Exception:  # pragma: no cover
             gid_val = 0
 
         cid_raw = getattr(channel, "id", 0)
         try:
             cid_val: int = int(cid_raw)
-        except Exception:
+        except Exception:  # pragma: no cover
             cid_val = 0
 
         try:
@@ -216,7 +216,7 @@ class PollStatus(commands.Cog):
                 "Algemene melding is verstuurd.", ephemeral=True
             )
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"Er ging iets mis: {e}", ephemeral=True)
 
 

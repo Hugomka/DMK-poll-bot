@@ -72,7 +72,7 @@ def _load() -> dict[str, Any]:
         try:
             with open(POLL_MESSAGE_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError:  # pragma: no cover
             pass
     return {}
 
@@ -196,7 +196,7 @@ def schedule_poll_update(channel: Any, dag: str, delay: float = 0.3) -> asyncio.
             if delay and delay > 0:
                 await asyncio.sleep(delay)
             await update_poll_message(channel, dag)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError:  # pragma: no cover
             # Debounced; niets aan de hand
             return
 

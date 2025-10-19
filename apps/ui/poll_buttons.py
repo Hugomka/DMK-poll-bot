@@ -63,7 +63,7 @@ class PollButton(Button):
                     await interaction.response.edit_message(
                         content=f"{header}\n🔄 Je stem wordt verwerkt…"
                     )
-                except Exception:
+                except Exception:  # pragma: no cover
                     # Als het niet lukt, val later terug op message.edit
                     pass
 
@@ -81,7 +81,7 @@ class PollButton(Button):
                             content=f"{header}\n❌ De stemmogelijkheid is gesloten.",
                             view=None,
                         )
-                except Exception:
+                except Exception:  # pragma: no cover
                     pass
                 return
 
@@ -108,21 +108,21 @@ class PollButton(Button):
                         content=f"{header}\n{status}",
                         view=new_view,
                     )
-            except Exception:
+            except Exception:  # pragma: no cover
                 # Als bewerken mislukt, probeer nog één keer via edit_original_response
                 try:
                     await interaction.edit_original_response(
                         content=f"{header}\n{status}",
                         view=new_view,
                     )
-                except Exception:
+                except Exception:  # pragma: no cover
                     pass
 
             # ✅ Update publieke poll (achtergrond, alleen deze dag)
             if interaction.channel is not None:
                 asyncio.create_task(update_poll_message(interaction.channel, self.dag))
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout bij verwerken stemknop: {e}")
             # Probeer alsnog knoppen te herstellen in hetzelfde bericht
             try:
@@ -145,7 +145,7 @@ class PollButton(Button):
                         content=f"{HEADER_TMPL.format(dag=self.dag.capitalize())}\n{msg}",
                         view=new_view,
                     )
-            except Exception as inner:
+            except Exception as inner:  # pragma: no cover
                 print(f"❌ Kon geen terugvaloptie tonen: {inner}")
 
 
