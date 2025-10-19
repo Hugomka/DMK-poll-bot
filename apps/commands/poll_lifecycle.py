@@ -38,7 +38,7 @@ def _load_opening_message() -> str:
     try:
         with open(OPENING_MESSAGE, "r", encoding="utf-8") as f:
             return f.read().strip()
-    except Exception:
+    except Exception:  # pragma: no cover
         # Fallback als het bestand niet bestaat of niet gelezen kan worden
         return DEFAULT_MESSAGE
 
@@ -96,7 +96,7 @@ class PollLifecycle(commands.Cog):
             # Haal laatste 100 berichten op (ALLE berichten, ook van de bot)
             async for bericht in channel.history(limit=100):
                 oude_berichten.append(bericht)
-        except Exception:
+        except Exception:  # pragma: no cover
             pass
         return oude_berichten
 
@@ -118,7 +118,7 @@ class PollLifecycle(commands.Cog):
                     try:
                         await bericht.delete()
                         verwijderd_aantal += 1
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         pass  # Sla berichten over die niet verwijderd kunnen worden
 
                 await button_interaction.edit_original_response(
@@ -129,7 +129,7 @@ class PollLifecycle(commands.Cog):
                 # Plaats de polls
                 await self._plaats_polls(interaction, channel)
 
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 await button_interaction.followup.send(
                     f"❌ Fout bij verwijderen: {e}",
                     ephemeral=True,
@@ -139,7 +139,7 @@ class PollLifecycle(commands.Cog):
             """Plaats polls zonder berichten te verwijderen."""
             try:
                 await self._plaats_polls(interaction, channel)
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 await button_interaction.followup.send(
                     f"❌ Fout bij plaatsen: {e}",
                     ephemeral=True,
@@ -168,7 +168,7 @@ class PollLifecycle(commands.Cog):
             # Kanaal opnieuw activeren voor de scheduler
             try:
                 set_channel_disabled(getattr(channel, "id", 0), False)
-            except Exception:
+            except Exception:  # pragma: no cover
                 # Niet hard falen als togglen mislukt; we gaan verder met plaatsen
                 pass
 
@@ -177,7 +177,7 @@ class PollLifecycle(commands.Cog):
                 from apps.utils.poll_settings import set_paused
 
                 set_paused(getattr(channel, "id", 0), False)
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass
 
             # Eerste bericht: Opening met @everyone
@@ -287,7 +287,7 @@ class PollLifecycle(commands.Cog):
                     "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
                     ephemeral=True,
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 # Als interaction al is afgehandeld (bijv. via opschoon-knoppen), skip
                 pass
 
@@ -296,7 +296,7 @@ class PollLifecycle(commands.Cog):
                 await interaction.followup.send(
                     f"❌ Fout bij plaatsen: {e}", ephemeral=True
                 )
-            except Exception:
+            except Exception:  # pragma: no cover
                 # Als interaction al is afgehandeld, print alleen de fout
                 print(f"❌ Fout bij plaatsen polls: {e}")
 
@@ -333,7 +333,7 @@ class PollLifecycle(commands.Cog):
             # 2) Stemmen wissen (per kanaal)
             try:
                 await reset_votes_scoped(gid, cid)
-            except Exception:
+            except Exception:  # pragma: no cover
                 await reset_votes()
 
             # 3) Update reset-tijd in scheduler-state
@@ -342,7 +342,7 @@ class PollLifecycle(commands.Cog):
                 state = scheduler._read_state()
                 state["reset_polls"] = now.isoformat()
                 scheduler._write_state(state)
-            except Exception as e:
+            except Exception as e:  # pragma: no cover
                 print(f"⚠️ Kon scheduler-state niet bijwerken: {e}")
 
             # 4) Dag-berichten updaten (zonder knoppen), met huidige zichtbaarheid/pauze
@@ -485,7 +485,7 @@ class PollLifecycle(commands.Cog):
                 if opening_msg is not None:
                     try:
                         await safe_call(opening_msg.delete)
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             opening_msg.edit, content="📴 Poll gesloten.", view=None
@@ -504,7 +504,7 @@ class PollLifecycle(commands.Cog):
                     try:
                         # Probeer eerst te verwijderen
                         await safe_call(msg.delete)
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         # Fallback: neutraliseren als verwijderen niet mag
                         afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
                         await safe_call(msg.edit, content=afsluit_tekst, view=None)
@@ -518,7 +518,7 @@ class PollLifecycle(commands.Cog):
                 if s_msg is not None:
                     try:
                         await safe_call(s_msg.delete)
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             s_msg.edit, content="📴 Stemmen gesloten.", view=None
@@ -532,7 +532,7 @@ class PollLifecycle(commands.Cog):
                 if n_msg is not None:
                     try:
                         await safe_call(n_msg.delete)
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             n_msg.edit, content="📴 Notificaties gesloten.", view=None
@@ -542,7 +542,7 @@ class PollLifecycle(commands.Cog):
             # 4) Kanaal permanent uitzetten voor scheduler (altijd doen)
             try:
                 set_channel_disabled(getattr(channel, "id", 0), True)
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass
 
             # 5) Terugkoppeling
