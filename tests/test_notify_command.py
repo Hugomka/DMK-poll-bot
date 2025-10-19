@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from discord import app_commands
 
-from apps.commands import dmk_poll
+from apps.commands import poll_status
 from tests.base import BaseTestCase
 
 
@@ -75,7 +75,7 @@ def _mk_interaction(channel_name: str = "speelavond", forbid: bool = False):
 def _mk_inter(channel_name: str = "speelavond", forbid: bool = False):
     interaction, channel = _mk_interaction(channel_name, forbid)
     patcher = patch(
-        "apps.commands.dmk_poll.get_message_id",
+        "apps.utils.poll_message.get_message_id",
         side_effect=lambda cid, what: 999 if what == "stemmen" else None,
     )
     return interaction, channel, patcher
@@ -98,22 +98,22 @@ class TestNotifyFallbackCommand(BaseTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.bot = MagicMock()
-        self.cog = dmk_poll.DMKPoll(self.bot)
+        self.cog = poll_status.PollStatus(self.bot)
 
     # --- tests ---
     async def test_notify_fallback_succes_true(self):
         interaction, _channel = _mk_interaction()
         with patch(
-            "apps.commands.dmk_poll.get_message_id",
+            "apps.utils.poll_message.get_message_id",
             side_effect=lambda cid, what: 999 if what == "stemmen" else None,
         ):
             with patch(
                 "apps.scheduler.notify_non_voters", new_callable=AsyncMock
             ) as mock_helper:
                 mock_helper.return_value = True
-                cog = dmk_poll.DMKPoll(MagicMock())
+                cog = poll_status.PollStatus(MagicMock())
                 await _invoke(
-                    dmk_poll.DMKPoll.notify_fallback, cog, interaction, "vrijdag"
+                    poll_status.PollStatus.notify_fallback, cog, interaction, "vrijdag"
                 )
                 mock_helper.assert_awaited_once()
                 msg = (interaction.followup.last_text or "").lower()
@@ -125,8 +125,8 @@ class TestNotifyFallbackCommand(BaseTestCase):
             "apps.scheduler.notify_non_voters", new_callable=AsyncMock
         ) as mock_helper:
             mock_helper.return_value = False
-            cog = dmk_poll.DMKPoll(MagicMock())
-            await _invoke(dmk_poll.DMKPoll.notify_fallback, cog, interaction, "vrijdag")
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(poll_status.PollStatus.notify_fallback, cog, interaction, "vrijdag")
             assert getattr(interaction.channel.send, "await_args", None) is None
             msg = (interaction.followup.last_text or "").lower()
             assert "geen notificatie" in msg
@@ -137,8 +137,8 @@ class TestNotifyFallbackCommand(BaseTestCase):
             "apps.scheduler.notify_non_voters",
             new=AsyncMock(side_effect=RuntimeError("kapot")),
         ):
-            cog = dmk_poll.DMKPoll(MagicMock())
-            await _invoke(dmk_poll.DMKPoll.notify_fallback, cog, interaction, "vrijdag")
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(poll_status.PollStatus.notify_fallback, cog, interaction, "vrijdag")
             assert getattr(interaction.channel.send, "await_args", None) is None
             assert "ging iets mis" in (interaction.followup.last_text or "").lower()
 
@@ -147,8 +147,8 @@ class TestNotifyFallbackCommand(BaseTestCase):
         with patcher, patch(
             "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
         ) as mock_send:
-            cog = dmk_poll.DMKPoll(MagicMock())
-            await _invoke(dmk_poll.DMKPoll.notify_fallback, cog, interaction)
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(poll_status.PollStatus.notify_fallback, cog, interaction)
             # Verify send_temporary_mention was called with correct parameters
             mock_send.assert_awaited_once()
             call_args = mock_send.call_args
@@ -162,9 +162,9 @@ class TestNotifyFallbackCommand(BaseTestCase):
 
     async def test_notify_fallback_verboden_kanaal(self):
         interaction, _channel = _mk_interaction(channel_name="welkom", forbid=True)
-        cog = dmk_poll.DMKPoll(MagicMock())
+        cog = poll_status.PollStatus(MagicMock())
         await _invoke(
-            dmk_poll.DMKPoll.notify_fallback, cog, interaction, _choice("vrijdag")
+            poll_status.PollStatus.notify_fallback, cog, interaction, _choice("vrijdag")
         )
         assert getattr(interaction.channel.send, "await_args", None) is None
         assert interaction.response.deferred is True
@@ -173,9 +173,9 @@ class TestNotifyFallbackCommand(BaseTestCase):
 
     async def test_notify_fallback_geen_actief_kanaal(self):
         interaction, _channel = _mk_interaction(channel_name="random")
-        cog = dmk_poll.DMKPoll(MagicMock())
+        cog = poll_status.PollStatus(MagicMock())
         await _invoke(
-            dmk_poll.DMKPoll.notify_fallback, cog, interaction, _choice("vrijdag")
+            poll_status.PollStatus.notify_fallback, cog, interaction, _choice("vrijdag")
         )
         assert (interaction.followup.last_text or "") == ""
         assert getattr(interaction.channel.send, "await_args", None) is None
