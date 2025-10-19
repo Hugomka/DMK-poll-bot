@@ -25,7 +25,9 @@ class TestStatusCommand(BaseTestCase):
         mock_guild = MagicMock()
         mock_guild.id = 0
         mock_member = MagicMock()
-        mock_member.mention = "@Goldway"
+        mock_member.display_name = "Goldway"
+        mock_member.global_name = None
+        mock_member.name = "Goldway"
         mock_guild.get_member.return_value = mock_member
         mock_guild.fetch_member = AsyncMock(return_value=mock_member)
         mock_guild.id = kanaal_id

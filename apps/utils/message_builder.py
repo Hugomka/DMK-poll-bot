@@ -87,7 +87,9 @@ async def build_grouped_names_for(
                             int(owner_id)
                         ) or await guild.fetch_member(int(owner_id))
                         if owner_member:
-                            mention = owner_member.mention
+                            # Gebruik displaynaam in plaats van mention
+                            display = getattr(owner_member, "display_name", None) or getattr(owner_member, "global_name", None) or getattr(owner_member, "name", "Lid")
+                            mention = f"@{display}"
                     except Exception:
                         pass
 
@@ -105,7 +107,9 @@ async def build_grouped_names_for(
                             int(raw_id)
                         ) or await guild.fetch_member(int(raw_id))
                         if member:
-                            mention = member.mention
+                            # Gebruik displaynaam in plaats van mention
+                            display = getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "Lid")
+                            mention = f"@{display}"
                     except Exception:
                         pass
 

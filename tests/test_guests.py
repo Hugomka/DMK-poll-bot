@@ -84,7 +84,9 @@ class TestGasten(BaseTestCase):
         mock_guild = MagicMock()
         mock_guild.id = 0
         mock_member = MagicMock()
-        mock_member.mention = "@Mario"
+        mock_member.display_name = "Mario"
+        mock_member.global_name = None
+        mock_member.name = "Mario"
         mock_guild.get_member.return_value = mock_member
         mock_guild.fetch_member = AsyncMock(return_value=mock_member)
 
@@ -128,7 +130,9 @@ class TestGasten(BaseTestCase):
         mock_guild = MagicMock()
         mock_guild.id = 0
         mock_member = MagicMock()
-        mock_member.mention = "@Mario"
+        mock_member.display_name = "Mario"
+        mock_member.global_name = None
+        mock_member.name = "Mario"
         mock_guild.get_member.return_value = mock_member
         mock_guild.fetch_member = AsyncMock(return_value=mock_member)
 

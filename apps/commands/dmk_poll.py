@@ -867,7 +867,11 @@ class DMKPoll(commands.Cog):
                     inline=False,
                 )
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.followup.send(
+                embed=embed,
+                ephemeral=True,
+                allowed_mentions=discord.AllowedMentions.none()
+            )
 
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
