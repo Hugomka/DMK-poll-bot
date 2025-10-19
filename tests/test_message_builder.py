@@ -55,6 +55,55 @@ class TestMessageBuilder(BaseTestCase):
             assert "🟢 om 19:00 uur (3 stemmen)" in txt
             assert "🔵 om 20:30 uur (5 stemmen)" in txt
 
+    async def test_build_message_hides_misschien_when_counts_hidden(self):
+        """Misschien wordt NIET getoond wanneer counts verborgen zijn."""
+        options = [
+            opt("vrijdag", "om 19:00 uur", "🟢"),
+            opt("vrijdag", "om 20:30 uur", "🔵"),
+            opt("vrijdag", "misschien", "Ⓜ️"),
+            opt("vrijdag", "niet meedoen", "❌"),
+        ]
+
+        with patch("apps.utils.message_builder.get_poll_options", return_value=options):
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag", guild_id=1, channel_id=2, hide_counts=True
+            )
+            # Normale tijdslots worden wel getoond
+            assert "🟢 om 19:00 uur (stemmen verborgen)" in txt
+            assert "🔵 om 20:30 uur (stemmen verborgen)" in txt
+            # "Misschien" wordt NIET getoond
+            assert "Ⓜ️ misschien" not in txt
+            # "Niet meedoen" wordt wel getoond
+            assert "❌ niet meedoen (stemmen verborgen)" in txt
+
+    async def test_build_message_shows_misschien_when_counts_visible(self):
+        """Misschien wordt WEL getoond wanneer counts zichtbaar zijn."""
+        options = [
+            opt("vrijdag", "om 19:00 uur", "🟢"),
+            opt("vrijdag", "om 20:30 uur", "🔵"),
+            opt("vrijdag", "misschien", "Ⓜ️"),
+            opt("vrijdag", "niet meedoen", "❌"),
+        ]
+        counts = {
+            "om 19:00 uur": 3,
+            "om 20:30 uur": 5,
+            "misschien": 2,
+            "niet meedoen": 1,
+        }
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch("apps.utils.message_builder.get_counts_for_day", return_value=counts):
+
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag", guild_id=1, channel_id=2, hide_counts=False
+            )
+            # Alle opties worden getoond inclusief Misschien
+            assert "🟢 om 19:00 uur (3 stemmen)" in txt
+            assert "🔵 om 20:30 uur (5 stemmen)" in txt
+            assert "Ⓜ️ misschien (2 stemmen)" in txt
+            assert "❌ niet meedoen (1 stemmen)" in txt
+
     # build_grouped_names_for
     async def test_grouped_empty_votes(self):
         """Lege stemmen → (0, ''). (dekt het vroege return-pad)"""

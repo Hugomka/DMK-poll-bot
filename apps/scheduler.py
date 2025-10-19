@@ -21,7 +21,7 @@ from apps.utils.poll_message import (
     is_channel_disabled,
     schedule_poll_update,
 )
-from apps.utils.poll_settings import is_paused
+from apps.utils.poll_settings import get_setting, is_paused
 from apps.utils.poll_storage import (
     calculate_leading_time,
     load_votes,
@@ -128,10 +128,31 @@ def should_run(last_run: Union[str, datetime, None], occurrence: datetime) -> bo
     return last_dt < occurrence
 
 
+def _is_deadline_mode(channel_id: int, dag: str) -> bool:
+    """
+    Controleer of een kanaal 'deadline' modus gebruikt voor een specifieke dag.
+
+    Retourneert True als:
+    - Geen expliciete setting (standaard is 'deadline')
+    - Expliciete setting met modus='deadline'
+
+    Retourneert False als:
+    - Expliciete setting met modus='altijd'
+    """
+    try:
+        setting = get_setting(channel_id, dag)
+        if not setting or not isinstance(setting, dict):
+            return True  # Standaard is 'deadline' modus
+        return setting.get("modus", "deadline") == "deadline"
+    except Exception:
+        return True  # Bij fout, standaard 'deadline' modus aannemen
+
+
 async def notify_non_voters_thursday(bot) -> None:
     """
     Herinner leden die voor geen enkele dag hebben gestemd (donderdagavond).
     Dit wordt één keer per week verstuurd.
+    Alleen voor kanalen in 'deadline' modus.
     """
     # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
     deny_names = set(
@@ -151,6 +172,11 @@ async def notify_non_voters_thursday(bot) -> None:
 
             # Skip if channel is paused
             if is_paused(cid):
+                continue
+
+            # Skip als GEEN van de dagen in 'deadline' modus staat
+            # (donderdag-notificatie is alleen relevant voor deadline-scenario)
+            if not any(_is_deadline_mode(cid, dag) for dag in ["vrijdag", "zaterdag", "zondag"]):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -531,6 +557,8 @@ async def notify_non_voters(
     - Zonder channel: loop over alle actieve poll-kanalen (zoals voorheen).
     - Met channel: post alleen in dit kanaal (voor het slash-commando).
     - Met dag: alleen niet-stemmers voor die dag; zonder dag: 'ergens dit weekend' telt als gestemd.
+    Alleen voor kanalen in 'deadline' modus (scheduler-oproepen).
+    Voor commando-oproepen (met channel parameter) wordt de check overgeslagen.
     Retourneert True als er ergens iets is verstuurd.
     """
     sent_any = False
@@ -590,12 +618,18 @@ async def notify_non_voters(
 
     for guild in guilds_to_process:
         for ch in channels_for_guild(guild):
+            cid = getattr(ch, "id", "0") or "0"
+
+            # Skip kanalen die niet in 'deadline' modus staan (alleen voor scheduler, niet voor commando)
+            if not channel and dag:  # Scheduler-modus met specifieke dag
+                if not _is_deadline_mode(int(cid) if cid != "0" else 0, dag):
+                    continue
+
             # Alleen leden die toegang hebben tot dit specifieke kanaal
             members_src = getattr(ch, "members", [])
             all_members = [m for m in members_src if not getattr(m, "bot", False)]
 
             gid = getattr(guild, "id", "0")
-            cid = getattr(ch, "id", "0") or "0"
             votes = await load_votes(gid, cid) or {}
 
             # Calculate leading time at 17:00 for vote analysis
@@ -983,6 +1017,7 @@ async def notify_for_channel(channel, dag: str) -> bool:
 async def notify_misschien_voters(bot, dag: str) -> None:
     """
     Notify "Misschien" voters at 17:00 with Stem Nu button.
+    Alleen voor kanalen in 'deadline' modus.
 
     Flow:
     1. Find all users with "misschien" vote for this dag
@@ -1014,6 +1049,11 @@ async def notify_misschien_voters(bot, dag: str) -> None:
 
             # Skip if channel is paused
             if is_paused(cid):
+                continue
+
+            # Skip kanalen die niet in 'deadline' modus staan
+            # (misschien-notificaties zijn alleen relevant voor deadline-scenario)
+            if not _is_deadline_mode(cid, dag):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -1105,6 +1145,7 @@ async def notify_misschien_voters(bot, dag: str) -> None:
 async def convert_remaining_misschien(bot, dag: str) -> None:
     """
     Convert remaining "Misschien" votes to ❌ at 18:00.
+    Alleen voor kanalen in 'deadline' modus.
 
     Flow:
     1. Find all users still with "misschien" vote for this dag
@@ -1136,6 +1177,11 @@ async def convert_remaining_misschien(bot, dag: str) -> None:
 
             # Skip if channel is paused
             if is_paused(cid):
+                continue
+
+            # Skip kanalen die niet in 'deadline' modus staan
+            # (misschien-conversie is alleen relevant voor deadline-scenario)
+            if not _is_deadline_mode(cid, dag):
                 continue
 
             # Check DENY_CHANNEL_NAMES

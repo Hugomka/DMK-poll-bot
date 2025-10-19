@@ -40,6 +40,11 @@ async def build_poll_message_for_day_async(
     counts = {} if hide_counts else await get_counts_for_day(dag, guild_id, channel_id)
 
     for opt in opties:
+        # Filter "misschien" uit resultaten wanneer counts verborgen zijn
+        # (toont toch alleen "(stemmen verborgen)", geen meerwaarde)
+        if hide_counts and opt.tijd == "misschien":
+            continue
+
         label = f"{opt.emoji} {opt.tijd}"
 
         if hide_counts:
