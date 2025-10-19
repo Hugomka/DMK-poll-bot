@@ -102,12 +102,12 @@ def clear_message_id(channel_id: int, key: str) -> None:
 
 async def create_notification_message(channel: Any) -> Optional[Any]:
     """
-    Creëer een leeg notificatiebericht met titel en lege regels.
+    Creëer een vriendelijk notificatiebericht wanneer de bot wordt aangezet.
 
     Returns:
         Het aangemaakte bericht, of None bij fout.
     """
-    content = ":mega: Notificatie:\n\n"
+    content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
     send = getattr(channel, "send", None)
     if send is None:
         return None

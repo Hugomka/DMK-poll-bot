@@ -11,6 +11,7 @@ from apps.utils.mention_utils import (
     _delete_message_after_delay,
     _remove_mentions_after_delay,
     _remove_persistent_mentions_after_delay,
+    render_notification_content,
     send_persistent_mention,
     send_temporary_mention,
 )
@@ -32,6 +33,66 @@ def _consume_coro_task():
         return dummy
 
     return _consume
+
+
+class RenderNotificationContentTestCase(unittest.TestCase):
+    """Test render_notification_content function."""
+
+    def test_render_with_all_parts(self):
+        """Test rendering with all parts (heading, mentions, text, footer)."""
+        result = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions="@user1 @user2",
+            text="Please vote now!",
+            footer="Thank you!",
+        )
+        self.assertEqual(
+            result,
+            ":mega: Notificatie:\n@user1 @user2\nPlease vote now!\nThank you!",
+        )
+
+    def test_render_without_mentions(self):
+        """Test that empty mentions are omitted (no comma artifacts)."""
+        result = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions=None,
+            text="Please vote now!",
+            footer=None,
+        )
+        self.assertEqual(result, ":mega: Notificatie:\nPlease vote now!")
+        # Verify no empty lines or commas
+        self.assertNotIn("\n\n", result)
+        self.assertNotIn(", ,", result)
+
+    def test_render_with_empty_string_mentions(self):
+        """Test that empty string mentions are omitted."""
+        result = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions="",
+            text="Vote!",
+            footer=None,
+        )
+        self.assertEqual(result, ":mega: Notificatie:\nVote!")
+
+    def test_render_strips_whitespace(self):
+        """Test that whitespace is properly stripped."""
+        result = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions="  @user1  ",
+            text="  Vote!  ",
+            footer="  Thanks!  ",
+        )
+        self.assertEqual(result, ":mega: Notificatie:\n@user1\nVote!\nThanks!")
+
+    def test_render_only_heading(self):
+        """Test rendering with only heading."""
+        result = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions=None,
+            text=None,
+            footer=None,
+        )
+        self.assertEqual(result, ":mega: Notificatie:")
 
 
 class TemporaryMentionTestCase(unittest.IsolatedAsyncioTestCase):
@@ -174,11 +235,26 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         channel.id = 456
         channel.send = AsyncMock()
 
-        result = await send_persistent_mention(channel, "@user1 Test message")
+        result = await send_persistent_mention(channel, "@user1", "Test message")
 
         # Verify message was sent
         self.assertEqual(result, mock_message)
         mock_safe_call.assert_called_once()
+
+        # Verify content uses unified renderer (no comma artifacts)
+        # safe_call is called with (channel.send, content)
+        call_args = mock_safe_call.call_args
+        # The content is passed as the first positional arg after the function
+        if len(call_args[0]) > 1:
+            content = call_args[0][1]
+        else:
+            # Or as keyword arg
+            content = call_args[1].get("content", call_args[0][0])
+
+        self.assertIn(":mega: Notificatie:", content)
+        self.assertIn("@user1", content)
+        self.assertIn("Test message", content)
+        self.assertNotIn("\n\n", content)  # No empty lines
 
         # Verify message ID was saved
         mock_save_msg_id.assert_called_once_with(456, "notification", 123)
@@ -217,7 +293,7 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         channel.id = 456
         channel.send = AsyncMock()
 
-        await send_persistent_mention(channel, "@user1 Test")
+        await send_persistent_mention(channel, "@user1", "Test")
 
         # Verify old message was deleted
         mock_fetch.assert_called_once()
@@ -227,7 +303,7 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         """Test persistent mention with channel that has no send method."""
         channel = MagicMock(spec=[])  # No send attribute
 
-        result = await send_persistent_mention(channel, "@user1 Test")
+        result = await send_persistent_mention(channel, "@user1", "Test")
 
         # Should return None
         self.assertIsNone(result)
@@ -247,7 +323,7 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         channel.id = 456
         channel.send = AsyncMock()
 
-        result = await send_persistent_mention(channel, "@user1 Test")
+        result = await send_persistent_mention(channel, "@user1", "Test")
 
         self.assertIsNone(result)
 
@@ -283,15 +359,16 @@ class RemoveMentionsTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
     async def test_remove_persistent_mentions(self, mock_safe_call, mock_sleep):
-        """Test that persistent mentions are removed."""
+        """Test that persistent mentions are removed using renderer."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
 
         mock_message = MagicMock()
-        mock_message.content = "<@123456> <@!789012> Please respond"
         mock_message.edit = AsyncMock()
 
-        await _remove_persistent_mentions_after_delay(mock_message, 5.0)
+        await _remove_persistent_mentions_after_delay(
+            mock_message, 5.0, "Please respond"
+        )
 
         # Verify sleep was called
         mock_sleep.assert_called_once_with(5.0)
@@ -301,50 +378,36 @@ class RemoveMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         call_kwargs = mock_safe_call.call_args[1]
         self.assertIn("content", call_kwargs)
         cleaned_content = call_kwargs["content"]
+        # Verify content uses renderer (no mentions, no comma artifacts)
         self.assertIn("Please respond", cleaned_content)
-        self.assertNotIn("<@123456>", cleaned_content)
-        self.assertNotIn("<@!789012>", cleaned_content)
+        self.assertIn(":mega: Notificatie:", cleaned_content)
+        self.assertNotIn("@", cleaned_content)  # No mentions
+        self.assertNotIn("\n\n", cleaned_content)  # No empty lines
 
     @patch("asyncio.sleep")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_remove_mentions_removes_role_mentions(
+    async def test_remove_mentions_no_comma_artifacts(
         self, mock_safe_call, mock_sleep
     ):
-        """Test that cleanup removes role mentions."""
+        """Test that cleanup produces no comma artifacts."""
         mock_sleep.return_value = AsyncMock()
         mock_safe_call.return_value = AsyncMock()
 
         mock_message = MagicMock()
-        mock_message.content = "<@&123456> Important announcement"
         mock_message.edit = AsyncMock()
 
-        await _remove_persistent_mentions_after_delay(mock_message, 5.0)
+        await _remove_persistent_mentions_after_delay(
+            mock_message, 5.0, "Important announcement"
+        )
 
         mock_safe_call.assert_called_once()
-        # Verify role mention was removed
-        call_args = str(mock_safe_call.call_args)
-        self.assertNotIn("<@&", call_args)
+        call_kwargs = mock_safe_call.call_args[1]
+        content = call_kwargs["content"]
 
-    @patch("asyncio.sleep")
-    @patch("apps.utils.mention_utils.safe_call")
-    async def test_remove_mentions_removes_everyone_here(
-        self, mock_safe_call, mock_sleep
-    ):
-        """Test that cleanup removes @everyone and @here mentions."""
-        mock_sleep.return_value = AsyncMock()
-        mock_safe_call.return_value = AsyncMock()
-
-        mock_message = MagicMock()
-        mock_message.content = "@everyone @here Important message"
-        mock_message.edit = AsyncMock()
-
-        await _remove_persistent_mentions_after_delay(mock_message, 5.0)
-
-        mock_safe_call.assert_called_once()
-        # Verify @everyone and @here were removed
-        call_args = str(mock_safe_call.call_args)
-        self.assertNotIn("@everyone", call_args)
-        self.assertNotIn("@here", call_args)
+        # Verify no comma artifacts
+        self.assertNotIn(", ,", content)
+        self.assertNotIn("\n\n", content)
+        self.assertIn("Important announcement", content)
 
 
 class DeleteMessageTestCase(unittest.IsolatedAsyncioTestCase):

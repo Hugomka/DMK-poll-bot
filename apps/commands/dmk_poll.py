@@ -154,6 +154,98 @@ class DMKPoll(commands.Cog):
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
 
+        # Stap 1: Controleer op oude berichten in het kanaal
+        try:
+            oude_berichten = await self._scan_oude_berichten(channel)
+            if oude_berichten:
+                # Er zijn oude berichten - vraag om bevestiging
+                await self._toon_opschoon_bevestiging(interaction, channel, oude_berichten)
+                return  # De bevestigingsview handelt de rest af
+        except Exception as e:
+            # Als scannen faalt, ga gewoon door
+            print(f"⚠️ Kon niet scannen naar oude berichten: {e}")
+
+        # Stap 2: Plaats de polls (indien geen opschoning nodig of na opschoning)
+        await self._plaats_polls(interaction, channel)
+
+    async def _scan_oude_berichten(self, channel: Any) -> list:
+        """
+        Scan het kanaal voor ALLE berichten (inclusief bot's eigen berichten).
+
+        Returns:
+            Lijst met alle berichten die verwijderd kunnen worden
+        """
+        oude_berichten = []
+        try:
+            # Haal laatste 100 berichten op (ALLE berichten, ook van de bot)
+            async for bericht in channel.history(limit=100):
+                oude_berichten.append(bericht)
+        except Exception:
+            pass
+        return oude_berichten
+
+    async def _toon_opschoon_bevestiging(
+        self, interaction: discord.Interaction, channel: Any, oude_berichten: list
+    ) -> None:
+        """
+        Toon een bevestigingsdialoog voor het opschonen van oude berichten.
+        """
+        from apps.ui.cleanup_confirmation import CleanupConfirmationView
+
+        aantal_berichten = len(oude_berichten)
+
+        async def bij_bevestiging(button_interaction: discord.Interaction):
+            """Verwijder oude berichten en plaats polls."""
+            try:
+                verwijderd_aantal = 0
+                for bericht in oude_berichten:
+                    try:
+                        await bericht.delete()
+                        verwijderd_aantal += 1
+                    except Exception:
+                        pass  # Sla berichten over die niet verwijderd kunnen worden
+
+                await button_interaction.edit_original_response(
+                    content=f"✅ {verwijderd_aantal} bericht(en) verwijderd. De polls worden nu geplaatst...",
+                    view=None,
+                )
+
+                # Plaats de polls
+                await self._plaats_polls(interaction, channel)
+
+            except Exception as e:
+                await button_interaction.followup.send(
+                    f"❌ Fout bij verwijderen: {e}",
+                    ephemeral=True,
+                )
+
+        async def bij_annulering(button_interaction: discord.Interaction):
+            """Plaats polls zonder berichten te verwijderen."""
+            try:
+                await self._plaats_polls(interaction, channel)
+            except Exception as e:
+                await button_interaction.followup.send(
+                    f"❌ Fout bij plaatsen: {e}",
+                    ephemeral=True,
+                )
+
+        view = CleanupConfirmationView(
+            on_confirm=bij_bevestiging,
+            on_cancel=bij_annulering,
+            message_count=aantal_berichten,
+        )
+
+        await interaction.followup.send(
+            f"⚠️ Er staan **{aantal_berichten}** bericht(en) in dit kanaal.\n"
+            f"Wil je deze verwijderen voor een schone start?",
+            view=view,
+            ephemeral=True,
+        )
+
+    async def _plaats_polls(self, interaction: discord.Interaction, channel: Any) -> None:
+        """
+        Plaats of update de poll-berichten in het kanaal.
+        """
         dagen = ["vrijdag", "zaterdag", "zondag"]
 
         try:
@@ -273,15 +365,24 @@ class DMKPoll(commands.Cog):
                 # No message ID, create new one
                 await create_notification_message(channel)
 
-            await interaction.followup.send(
-                "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
-                ephemeral=True,
-            )
+            # Stuur bevestiging (alleen als we direct vanuit on() komen, niet via opschoon-knoppen)
+            try:
+                await interaction.followup.send(
+                    "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
+                    ephemeral=True,
+                )
+            except Exception:
+                # Als interaction al is afgehandeld (bijv. via opschoon-knoppen), skip
+                pass
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(
-                f"❌ Fout bij plaatsen: {e}", ephemeral=True
-            )
+            try:
+                await interaction.followup.send(
+                    f"❌ Fout bij plaatsen: {e}", ephemeral=True
+                )
+            except Exception:
+                # Als interaction al is afgehandeld, print alleen de fout
+                print(f"❌ Fout bij plaatsen polls: {e}")
 
     # -----------------------------
     # /dmk-poll-reset
@@ -467,14 +568,14 @@ class DMKPoll(commands.Cog):
                     try:
                         await safe_call(opening_msg.delete)
                     except Exception:
-                        # Als delete niet mag, dan in elk geval neutraliseren
+                        # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             opening_msg.edit, content="📴 Poll gesloten.", view=None
                         )
                 clear_message_id(channel.id, "opening")
                 gevonden = True
 
-            # 1) Dag-berichten afsluiten (knop-vrij) en keys wissen
+            # 1) Dag-berichten verwijderen (met fallback naar edit) en keys wissen
             for dag in dagen:
                 mid = get_message_id(channel.id, dag)
                 if not mid:
@@ -482,8 +583,13 @@ class DMKPoll(commands.Cog):
                 gevonden = True
                 msg = await fetch_message_or_none(channel, mid)
                 if msg is not None:
-                    afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
-                    await safe_call(msg.edit, content=afsluit_tekst, view=None)
+                    try:
+                        # Probeer eerst te verwijderen
+                        await safe_call(msg.delete)
+                    except Exception:
+                        # Fallback: neutraliseren als verwijderen niet mag
+                        afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
+                        await safe_call(msg.edit, content=afsluit_tekst, view=None)
                 # Key altijd opschonen
                 clear_message_id(channel.id, dag)
 
@@ -495,7 +601,7 @@ class DMKPoll(commands.Cog):
                     try:
                         await safe_call(s_msg.delete)
                     except Exception:
-                        # Als delete niet mag, dan in elk geval neutraliseren
+                        # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             s_msg.edit, content="📴 Stemmen gesloten.", view=None
                         )
@@ -509,7 +615,7 @@ class DMKPoll(commands.Cog):
                     try:
                         await safe_call(n_msg.delete)
                     except Exception:
-                        # Als delete niet mag, dan in elk geval neutraliseren
+                        # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             n_msg.edit, content="📴 Notificaties gesloten.", view=None
                         )

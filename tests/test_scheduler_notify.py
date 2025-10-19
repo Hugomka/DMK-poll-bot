@@ -716,11 +716,15 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         mock_persistent.assert_awaited_once()
         # Assert: bericht bevat GEEN mentions (want geen members)
         args, kwargs = mock_persistent.call_args
-        message = args[1] if len(args) > 1 else ""
-        self.assertNotIn("<@", message)
+        # New signature: send_persistent_mention(channel, mentions, text)
+        mentions = args[1] if len(args) > 1 else ""
+        text = args[2] if len(args) > 2 else ""
+
+        # Verify no mentions
+        self.assertEqual(mentions, "")
         # Assert: bericht bevat wel de dag en tijd
-        self.assertIn("vrijdag", message)
-        self.assertIn("20:30", message)
+        self.assertIn("vrijdag", text)
+        self.assertIn("20:30", text)
 
     async def test_notify_voters_send_missing_no_crash(self):
         """Test dat ontbrekend send attribuut niet crasht."""

@@ -390,8 +390,10 @@ class TestDMKPollCommands(BaseTestCase):
         channel = MagicMock(id=20, guild=guild)
 
         msg_vr = MagicMock()
+        msg_vr.delete = AsyncMock()
         msg_vr.edit = AsyncMock()
         msg_za = MagicMock()
+        msg_za.delete = AsyncMock()
         msg_za.edit = AsyncMock()
 
         async def fake_fetch(mid):
@@ -409,9 +411,12 @@ class TestDMKPollCommands(BaseTestCase):
             interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
             await self._run(self.cog.verwijderbericht, interaction)
 
-        # Beide dag-berichten ge-edit en keys opgeschoond
-        msg_vr.edit.assert_awaited()
-        msg_za.edit.assert_awaited()
+        # Beide dag-berichten verwijderd (niet ge-edit) en keys opgeschoond
+        msg_vr.delete.assert_awaited()
+        msg_za.delete.assert_awaited()
+        # Edit zou NIET aangeroepen moeten worden bij succesvolle delete
+        msg_vr.edit.assert_not_awaited()
+        msg_za.edit.assert_not_awaited()
         assert clr_mid.call_count >= 2
         set_dis.assert_called_with(channel.id, True)
         interaction.followup.send.assert_called()

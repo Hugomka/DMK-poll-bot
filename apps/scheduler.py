@@ -777,17 +777,12 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                 except Exception:
                     continue
 
-            # Berichttekst - gebruik persistente mentions (blijven tot 23:00)
-            if mentions:
-                prefix = ", ".join(mentions)
-                message = f"{prefix} - de DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
-            else:
-                message = (
-                    f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
-                )
+            # Berichttekst - gebruik unified notification layout (5 uur lifetime)
+            mentions_str = " ".join(mentions) if mentions else ""
+            text = f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
 
             try:
-                await send_persistent_mention(channel, message)
+                await send_persistent_mention(channel, mentions_str, text)
             except Exception:
                 # Tests willen dat dit niet crasht
                 return
