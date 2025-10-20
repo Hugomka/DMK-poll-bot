@@ -217,19 +217,25 @@ journalctl -u dmk-bot -f
 ```
 DMK-poll-bot/
 ├── apps/
-│   ├── commands/           # Slash commando's
-│   │   └── dmk_poll.py    # Alle /dmk-poll-* commando's en /gast-* commando's
+│   ├── commands/           # Slash commando's (gemodulariseerd)
+│   │   ├── dmk_poll.py             # Main entry point voor alle commando's
+│   │   ├── poll_lifecycle.py       # Lifecycle commando's (on/reset/pauze/verwijderen)
+│   │   ├── poll_votes.py           # Stemzichtbaarheid commando's
+│   │   ├── poll_guests.py          # Gast-commando's (add/remove)
+│   │   ├── poll_archive.py         # Archief commando's (download/verwijderen)
+│   │   └── poll_status.py          # Status commando en notify
 │   ├── ui/                 # Discord UI componenten
-│   │   ├── poll_buttons.py        # Poll stemknoppen en views
-│   │   ├── stem_nu_button.py      # "Stem Nu" knop voor Misschien-bevestiging
-│   │   └── archive_view.py        # Archief download view met verwijder-knop
+│   │   ├── poll_buttons.py           # Poll stemknoppen en views
+│   │   ├── stem_nu_button.py         # "Stem Nu" knop voor Misschien-bevestiging
+│   │   ├── archive_view.py           # Archief download view met verwijder-knop
+│   │   └── cleanup_confirmation.py   # Cleanup confirmation view voor oude berichten
 │   ├── utils/              # Hulpfuncties
 │   │   ├── poll_storage.py        # Stem-opslag (votes.json)
 │   │   ├── poll_settings.py       # Poll-instellingen (pauze, zichtbaarheid)
 │   │   ├── poll_message.py        # Bericht-ID opslag en updates
 │   │   ├── message_builder.py     # Poll-bericht constructie
 │   │   ├── archive.py              # CSV-archief beheer
-│   │   ├── mention_utils.py       # Tijdelijke/persistente mentions
+│   │   ├── mention_utils.py       # Tijdelijke/persistente mentions met cleanup
 │   │   ├── discord_client.py      # Discord API helpers
 │   │   └── logger.py               # Logging utilities
 │   ├── logic/              # Business logic
@@ -238,7 +244,16 @@ DMK-poll-bot/
 │   ├── entities/           # Data models
 │   │   └── poll_option.py          # Poll optie dataclass
 │   └── scheduler.py        # APScheduler taken (reset, herinneringen, notificaties)
-├── tests/                  # Unittests (100+ tests)
+├── tests/                  # Unittests (150+ tests, ~88% coverage)
+│   ├── test_poll_lifecycle.py      # Tests voor lifecycle commando's
+│   ├── test_poll_guests.py         # Tests voor gast-commando's
+│   ├── test_poll_archive.py        # Tests voor archief commando's
+│   ├── test_poll_votes.py          # Tests voor stemzichtbaarheid
+│   ├── test_poll_message.py        # Tests voor bericht-opslag
+│   ├── test_cleanup_confirmation.py # Tests voor cleanup UI
+│   ├── test_mention_utils.py       # Tests voor mention utilities
+│   ├── test_scheduler_*.py         # Tests voor scheduler functies
+│   └── ...                          # Andere test modules
 ├── main.py                 # Bot entry point
 ├── poll_options.json       # Config van stemopties
 ├── opening_message.txt     # Aanpasbare openingstekst voor polls
@@ -337,7 +352,7 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ## 🧪 Testen en dekking
 
-De bot heeft **100+ unittests** met uitgebreide dekking van alle functionaliteit.
+De bot heeft **150+ unittests** met **~88% code coverage** voor uitgebreide dekking van alle functionaliteit.
 
 Alle unittests draaien met:
 ```bash
@@ -356,15 +371,27 @@ coverage xml
 ### Test-overzicht
 
 De tests dekken onder andere:
-- Poll-opslag (stemmen toevoegen/verwijderen/resetten)
-- Poll-settings (pauze, zichtbaarheid, namen tonen)
-- Message builder (bericht-constructie met verborgen aantallen)
-- Beslissingslogica (winnaar bepalen, gelijkstand, minimum stemmen)
-- Scheduler (catch-up, reset venster, gemiste jobs)
-- UI components (poll buttons, Stem Nu button, archief view)
-- Gaststemmen (toevoegen, verwijderen, groepering)
-- Notificaties (tijdelijk, persistent, Misschien-flow)
-- Discord client mocking (veilige API calls)
+- **Poll lifecycle** (on/reset/pauze/verwijderen commando's)
+- **Poll-opslag** (stemmen toevoegen/verwijderen/resetten, exception handling)
+- **Poll-settings** (pauze, zichtbaarheid, namen tonen)
+- **Gast-commando's** (toevoegen, verwijderen, groepering, validatie)
+- **Archief** (download, verwijderen, per guild/channel)
+- **Message builder** (bericht-constructie met verborgen aantallen)
+- **Beslissingslogica** (winnaar bepalen, gelijkstand, minimum stemmen)
+- **Scheduler** (catch-up, reset venster, gemiste jobs, deadline mode)
+- **UI components** (poll buttons, Stem Nu button, archief view, cleanup confirmation)
+- **Notificaties** (tijdelijk, persistent, Misschien-flow, cleanup)
+- **Mention utilities** (tijdelijke/persistente mentions, auto-delete, display names)
+- **Discord client** (safe API calls met exception handling)
+
+### Recente test-verbeteringen
+
+De testdekking is recent significant verbeterd van ~59% naar ~88% door:
+- Uitgebreide tests voor exception handling in alle modules
+- Tests voor edge cases en error scenarios
+- Tests voor scheduler deadline mode en Misschien-flow
+- Tests voor cleanup confirmation en mention utilities
+- Tests voor gemodulariseerde command structuur
 
 ---
 
@@ -414,19 +441,33 @@ Als het bestand niet bestaat of niet gelezen kan worden, gebruikt de bot een fal
 ### Code-stijl
 
 De bot volgt Python best practices:
-- Type hints voor alle functies
-- Docstrings voor publieke API's
-- Async/await voor alle I/O operaties
-- Exception handling met fallbacks
-- Defensive programming (safe_call helpers)
+- **Type hints** voor alle functies
+- **Docstrings** voor publieke API's
+- **Async/await** voor alle I/O operaties
+- **Exception handling** met fallbacks en defensive programming
+- **Safe API helpers** (discord_client.py) voor robuuste Discord calls
+- **Gemodulariseerde structuur** - command modules zijn opgesplitst naar functionaliteit
+
+### Recente refactoring
+
+De codebase is recent gerefactored voor betere onderhoudbaarheid:
+- **Command modularisatie**: `dmk_poll.py` opgesplitst in kleinere modules
+  - `poll_lifecycle.py` - Lifecycle commando's (on/reset/pauze/verwijderen)
+  - `poll_votes.py` - Stemzichtbaarheid
+  - `poll_guests.py` - Gast-functionaliteit
+  - `poll_archive.py` - Archief beheer
+  - `poll_status.py` - Status en notificaties
+- **UI componenten**: Toegevoegd cleanup_confirmation.py voor oude berichten
+- **Mention utilities**: Uitgebreid met display names en auto-cleanup functies
+- **Test coverage**: Verbeterd van 59% naar 88% met uitgebreide tests
 
 ### Nieuwe features toevoegen
 
 1. Schrijf eerst tests in `tests/`
-2. Implementeer de feature
-3. Update de README
+2. Implementeer de feature in de juiste module
+3. Update de README met nieuwe functionaliteit
 4. Test met `python -m unittest discover -v`
-5. Check coverage met `coverage report`
+5. Check coverage met `coverage report` (streef naar >85%)
 
 ### Debugging
 
@@ -441,6 +482,40 @@ journalctl -u dmk-bot -f
 # Scheduler state checken
 cat .scheduler_state.json
 ```
+
+---
+
+## 🎉 Recente verbeteringen
+
+### v2.0 - Code refactoring & test coverage verbetering
+
+**Command modularisatie** (PR #3):
+- Grote `dmk_poll.py` (978 regels) opgesplitst in kleinere, gefocuste modules
+- Betere onderhoudbaarheid en leesbaarheid
+- Duidelijke scheiding van verantwoordelijkheden
+
+**Test coverage uitbreiding**:
+- Van 59% naar **88% code coverage**
+- 150+ unittests voor robuuste codebase
+- Uitgebreide tests voor exception handling en edge cases
+- Tests voor alle nieuwe modules en functies
+
+**Notificatie-verbeteringen**:
+- Display names in plaats van user mentions voor betere leesbaarheid
+- Tijdelijke mentions (2 sec) voor herinneringen
+- Persistente mentions tot 23:00 voor "gaat door"-berichten
+- Automatische cleanup van oude notificatieberichten
+
+**UI verbeteringen**:
+- Cleanup confirmation voor oude berichten
+- Verbeterde Stem Nu button voor Misschien-bevestiging
+- Betere foutafhandeling in alle UI componenten
+
+**Code kwaliteit**:
+- Safe API helpers voor robuuste Discord calls
+- Betere exception handling in alle modules
+- Type hints en docstrings voor alle functies
+- Defensive programming principes toegepast
 
 ---
 
