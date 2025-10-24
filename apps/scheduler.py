@@ -224,7 +224,7 @@ async def notify_non_voters_thursday(bot) -> None:
             if non_voters:
                 # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
                 mentions_str = ", ".join(non_voters)
-                text = "Jullie hebben nog niet gestemd voor dit weekend. Graag stemmen vóór 18:00. Dank!"
+                text = "Als je nog niet gestemd hebt voor dit weekend: graag stemmen vóór 18:00. Dank!"
                 try:
                     await send_temporary_mention(
                         channel, mentions=mentions_str, text=text
@@ -692,11 +692,11 @@ async def notify_non_voters(
             # Tekst
             if dag:
                 header = (
-                    f"📣 DMK-poll – **{dag}**\nJe hebt nog niet gestemd voor **{dag}**."
+                    f"📣 DMK-poll – **{dag}**\nAls je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
                 )
             else:
-                header = "📣 DMK-poll – herinnering\nJe hebt nog niet gestemd voor dit weekend."
-            footer = "Stem a.u.b. in deze poll zo snel mogelijk."
+                header = "📣 DMK-poll – herinnering\nAls je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
+            footer = ""
 
             # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
             mentions_str = ", ".join(to_mention)
@@ -1124,7 +1124,7 @@ async def notify_misschien_voters(bot, dag: str) -> None:
             # Send temporary mention with button
             mentions_str = ", ".join(misschien_voters)
             text = (
-                "Wil je vanavond meedoen?\n"
+                "Als je op :m: **Misschien** hebt gestemd: wil je vanavond meedoen?\n"
                 "Klik op **Stem nu** om je stem te bevestigen."
             )
 
