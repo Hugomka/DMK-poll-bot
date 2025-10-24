@@ -600,20 +600,105 @@ class PollLifecycle(commands.Cog):
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     # -----------------------------
-    # /dmk-poll-verwijderen
+    # /dmk-poll-off
     # -----------------------------
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
-        name="dmk-poll-verwijderen",
-        description="Verwijder de pollberichten uit huidige kanaal (standaard: beheerder/moderator)",
+        name="dmk-poll-off",
+        description="Schakel polls uit en maak kanaal leeg (standaard: beheerder/moderator)",
     )
-    async def verwijderbericht(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(
+        dag="Weekdag (maandag t/m zondag) - verplicht met tijd",
+        datum="Specifieke datum (YYYY-MM-DD) - verplicht met tijd",
+        tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
+        frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
+    )
+    async def off(
+        self,
+        interaction: discord.Interaction,
+        dag: Literal[
+            "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"
+        ]
+        | None = None,
+        datum: str | None = None,
+        tijd: str | None = None,
+        frequentie: Literal["eenmalig", "wekelijks"] | None = None,
+    ) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
+
+        # Valideer parameters
+        validation_error = self._validate_scheduling_params(dag, datum, tijd, frequentie)
+        if validation_error:
+            await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
+            return
+
+        # Als er scheduling parameters zijn, sla ze op
+        schedule_message = None
+        if tijd and (dag or datum):
+            schedule_message = await self._save_schedule_off(
+                channel.id, dag, datum, tijd, frequentie
+            )
+            # Alleen schedule opslaan, niet uitvoeren
+            await interaction.followup.send(
+                f"✅ {schedule_message}",
+                ephemeral=True,
+            )
+            return
+
+        # Direct uitvoeren (handmatig): kanaal leegmaken + scheduler uitschakelen
+        await self._execute_poll_off(interaction, channel)
+
+    async def _save_schedule_off(
+        self,
+        channel_id: int,
+        dag: str | None,
+        datum: str | None,
+        tijd: str,
+        frequentie: str | None,
+    ) -> str:
+        """
+        Sla het off-schema op en retourneer een bevestigingsbericht.
+        """
+        from apps.utils.poll_settings import set_scheduled_deactivation
+
+        # Bepaal deactivatie type op basis van parameters
+        if datum:
+            activation_type = "datum"
+            set_scheduled_deactivation(channel_id, activation_type, tijd, datum=datum)
+            datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+            dag_naam = [
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ][datum_obj.weekday()]
+            return f"De poll wordt automatisch uitgeschakeld op **{dag_naam} {datum}** om **{tijd}** uur."
+        elif dag:
+            # Wekelijks als frequentie=wekelijks, of als default bij dag
+            activation_type = "wekelijks"
+            set_scheduled_deactivation(channel_id, activation_type, tijd, dag=dag)
+            is_recurrent = frequentie == "wekelijks" or frequentie is None
+            if is_recurrent:
+                return f"De poll wordt elke **{dag}** om **{tijd}** uur automatisch uitgeschakeld."
+            else:
+                return f"De poll wordt eenmalig op aanstaande **{dag}** om **{tijd}** uur uitgeschakeld."
+        else:
+            return ""
+
+    async def _execute_poll_off(
+        self, interaction: discord.Interaction, channel: Any
+    ) -> None:
+        """
+        Voer poll-off uit: kanaal leegmaken + scheduler uitschakelen.
+        """
         dagen = ["vrijdag", "zaterdag", "zondag"]
 
         try:
@@ -627,14 +712,13 @@ class PollLifecycle(commands.Cog):
                     try:
                         await safe_call(opening_msg.delete)
                     except Exception:  # pragma: no cover
-                        # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             opening_msg.edit, content="📴 Poll gesloten.", view=None
                         )
                 clear_message_id(channel.id, "opening")
                 gevonden = True
 
-            # 1) Dag-berichten verwijderen (met fallback naar edit) en keys wissen
+            # 1) Dag-berichten verwijderen
             for dag in dagen:
                 mid = get_message_id(channel.id, dag)
                 if not mid:
@@ -643,16 +727,13 @@ class PollLifecycle(commands.Cog):
                 msg = await fetch_message_or_none(channel, mid)
                 if msg is not None:
                     try:
-                        # Probeer eerst te verwijderen
                         await safe_call(msg.delete)
                     except Exception:  # pragma: no cover
-                        # Fallback: neutraliseren als verwijderen niet mag
                         afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
                         await safe_call(msg.edit, content=afsluit_tekst, view=None)
-                # Key altijd opschonen
                 clear_message_id(channel.id, dag)
 
-            # 2) Losse "Stemmen"-bericht ook opruimen
+            # 2) Stemmen-bericht verwijderen
             s_mid = get_message_id(channel.id, "stemmen")
             if s_mid:
                 s_msg = await fetch_message_or_none(channel, s_mid)
@@ -660,13 +741,12 @@ class PollLifecycle(commands.Cog):
                     try:
                         await safe_call(s_msg.delete)
                     except Exception:  # pragma: no cover
-                        # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             s_msg.edit, content="📴 Stemmen gesloten.", view=None
                         )
                 clear_message_id(channel.id, "stemmen")
 
-            # 3) Notificatiebericht ook opruimen
+            # 3) Notificatiebericht verwijderen
             n_mid = get_message_id(channel.id, "notification")
             if n_mid:
                 n_msg = await fetch_message_or_none(channel, n_mid)
@@ -674,19 +754,18 @@ class PollLifecycle(commands.Cog):
                     try:
                         await safe_call(n_msg.delete)
                     except Exception:  # pragma: no cover
-                        # Als verwijderen niet mag, dan in elk geval neutraliseren
                         await safe_call(
                             n_msg.edit, content="📴 Notificaties gesloten.", view=None
                         )
                 clear_message_id(channel.id, "notification")
 
-            # 4) Kanaal permanent uitzetten voor scheduler (altijd doen)
+            # 4) Kanaal permanent uitzetten voor scheduler
             try:
                 set_channel_disabled(getattr(channel, "id", 0), True)
             except Exception:  # pragma: no cover
                 pass
 
-            # 5) Wis geplande activatie
+            # 5) Wis geplande activatie (voor /dmk-poll-on)
             try:
                 clear_scheduled_activation(getattr(channel, "id", 0))
             except Exception:  # pragma: no cover
@@ -695,12 +774,139 @@ class PollLifecycle(commands.Cog):
             # 6) Terugkoppeling
             if gevonden:
                 await interaction.followup.send(
-                    "✅ Polls verwijderd. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
+                    "✅ Polls uitgeschakeld. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
                     ephemeral=True,
                 )
             else:
                 await interaction.followup.send(
                     "ℹ️ Er stonden geen poll-berichten meer in dit kanaal. De scheduler is nu uitgezet zodat ze niet terugkomen. Gebruik /dmk-poll-on om later opnieuw te starten.",
+                    ephemeral=True,
+                )
+
+        except Exception as e:  # pragma: no cover
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
+    # -----------------------------
+    # /dmk-poll-verwijderen (nieuw: eenvoudig)
+    # -----------------------------
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.command(
+        name="dmk-poll-verwijderen",
+        description="Verwijder pollberichten en plaats sluitingsbericht - scheduler blijft actief (standaard: beheerder/moderator)",
+    )
+    async def verwijderbericht(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        if channel is None:
+            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            return
+        dagen = ["vrijdag", "zaterdag", "zondag"]
+
+        try:
+            # Bepaal de sluitingstijd op basis van /dmk-poll-on instellingen
+            from apps.utils.poll_settings import get_scheduled_activation
+
+            schedule = get_scheduled_activation(channel.id)
+            closing_time = "dinsdag om 20:00 uur"  # Standaard
+
+            if schedule:
+                tijd = schedule.get("tijd", "20:00")
+                if schedule.get("type") == "wekelijks":
+                    dag_naam = schedule.get("dag", "dinsdag")
+                    closing_time = f"{dag_naam} om {tijd} uur"
+                elif schedule.get("type") == "datum":
+                    datum = schedule.get("datum", "")
+                    if datum:
+                        from datetime import datetime
+
+                        datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+                        dag_naam = [
+                            "maandag",
+                            "dinsdag",
+                            "woensdag",
+                            "donderdag",
+                            "vrijdag",
+                            "zaterdag",
+                            "zondag",
+                        ][datum_obj.weekday()]
+                        closing_time = f"{dag_naam} {datum} om {tijd} uur"
+
+            sluitingsbericht = (
+                f"Deze poll is gesloten en gaat pas **{closing_time}** weer open. "
+                "Dank voor je deelname."
+            )
+
+            gevonden = False
+
+            # 0) Opening bericht verwijderen
+            opening_mid = get_message_id(channel.id, "opening")
+            if opening_mid:
+                opening_msg = await fetch_message_or_none(channel, opening_mid)
+                if opening_msg is not None:
+                    try:
+                        await safe_call(opening_msg.delete)
+                    except Exception:  # pragma: no cover
+                        pass
+                clear_message_id(channel.id, "opening")
+                gevonden = True
+
+            # 1) Dag-berichten verwijderen
+            for dag in dagen:
+                mid = get_message_id(channel.id, dag)
+                if not mid:
+                    continue
+                gevonden = True
+                msg = await fetch_message_or_none(channel, mid)
+                if msg is not None:
+                    try:
+                        await safe_call(msg.delete)
+                    except Exception:  # pragma: no cover
+                        pass
+                clear_message_id(channel.id, dag)
+
+            # 2) Stemmen-bericht verwijderen
+            s_mid = get_message_id(channel.id, "stemmen")
+            if s_mid:
+                s_msg = await fetch_message_or_none(channel, s_mid)
+                if s_msg is not None:
+                    try:
+                        await safe_call(s_msg.delete)
+                    except Exception:  # pragma: no cover
+                        pass
+                clear_message_id(channel.id, "stemmen")
+
+            # 3) Notificatiebericht verwijderen
+            n_mid = get_message_id(channel.id, "notification")
+            if n_mid:
+                n_msg = await fetch_message_or_none(channel, n_mid)
+                if n_msg is not None:
+                    try:
+                        await safe_call(n_msg.delete)
+                    except Exception:  # pragma: no cover
+                        pass
+                clear_message_id(channel.id, "notification")
+
+            # 4) Plaats het sluitingsbericht
+            send = _get_attr(channel, "send")
+            if send:
+                try:
+                    await safe_call(send, content=sluitingsbericht)
+                except Exception:  # pragma: no cover
+                    pass
+
+            # 5) Scheduler blijft actief - NIET uitschakelen!
+            # (Dat is het verschil met /dmk-poll-off)
+
+            # 6) Terugkoppeling
+            if gevonden:
+                await interaction.followup.send(
+                    f"✅ Polls verwijderd en sluitingsbericht geplaatst. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    f"ℹ️ Er stonden geen poll-berichten meer in dit kanaal. Sluitingsbericht geplaatst. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
                     ephemeral=True,
                 )
 

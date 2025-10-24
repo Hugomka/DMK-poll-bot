@@ -54,7 +54,7 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             scheduler.setup_scheduler(bot)
 
-        # Assert: 16 jobs toegevoegd
+        # Assert: 17 jobs toegevoegd
         # 1. Dagelijkse update
         # 2. Wekelijkse reset
         # 3-5. Herinneringen (vr/za/zo)
@@ -63,8 +63,9 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         # 10-12. Misschien notificaties (vr/za/zo)
         # 13-15. Convert Misschien (vr/za/zo)
         # 16. Scheduled poll activation check (elke minuut)
-        # Totaal: 1 + 1 + 3 + 3 + 1 + 3 + 3 + 1 = 16
-        self.assertEqual(len(added_jobs), 16)
+        # 17. Scheduled poll deactivation check (elke minuut)
+        # Totaal: 1 + 1 + 3 + 3 + 1 + 3 + 3 + 1 + 1 = 17
+        self.assertEqual(len(added_jobs), 17)
 
         # Controleer dat juiste functies zijn geregistreerd
         job_funcs = [j["func"] for j in added_jobs]
@@ -76,6 +77,7 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn(scheduler.notify_misschien_voters, job_funcs)
         self.assertIn(scheduler.convert_remaining_misschien, job_funcs)
         self.assertIn(scheduler.activate_scheduled_polls, job_funcs)
+        self.assertIn(scheduler.deactivate_scheduled_polls, job_funcs)
 
         # Controleer notify_non_voters voor vr/za/zo (3x)
         notify_non_voters_jobs = [

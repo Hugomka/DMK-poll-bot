@@ -563,19 +563,21 @@ class TestVerwijderberichtCommand(BaseTestCase):
         content = self._last_content(interaction.followup.send)
         assert "geen" in content.lower()
 
-    async def test_verwijderbericht_disables_channel_in_scheduler(self):
-        """Test dat verwijderbericht() kanaal disabled in scheduler"""
+    async def test_verwijderbericht_keeps_scheduler_active(self):
+        """Test dat verwijderbericht() scheduler NIET uitschakelt (nieuw gedrag)"""
         channel = MagicMock()
         channel.id = 123
+        channel.send = AsyncMock()
         interaction = _mk_interaction(channel=channel, guild=MagicMock(), admin=True)
 
         with patch("apps.commands.poll_lifecycle.get_message_id", return_value=None), \
-             patch("apps.commands.poll_lifecycle.set_channel_disabled") as mock_disable:
+             patch("apps.commands.poll_lifecycle.set_channel_disabled") as mock_disable, \
+             patch("apps.utils.poll_settings.get_scheduled_activation", return_value=None):
 
             await self._run(self.cog.verwijderbericht, interaction)
 
-        # set_channel_disabled should be called with True
-        mock_disable.assert_called_once_with(123, True)
+        # set_channel_disabled should NOT be called (scheduler blijft actief)
+        mock_disable.assert_not_called()
 
 
 class TestPollLifecycleSetup(BaseTestCase):

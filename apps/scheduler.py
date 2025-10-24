@@ -500,6 +500,13 @@ def setup_scheduler(bot) -> None:
         args=[bot],
         name="Scheduled poll activation check",
     )
+    # Scheduled poll deactivation check (every minute)
+    scheduler.add_job(
+        deactivate_scheduled_polls,
+        CronTrigger(minute="*"),
+        args=[bot],
+        name="Scheduled poll deactivation check",
+    )
     scheduler.start()
     asyncio.create_task(_run_catch_up_with_lock(bot))
 
@@ -1157,10 +1164,141 @@ async def notify_misschien_voters(bot, dag: str) -> None:
                 pass
 
 
+async def deactivate_scheduled_polls(bot) -> None:
+    """
+    Deactiveer polls die volgens het schema gedeactiveerd moeten worden.
+    Dit wordt elke minuut uitgevoerd en controleert:
+    1. Datum-gebaseerde schedules (eenmalig)
+    2. Wekelijkse schedules
+
+    Dit is de tegenhanger van activate_scheduled_polls voor /dmk-poll-off.
+    """
+    from apps.utils.poll_settings import clear_scheduled_deactivation, get_scheduled_deactivation
+
+    now = datetime.now(TZ)
+    current_date = now.date().isoformat()  # YYYY-MM-DD
+    current_time = now.strftime("%H:%M")
+    current_weekday = now.weekday()
+    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+    current_dag = weekday_names[current_weekday]
+
+    log_job("deactivate_scheduled_polls", status="executed")
+
+    # Doorloop alle guilds en kanalen
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            cid = getattr(channel, "id", 0)
+
+            # Skip disabled channels (al uitgeschakeld)
+            if is_channel_disabled(cid):
+                continue
+
+            # Haal deactivation schedule op
+            schedule = get_scheduled_deactivation(cid)
+            if not schedule:
+                continue
+
+            activation_type = schedule.get("type")
+            scheduled_time = schedule.get("tijd", "00:00")
+
+            # Check of het tijd is om te deactiveren
+            should_deactivate = False
+
+            if activation_type == "datum":
+                # Eenmalige deactivatie op specifieke datum
+                scheduled_date = schedule.get("datum")
+                if scheduled_date == current_date and scheduled_time == current_time:
+                    should_deactivate = True
+                    # Na deactivatie: wis de eenmalige schedule
+                    try:
+                        clear_scheduled_deactivation(cid)
+                    except Exception:  # pragma: no cover
+                        pass
+
+            elif activation_type == "wekelijks":
+                # Wekelijkse deactivatie op specifieke dag
+                scheduled_dag = schedule.get("dag")
+                if scheduled_dag == current_dag and scheduled_time == current_time:
+                    should_deactivate = True
+
+            if should_deactivate:
+                # Deactiveer de polls: kanaal leegmaken + scheduler uitschakelen
+                try:
+                    dagen = ["vrijdag", "zaterdag", "zondag"]
+
+                    # 0) Opening bericht verwijderen
+                    opening_mid = get_message_id(cid, "opening")
+                    if opening_mid:
+                        opening_msg = await fetch_message_or_none(channel, opening_mid)
+                        if opening_msg is not None:
+                            try:
+                                await safe_call(opening_msg.delete)
+                            except Exception:  # pragma: no cover
+                                await safe_call(
+                                    opening_msg.edit, content="📴 Poll gesloten.", view=None
+                                )
+                        clear_message_id(cid, "opening")
+
+                    # 1) Dag-berichten verwijderen
+                    for dag in dagen:
+                        mid = get_message_id(cid, dag)
+                        if not mid:
+                            continue
+                        msg = await fetch_message_or_none(channel, mid)
+                        if msg is not None:
+                            try:
+                                await safe_call(msg.delete)
+                            except Exception:  # pragma: no cover
+                                afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
+                                await safe_call(msg.edit, content=afsluit_tekst, view=None)
+                        clear_message_id(cid, dag)
+
+                    # 2) Stemmen-bericht verwijderen
+                    s_mid = get_message_id(cid, "stemmen")
+                    if s_mid:
+                        s_msg = await fetch_message_or_none(channel, s_mid)
+                        if s_msg is not None:
+                            try:
+                                await safe_call(s_msg.delete)
+                            except Exception:  # pragma: no cover
+                                await safe_call(
+                                    s_msg.edit, content="📴 Stemmen gesloten.", view=None
+                                )
+                        clear_message_id(cid, "stemmen")
+
+                    # 3) Notificatiebericht verwijderen
+                    n_mid = get_message_id(cid, "notification")
+                    if n_mid:
+                        n_msg = await fetch_message_or_none(channel, n_mid)
+                        if n_msg is not None:
+                            try:
+                                await safe_call(n_msg.delete)
+                            except Exception:  # pragma: no cover
+                                await safe_call(
+                                    n_msg.edit, content="📴 Notificaties gesloten.", view=None
+                                )
+                        clear_message_id(cid, "notification")
+
+                    # 4) Kanaal permanent uitzetten voor scheduler
+                    set_channel_disabled(cid, True)
+
+                    # 5) Wis geplande activatie (voor /dmk-poll-on)
+                    try:
+                        from apps.utils.poll_settings import clear_scheduled_activation
+                        clear_scheduled_activation(cid)
+                    except Exception:  # pragma: no cover
+                        pass
+
+                    print(f"✅ Automatisch gedeactiveerd: kanaal {cid} volgens schedule")
+
+                except Exception as e:  # pragma: no cover
+                    print(f"❌ Fout bij automatische deactivatie voor kanaal {cid}: {e}")
+
+
 async def activate_scheduled_polls(bot) -> None:
     """
     Activeer polls die volgens het schema geactiveerd moeten worden.
-    Dit wordt dagelijks uitgevoerd en controleert:
+    Dit wordt elke minuut uitgevoerd en controleert:
     1. Datum-gebaseerde schedules (eenmalig)
     2. Wekelijkse schedules
 
