@@ -224,7 +224,8 @@ async def notify_non_voters_thursday(bot) -> None:
             if non_voters:
                 # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
                 mentions_str = ", ".join(non_voters)
-                text = "Als je nog niet gestemd hebt voor dit weekend: graag stemmen vóór 18:00. Dank!"
+                count = len(non_voters)
+                text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd voor dit weekend. Als je nog niet gestemd hebt: graag stemmen vóór 18:00. Dank!"
                 try:
                     await send_temporary_mention(
                         channel, mentions=mentions_str, text=text
@@ -690,12 +691,14 @@ async def notify_non_voters(
                 continue
 
             # Tekst
+            count = len(to_mention)
+            count_text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd. "
             if dag:
                 header = (
-                    f"📣 DMK-poll – **{dag}**\nAls je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
+                    f"📣 DMK-poll – **{dag}**\n{count_text}Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
                 )
             else:
-                header = "📣 DMK-poll – herinnering\nAls je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
+                header = f"📣 DMK-poll – herinnering\n{count_text}Als je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
             footer = ""
 
             # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
@@ -1123,8 +1126,10 @@ async def notify_misschien_voters(bot, dag: str) -> None:
 
             # Send temporary mention with button
             mentions_str = ", ".join(misschien_voters)
+            count = len(misschien_voters)
             text = (
-                "Als je op :m: **Misschien** hebt gestemd: wil je vanavond meedoen?\n"
+                f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} op :m: **Misschien** gestemd. "
+                f"Als je op **Misschien** hebt gestemd: wil je vanavond meedoen?\n"
                 "Klik op **Stem nu** om je stem te bevestigen."
             )
 
