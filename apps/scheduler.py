@@ -12,14 +12,17 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from apps.utils.discord_client import get_channels, safe_call
+from apps.utils.discord_client import fetch_message_or_none, get_channels, safe_call
 from apps.utils.logger import log_job, log_startup
 from apps.utils.mention_utils import send_persistent_mention, send_temporary_mention
 from apps.utils.poll_message import (
     clear_message_id,
+    create_notification_message,
     get_message_id,
     is_channel_disabled,
+    save_message_id,
     schedule_poll_update,
+    set_channel_disabled,
 )
 from apps.utils.poll_settings import get_setting, is_paused
 from apps.utils.poll_storage import (
@@ -489,6 +492,13 @@ def setup_scheduler(bot) -> None:
         CronTrigger(day_of_week="sun", hour=18, minute=0),
         args=[bot, "zondag"],
         name="Convert Misschien zondag",
+    )
+    # Scheduled poll activation check (every minute)
+    scheduler.add_job(
+        activate_scheduled_polls,
+        CronTrigger(minute="*"),
+        args=[bot],
+        name="Scheduled poll activation check",
     )
     scheduler.start()
     asyncio.create_task(_run_catch_up_with_lock(bot))
@@ -1145,6 +1155,136 @@ async def notify_misschien_voters(bot, dag: str) -> None:
             except Exception:  # pragma: no cover
                 # Silent fail
                 pass
+
+
+async def activate_scheduled_polls(bot) -> None:
+    """
+    Activeer polls die volgens het schema geactiveerd moeten worden.
+    Dit wordt dagelijks uitgevoerd en controleert:
+    1. Datum-gebaseerde schedules (eenmalig)
+    2. Wekelijkse schedules
+
+    Prioriteit: handmatig > datum > wekelijks
+    (Handmatige activatie wordt afgehandeld door /dmk-poll-on zelf)
+    """
+    from apps.utils.poll_settings import clear_scheduled_activation, get_scheduled_activation
+
+    now = datetime.now(TZ)
+    current_date = now.date().isoformat()  # YYYY-MM-DD
+    current_time = now.strftime("%H:%M")
+    current_weekday = now.weekday()
+    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+    current_dag = weekday_names[current_weekday]
+
+    log_job("activate_scheduled_polls", status="executed")
+
+    # Doorloop alle guilds en kanalen
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            cid = getattr(channel, "id", 0)
+
+            # Skip disabled channels
+            if is_channel_disabled(cid):
+                continue
+
+            # Haal schedule op
+            schedule = get_scheduled_activation(cid)
+            if not schedule:
+                continue
+
+            activation_type = schedule.get("type")
+            scheduled_time = schedule.get("tijd", "20:00")
+
+            # Check of het tijd is om te activeren
+            should_activate = False
+
+            if activation_type == "datum":
+                # Eenmalige activatie op specifieke datum
+                scheduled_date = schedule.get("datum")
+                if scheduled_date == current_date and scheduled_time == current_time:
+                    should_activate = True
+                    # Na activatie: wis de eenmalige schedule
+                    try:
+                        clear_scheduled_activation(cid)
+                    except Exception:  # pragma: no cover
+                        pass
+
+            elif activation_type == "wekelijks":
+                # Wekelijkse activatie op specifieke dag
+                scheduled_dag = schedule.get("dag")
+                if scheduled_dag == current_dag and scheduled_time == current_time:
+                    should_activate = True
+
+            if should_activate:
+                # Activeer de polls via een mock interaction
+                # We kunnen niet de normale _plaats_polls gebruiken zonder interaction,
+                # dus we moeten de activatie-logica hier dupliceren of een helper maken
+                try:
+                    # Import hier om circular dependency te voorkomen
+                    from apps.utils.poll_message import update_poll_message
+                    from apps.ui.poll_buttons import OneStemButtonView
+
+                    # Kanaal activeren
+                    set_channel_disabled(cid, False)
+
+                    # Unpause
+                    try:
+                        from apps.utils.poll_settings import set_paused
+                        set_paused(cid, False)
+                    except Exception:  # pragma: no cover
+                        pass
+
+                    # Opening bericht
+                    opening_text = "@everyone \n# 🎮 **Welkom bij de Deaf Mario Kart-poll!**\n\u200b"
+                    send = getattr(channel, "send", None)
+
+                    opening_mid = get_message_id(cid, "opening")
+                    if opening_mid:
+                        opening_msg = await fetch_message_or_none(channel, opening_mid)
+                        if opening_msg is not None:
+                            await safe_call(opening_msg.edit, content=opening_text)
+                        else:
+                            opening_msg = await safe_call(send, content=opening_text) if send else None
+                            if opening_msg is not None:
+                                save_message_id(cid, "opening", opening_msg.id)
+                    else:
+                        opening_msg = await safe_call(send, content=opening_text) if send else None
+                        if opening_msg is not None:
+                            save_message_id(cid, "opening", opening_msg.id)
+
+                    # Dag-berichten updaten
+                    for dag in ["vrijdag", "zaterdag", "zondag"]:
+                        await update_poll_message(channel, dag)
+
+                    # Stemmen-knop bericht
+                    key = "stemmen"
+                    tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+                    s_mid = get_message_id(cid, key)
+                    paused = is_paused(cid)
+                    view = OneStemButtonView(paused=paused)
+
+                    if s_mid:
+                        s_msg = await fetch_message_or_none(channel, s_mid)
+                        if s_msg is not None:
+                            await safe_call(s_msg.edit, content=tekst, view=view)
+                        else:
+                            s_msg = await safe_call(send, content=tekst, view=view) if send else None
+                            if s_msg is not None:
+                                save_message_id(cid, key, s_msg.id)
+                    else:
+                        s_msg = await safe_call(send, content=tekst, view=view) if send else None
+                        if s_msg is not None:
+                            save_message_id(cid, key, s_msg.id)
+
+                    # Notificatiebericht
+                    n_mid = get_message_id(cid, "notification")
+                    if not n_mid:
+                        await create_notification_message(channel)
+
+                    print(f"✅ Automatisch geactiveerd: kanaal {cid} volgens schedule")
+
+                except Exception as e:  # pragma: no cover
+                    print(f"❌ Fout bij automatische activatie voor kanaal {cid}: {e}")
 
 
 async def convert_remaining_misschien(bot, dag: str) -> None:

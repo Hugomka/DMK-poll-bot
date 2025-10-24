@@ -107,3 +107,72 @@ def reset_settings() -> None:
     """Verwijdert alle zichtbaarheid- en pauze-instellingen."""
     if os.path.exists(SETTINGS_FILE):
         os.remove(SETTINGS_FILE)
+
+
+# ========================================================================
+# Scheduling Functions for Poll Activation
+# ========================================================================
+
+
+def get_scheduled_activation(channel_id: int) -> dict | None:
+    """
+    Haal de geplande activatie-instellingen op voor een kanaal.
+
+    Returns:
+        Dict met scheduling info of None als er geen schema is.
+        Format: {
+            'type': 'datum' | 'wekelijks',
+            'datum': 'YYYY-MM-DD' (alleen voor type='datum'),
+            'dag': 'maandag' t/m 'zondag' (alleen voor type='wekelijks'),
+            'tijd': 'HH:mm'
+        }
+    """
+    data = _load_data()
+    return data.get(str(channel_id), {}).get("__scheduled_activation__")
+
+
+def set_scheduled_activation(
+    channel_id: int,
+    activation_type: str,
+    tijd: str,
+    dag: str | None = None,
+    datum: str | None = None,
+) -> dict:
+    """
+    Stel een geplande activatie in voor een kanaal.
+
+    Args:
+        channel_id: Het kanaal ID
+        activation_type: 'datum' (eenmalig) of 'wekelijks'
+        tijd: Tijd in HH:mm formaat
+        dag: Weekdag naam (voor wekelijks), optioneel
+        datum: Datum in YYYY-MM-DD formaat (voor datum), optioneel
+
+    Returns:
+        De opgeslagen schedule configuratie
+    """
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+
+    schedule: dict = {
+        "type": activation_type,
+        "tijd": tijd,
+    }
+
+    if activation_type == "datum" and datum:
+        schedule["datum"] = datum
+    elif activation_type == "wekelijks" and dag:
+        schedule["dag"] = dag
+
+    ch["__scheduled_activation__"] = schedule
+    _save_data(data)
+    return schedule
+
+
+def clear_scheduled_activation(channel_id: int) -> None:
+    """Verwijder de geplande activatie voor een kanaal."""
+    data = _load_data()
+    ch = data.get(str(channel_id), {})
+    if "__scheduled_activation__" in ch:
+        del ch["__scheduled_activation__"]
+        _save_data(data)

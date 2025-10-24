@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 import discord
@@ -25,7 +25,13 @@ from apps.utils.poll_message import (
     set_channel_disabled,
     update_poll_message,
 )
-from apps.utils.poll_settings import is_paused, should_hide_counts, toggle_paused
+from apps.utils.poll_settings import (
+    clear_scheduled_activation,
+    is_paused,
+    set_scheduled_activation,
+    should_hide_counts,
+    toggle_paused,
+)
 from apps.utils.poll_storage import reset_votes, reset_votes_scoped
 
 
@@ -54,6 +60,101 @@ class PollLifecycle(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def _validate_scheduling_params(
+        self,
+        dag: str | None,
+        datum: str | None,
+        tijd: str | None,
+        frequentie: str | None,
+    ) -> str | None:
+        """
+        Valideer de scheduling parameters.
+        Retourneert een foutmelding als de parameters ongeldig zijn, anders None.
+        """
+        # Als geen parameters, dan handmatig activeren (standaard gedrag)
+        if not tijd and not dag and not datum and not frequentie:
+            return None
+
+        # tijd is verplicht met dag of datum
+        if (dag or datum) and not tijd:
+            return "De parameter 'tijd' is verplicht samen met 'dag' of 'datum'."
+
+        # dag en datum kunnen niet samen
+        if dag and datum:
+            return "Je kunt niet zowel 'dag' als 'datum' opgeven. Kies één van beide."
+
+        # tijd kan niet zonder dag of datum
+        if tijd and not dag and not datum:
+            return "De parameter 'tijd' kan niet zonder 'dag' of 'datum'."
+
+        # Valideer tijd formaat (HH:mm)
+        if tijd:
+            try:
+                parts = tijd.split(":")
+                if len(parts) != 2:
+                    return "Tijd moet in HH:mm formaat zijn (bijv. 20:00)."
+                uur, minuut = int(parts[0]), int(parts[1])
+                if not (0 <= uur <= 23 and 0 <= minuut <= 59):
+                    return "Ongeldige tijd. Uur moet 0-23 zijn, minuut moet 0-59 zijn."
+            except ValueError:
+                return "Tijd moet in HH:mm formaat zijn (bijv. 20:00)."
+
+        # Valideer datum formaat (YYYY-MM-DD)
+        if datum:
+            try:
+                datetime.strptime(datum, "%Y-%m-%d")
+            except ValueError:
+                return "Datum moet in YYYY-MM-DD formaat zijn (bijv. 2025-12-31)."
+
+        # frequentie validatie
+        if frequentie:
+            if frequentie == "eenmalig" and not datum:
+                return "Frequentie 'eenmalig' vereist een 'datum' parameter."
+            if frequentie == "wekelijks" and not dag:
+                return "Frequentie 'wekelijks' vereist een 'dag' parameter."
+
+        return None
+
+    async def _save_schedule(
+        self,
+        channel_id: int,
+        dag: str | None,
+        datum: str | None,
+        tijd: str,
+        frequentie: str | None,
+    ) -> str:
+        """
+        Sla het schema op en retourneer een bevestigingsbericht.
+        """
+        # Bepaal activatie type op basis van parameters
+        if datum:
+            activation_type = "datum"
+            set_scheduled_activation(channel_id, activation_type, tijd, datum=datum)
+            datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+            dag_naam = [
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ][datum_obj.weekday()]
+            return f"📅 De poll wordt automatisch geactiveerd op **{dag_naam} {datum}** om **{tijd}** uur."
+        elif dag:
+            # Wekelijks als frequentie=wekelijks, of als default bij dag
+            activation_type = "wekelijks"
+            set_scheduled_activation(channel_id, activation_type, tijd, dag=dag)
+            is_recurrent = frequentie == "wekelijks" or frequentie is None
+            if is_recurrent:
+                return f"📅 De poll wordt elke **{dag}** om **{tijd}** uur automatisch geactiveerd."
+            else:
+                return f"📅 De poll wordt eenmalig op aanstaande **{dag}** om **{tijd}** uur geactiveerd."
+        else:
+            # Fallback: wis schedule (handmatige activatie)
+            clear_scheduled_activation(channel_id)
+            return ""
+
     # -----------------------------
     # /dmk-poll-on
     # -----------------------------
@@ -63,26 +164,57 @@ class PollLifecycle(commands.Cog):
         name="dmk-poll-on",
         description="Plaats of update de polls per avond (standaard: beheerder/moderator)",
     )
-    async def on(self, interaction: discord.Interaction) -> None:
+    @app_commands.describe(
+        dag="Weekdag (maandag t/m zondag) - verplicht met tijd",
+        datum="Specifieke datum (YYYY-MM-DD) - verplicht met tijd",
+        tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
+        frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
+    )
+    async def on(
+        self,
+        interaction: discord.Interaction,
+        dag: Literal[
+            "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"
+        ]
+        | None = None,
+        datum: str | None = None,
+        tijd: str | None = None,
+        frequentie: Literal["eenmalig", "wekelijks"] | None = None,
+    ) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
 
+        # Valideer parameters
+        validation_error = self._validate_scheduling_params(dag, datum, tijd, frequentie)
+        if validation_error:
+            await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
+            return
+
+        # Als er scheduling parameters zijn, sla ze op
+        schedule_message = None
+        if tijd and (dag or datum):
+            schedule_message = await self._save_schedule(
+                channel.id, dag, datum, tijd, frequentie
+            )
+
         # Stap 1: Controleer op oude berichten in het kanaal
         try:
             oude_berichten = await self._scan_oude_berichten(channel)
             if oude_berichten:
                 # Er zijn oude berichten - vraag om bevestiging
-                await self._toon_opschoon_bevestiging(interaction, channel, oude_berichten)
+                await self._toon_opschoon_bevestiging(
+                    interaction, channel, oude_berichten, schedule_message
+                )
                 return  # De bevestigingsview handelt de rest af
         except Exception as e:
             # Als scannen faalt, ga gewoon door
             print(f"⚠️ Kon niet scannen naar oude berichten: {e}")
 
         # Stap 2: Plaats de polls (indien geen opschoning nodig of na opschoning)
-        await self._plaats_polls(interaction, channel)
+        await self._plaats_polls(interaction, channel, schedule_message)
 
     async def _scan_oude_berichten(self, channel: Any) -> list:
         """
@@ -101,7 +233,11 @@ class PollLifecycle(commands.Cog):
         return oude_berichten
 
     async def _toon_opschoon_bevestiging(
-        self, interaction: discord.Interaction, channel: Any, oude_berichten: list
+        self,
+        interaction: discord.Interaction,
+        channel: Any,
+        oude_berichten: list,
+        schedule_message: str | None = None,
     ) -> None:
         """
         Toon een bevestigingsdialoog voor het opschonen van oude berichten.
@@ -127,7 +263,7 @@ class PollLifecycle(commands.Cog):
                 )
 
                 # Plaats de polls
-                await self._plaats_polls(interaction, channel)
+                await self._plaats_polls(interaction, channel, schedule_message)
 
             except Exception as e:  # pragma: no cover
                 await button_interaction.followup.send(
@@ -138,7 +274,7 @@ class PollLifecycle(commands.Cog):
         async def bij_annulering(button_interaction: discord.Interaction):
             """Plaats polls zonder berichten te verwijderen."""
             try:
-                await self._plaats_polls(interaction, channel)
+                await self._plaats_polls(interaction, channel, schedule_message)
             except Exception as e:  # pragma: no cover
                 await button_interaction.followup.send(
                     f"❌ Fout bij plaatsen: {e}",
@@ -158,7 +294,9 @@ class PollLifecycle(commands.Cog):
             ephemeral=True,
         )
 
-    async def _plaats_polls(self, interaction: discord.Interaction, channel: Any) -> None:
+    async def _plaats_polls(
+        self, interaction: discord.Interaction, channel: Any, schedule_message: str | None = None
+    ) -> None:
         """
         Plaats of update de poll-berichten in het kanaal.
         """
@@ -283,8 +421,11 @@ class PollLifecycle(commands.Cog):
 
             # Stuur bevestiging (alleen als we direct vanuit on() komen, niet via opschoon-knoppen)
             try:
+                confirmation = "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt."
+                if schedule_message:
+                    confirmation += f"\n{schedule_message}"
                 await interaction.followup.send(
-                    "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt.",
+                    confirmation,
                     ephemeral=True,
                 )
             except Exception:  # pragma: no cover
@@ -545,7 +686,13 @@ class PollLifecycle(commands.Cog):
             except Exception:  # pragma: no cover
                 pass
 
-            # 5) Terugkoppeling
+            # 5) Wis geplande activatie
+            try:
+                clear_scheduled_activation(getattr(channel, "id", 0))
+            except Exception:  # pragma: no cover
+                pass
+
+            # 6) Terugkoppeling
             if gevonden:
                 await interaction.followup.send(
                     "✅ Polls verwijderd. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
