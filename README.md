@@ -85,7 +85,7 @@ Beheerders en moderators kunnen dit per server **aanpassen** via Discord:
 - **Gast toevoegen:**
   Voorbeeld:
 ```
-/gast-add slot:"Zaterdag 19:00" namen:"Anna, Piet"
+/gast-add slot:"Zaterdag 19:00" namen:"Pauline, King Boo"
 ```
 
 Je kunt meerdere namen scheiden met komma's of `;`. De bot meldt welke gasten zijn toegevoegd en welke al bestonden.
@@ -93,12 +93,12 @@ Je kunt meerdere namen scheiden met komma's of `;`. De bot meldt welke gasten zi
 - **Gast verwijderen:**
 Voorbeeld:
 ```
-/gast-remove slot:"Zaterdag 19:00" namen:"Piet"
+/gast-remove slot:"Zaterdag 19:00" namen:"King Boo"
 ```
 De bot meldt welke namen zijn verwijderd of niet gevonden.
 
 **Hoe telt dit mee?** Elke gast telt als een **extra stem** op dat tijdstip, gekoppeld aan jouw account. In de openbare poll zie je alleen aantallen. In `/dmk-poll-status` worden stemmen gegroepeerd per eigenaar, bv.:
-`@Johan (@Johan: Tim, Kim), @Piet`
+`@Mario (@Mario: Luigi, Peach), @Toad`
 
 ---
 

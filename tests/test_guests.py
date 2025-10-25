@@ -125,7 +125,7 @@ class TestGasten(BaseTestCase):
         kanaal_id = 7890
 
         # Owner stemt NIET, maar heeft 2 gasten
-        await add_guest_votes(OWNER, DAG, TIJD, ["Anna", "Maria"], 0, kanaal_id)
+        await add_guest_votes(OWNER, DAG, TIJD, ["Pauline", "Daisy"], 0, kanaal_id)
 
         mock_guild = MagicMock()
         mock_guild.id = 0
@@ -160,7 +160,7 @@ class TestGasten(BaseTestCase):
 
         all_text = str(embed.description) + "".join(f.value for f in embed.fields)
         self.assertIn("**2** stemmen", all_text)
-        self.assertIn("(@Mario: Anna, Maria)", all_text)
+        self.assertIn("(@Mario: Pauline, Daisy)", all_text)
 
 
 if __name__ == "__main__":

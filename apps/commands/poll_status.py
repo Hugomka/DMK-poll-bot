@@ -13,7 +13,7 @@ from discord.ext import commands
 
 from apps import scheduler
 from apps.entities.poll_option import get_poll_options
-from apps.utils.message_builder import build_grouped_names_for
+from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
 from apps.utils.poll_message import is_channel_disabled
 from apps.utils.poll_settings import get_setting, is_paused
 from apps.utils.poll_storage import load_votes
@@ -130,6 +130,15 @@ class PollStatus(commands.Cog):
                     if groepen_txt:
                         regel += f":  {groepen_txt}"
                     regels.append(regel)
+
+                # Voeg niet-stemmers toe als er mensen zijn die nog niet hebben gestemd
+                non_voter_count, non_voter_text = await get_non_voters_for_day(
+                    dag, guild, channel, scoped
+                )
+                if non_voter_count > 0:
+                    regels.append(
+                        f"\nNiet-stemmers ({non_voter_count}): {non_voter_text}"
+                    )
 
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
                 embed.add_field(

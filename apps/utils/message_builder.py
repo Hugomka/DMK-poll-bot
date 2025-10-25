@@ -281,3 +281,72 @@ async def build_doorgaan_participant_list(
     participant_list = ", ".join(participant_parts) if participant_parts else ""
 
     return totaal, mentions_str, participant_list
+
+
+async def get_non_voters_for_day(
+    dag: str,
+    guild: discord.Guild | None,
+    channel: Any,
+    all_votes: dict,
+) -> tuple[int, str]:
+    """
+    Retourneert (aantal_niet_stemmers, tekst) voor een specifieke dag.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild: Discord guild (server)
+    - channel: Discord channel (voor toegang tot members)
+    - all_votes: Dictionary met alle stemmen (van load_votes)
+
+    Retourneert:
+    - (count, text) waarbij text bv. is: "@Naam1, @Naam2, @Naam3"
+
+    Regels:
+    - Alleen leden die toegang hebben tot het kanaal worden meegenomen
+    - Bots worden uitgefilterd
+    - Gasten worden via hun owner-ID gekoppeld
+    - Als een lid (of gast van dat lid) heeft gestemd, wordt het lid niet als niet-stemmer getoond
+    """
+    if not channel or not guild:
+        return 0, ""
+
+    # Verzamel IDs die voor deze dag hebben gestemd (inclusief gasten via hun owner)
+    voted_ids: set[str] = set()
+    for uid, per_dag in all_votes.items():
+        try:
+            tijden = (per_dag or {}).get(dag, [])
+            if isinstance(tijden, list) and tijden:
+                # Extract owner ID (handle guests)
+                actual_uid = (
+                    uid.split("_guest::", 1)[0]
+                    if isinstance(uid, str) and "_guest::" in uid
+                    else uid
+                )
+                voted_ids.add(str(actual_uid))
+        except Exception:  # pragma: no cover
+            continue
+
+    # Alleen leden die toegang hebben tot dit specifieke kanaal
+    members = getattr(channel, "members", [])
+    non_voters: list[str] = []
+
+    for member in members:
+        # Skip bots
+        if getattr(member, "bot", False):
+            continue
+
+        # Check of dit lid heeft gestemd
+        member_id = str(getattr(member, "id", ""))
+        if member_id not in voted_ids:
+            # Gebruik displaynaam in plaats van mention (consistent met build_grouped_names_for)
+            display = (
+                getattr(member, "display_name", None)
+                or getattr(member, "global_name", None)
+                or getattr(member, "name", "Lid")
+            )
+            non_voters.append(f"@{display}")
+
+    count = len(non_voters)
+    text = ", ".join(non_voters) if non_voters else ""
+
+    return count, text
