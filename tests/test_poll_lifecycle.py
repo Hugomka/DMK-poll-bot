@@ -157,6 +157,33 @@ class TestPollLifecycleOn(BaseTestCase):
         interaction.followup.send.assert_awaited()
 
 
+    async def test_on_with_scheduling_params_only_saves_schedule(self):
+        """Test dat /dmk-poll-on met scheduling parameters alleen de schedule opslaat"""
+        channel = MagicMock()
+        channel.id = 123
+        channel.guild = MagicMock(id=456)
+
+        interaction = _mk_interaction(channel=channel, admin=True)
+
+        with patch("apps.commands.poll_lifecycle.set_scheduled_activation") as mock_set:
+            # Roep aan met scheduling parameters (dag + tijd)
+            await self._run(
+                self.cog.on, interaction, dag="maandag", tijd="18:00", frequentie="wekelijks"
+            )
+
+        # Moet schedule hebben opgeslagen
+        mock_set.assert_called_once_with(123, "wekelijks", "18:00", dag="maandag")
+
+        # Moet bevestigingsbericht hebben gestuurd
+        interaction.followup.send.assert_awaited_once()
+        content = self._last_content(interaction.followup.send)
+        assert "maandag" in content.lower()
+        assert "18:00" in content
+
+        # Channel.send mag NIET zijn aangeroepen (geen polls geplaatst)
+        channel.send.assert_not_called()
+
+
 class TestPollLifecycleReset(BaseTestCase):
     """Tests voor /dmk-poll-reset command"""
 

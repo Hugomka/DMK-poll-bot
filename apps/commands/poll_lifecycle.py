@@ -193,28 +193,31 @@ class PollLifecycle(commands.Cog):
             await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
             return
 
-        # Als er scheduling parameters zijn, sla ze op
-        schedule_message = None
+        # Als er scheduling parameters zijn, sla ze op en toon alleen bevestiging
         if tijd and (dag or datum):
             schedule_message = await self._save_schedule(
                 channel.id, dag, datum, tijd, frequentie
             )
+            # Alleen bevestigingsbericht tonen, poll niet plaatsen
+            await interaction.followup.send(schedule_message, ephemeral=True)
+            return
 
+        # Handmatige activatie (geen scheduling parameters)
         # Stap 1: Controleer op oude berichten in het kanaal
         try:
             oude_berichten = await self._scan_oude_berichten(channel)
             if oude_berichten:
                 # Er zijn oude berichten - vraag om bevestiging
                 await self._toon_opschoon_bevestiging(
-                    interaction, channel, oude_berichten, schedule_message
+                    interaction, channel, oude_berichten, schedule_message=None
                 )
                 return  # De bevestigingsview handelt de rest af
         except Exception as e:
             # Als scannen faalt, ga gewoon door
             print(f"⚠️ Kon niet scannen naar oude berichten: {e}")
 
-        # Stap 2: Plaats de polls (indien geen opschoning nodig of na opschoning)
-        await self._plaats_polls(interaction, channel, schedule_message)
+        # Stap 2: Plaats de polls (handmatige activatie zonder scheduling)
+        await self._plaats_polls(interaction, channel, schedule_message=None)
 
     async def _scan_oude_berichten(self, channel: Any) -> list:
         """
