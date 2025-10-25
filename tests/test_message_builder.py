@@ -119,7 +119,7 @@ class TestMessageBuilder(BaseTestCase):
         - guild.get_member / fetch_member gooien excepties → mention blijft 'Gast'
         - alleen gasten (owner stemt niet) → '({mention}: namen)'
         """
-        votes = {"123_guest::Alice": {"vrijdag": ["om 19:00 uur"]}}
+        votes = {"123_guest::Mario": {"vrijdag": ["om 19:00 uur"]}}
 
         # Pylance tevreden houden: cast onze mock naar het verwachte type
         guild = cast(mb.discord.Guild, GuildAlwaysFail())
@@ -128,7 +128,7 @@ class TestMessageBuilder(BaseTestCase):
             "vrijdag", "om 19:00 uur", guild, votes
         )
         assert total == 1
-        assert text == "(Gast: Alice)"  # Gasten en owner stemt niet
+        assert text == "(Gast: Mario)"  # Gasten en owner stemt niet
 
     async def test_grouped_member_with_guild_exception(self):
         """

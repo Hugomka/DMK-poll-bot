@@ -43,9 +43,14 @@ class TestSchedulerMisschienFlow(BaseTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
+            patch.object(
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value="19:00",
             ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -97,7 +102,9 @@ class TestSchedulerMisschienFlow(BaseTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
             ) as mock_mention,
@@ -137,9 +144,14 @@ class TestSchedulerMisschienFlow(BaseTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value=None
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
+            patch.object(
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value=None,
             ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -180,11 +192,16 @@ class TestSchedulerMisschienFlow(BaseTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch("apps.utils.poll_storage.remove_vote", mock_remove),
             patch("apps.utils.poll_storage.add_vote", mock_add),
             patch.object(scheduler, "schedule_poll_update", new_callable=AsyncMock),
-            patch("apps.utils.poll_message.update_notification_message", new_callable=AsyncMock),
+            patch(
+                "apps.utils.poll_message.update_notification_message",
+                new_callable=AsyncMock,
+            ),
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
@@ -233,8 +250,12 @@ class TestSchedulerMisschienFlow(BaseTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
-            patch("apps.utils.discord_client.fetch_message_or_none", mock_fetch_message),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
+            patch(
+                "apps.utils.discord_client.fetch_message_or_none", mock_fetch_message
+            ),
             patch.object(scheduler, "safe_call", mock_safe_call),
             patch.object(scheduler, "clear_message_id") as mock_clear,
             patch.dict(
@@ -266,7 +287,7 @@ class TestSchedulerMisschienFlow(BaseTestCase):
         # User 100 heeft misschien gestemd, inclusief als gast
         votes = {
             "100": {"vrijdag": ["misschien"]},
-            "100_guest::Alice": {"vrijdag": ["misschien"]},
+            "100_guest::Mario": {"vrijdag": ["misschien"]},
         }
 
         def fake_get_channels(g):
@@ -276,9 +297,14 @@ class TestSchedulerMisschienFlow(BaseTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
+            patch.object(
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value="19:00",
             ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -296,4 +322,6 @@ class TestSchedulerMisschienFlow(BaseTestCase):
 
         # Count occurrences of <@100>
         count = mentions.count("<@100>")
-        self.assertEqual(count, 1, f"Expected <@100> to appear once, but found {count} times")
+        self.assertEqual(
+            count, 1, f"Expected <@100> to appear once, but found {count} times"
+        )

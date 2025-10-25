@@ -15,6 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apps.utils.discord_client import fetch_message_or_none, get_channels, safe_call
 from apps.utils.logger import log_job, log_startup
 from apps.utils.mention_utils import send_persistent_mention, send_temporary_mention
+from apps.utils.message_builder import build_doorgaan_participant_list
 from apps.utils.poll_message import (
     clear_message_id,
     create_notification_message,
@@ -814,26 +815,28 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
             # Bepaal winnende tijd
             if c2030 >= c19:
                 winnaar_txt = "20:30"
-                winner_set = voters_2030
+                winnaar_key = KEY_2030
             else:
                 winnaar_txt = "19:00"
-                winner_set = voters_19
+                winnaar_key = KEY_19
 
-            # Bouw mention-lijst op basis van channel members (alleen wie toegang heeft)
+            # Bouw deelnemerslijst met gasten
             channel_members = getattr(channel, "members", [])
             channel_member_ids = {str(getattr(m, "id", "")): m for m in channel_members}
-            mentions: List[str] = []
-            for uid in winner_set:
-                try:
-                    member = channel_member_ids.get(str(uid))
-                    if member and getattr(member, "mention", None):
-                        mentions.append(member.mention)
-                except Exception:  # pragma: no cover
-                    continue
+
+            totaal, mentions_str, participant_list = await build_doorgaan_participant_list(
+                dag,
+                winnaar_key,
+                guild,
+                scoped,
+                channel_member_ids,
+            )
 
             # Berichttekst - gebruik unified notification layout (5 uur lifetime)
-            mentions_str = " ".join(mentions) if mentions else ""
-            text = f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
+            if participant_list:
+                text = f"Totaal {totaal} deelnemers: {participant_list}\nDe DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
+            else:
+                text = f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
 
             try:
                 await send_persistent_mention(channel, mentions_str, text)

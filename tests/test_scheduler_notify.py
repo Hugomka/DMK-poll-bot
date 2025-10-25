@@ -41,7 +41,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
+            patch.object(
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
@@ -100,7 +102,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
+            patch.object(
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_mention,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -143,12 +147,14 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         # User 100 heeft gestemd (inclusief gast), user 200 niet
         votes = {
             "100": {"vrijdag": ["om 19:00 uur"]},
-            "100_guest::Alice": {"vrijdag": ["om 19:00 uur"]},
+            "100_guest::Mario": {"vrijdag": ["om 19:00 uur"]},
         }
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
+            patch.object(
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
@@ -187,7 +193,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
+            patch.object(
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
@@ -233,7 +241,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_persistent_mention", new_callable=AsyncMock) as mock_persistent,
+            patch.object(
+                scheduler, "send_persistent_mention", new_callable=AsyncMock
+            ) as mock_persistent,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -351,7 +361,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_persistent_mention", new_callable=AsyncMock) as mock_persistent,
+            patch.object(
+                scheduler, "send_persistent_mention", new_callable=AsyncMock
+            ) as mock_persistent,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -456,7 +468,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
+            patch.object(
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_mention,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -653,7 +667,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock) as mock_mention,
+            patch.object(
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_mention,
         ):
             result = await scheduler.notify_non_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
@@ -702,7 +718,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
-            patch.object(scheduler, "send_persistent_mention", new_callable=AsyncMock) as mock_persistent,
+            patch.object(
+                scheduler, "send_persistent_mention", new_callable=AsyncMock
+            ) as mock_persistent,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
@@ -1062,3 +1080,314 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         # Assert: False returned because send failed, but no crash
         self.assertFalse(result)
+
+    async def test_notify_voters_if_avond_gaat_door_with_participant_list_members_only(
+        self,
+    ):
+        """Doorgaan-notificatie met deelnemerslijst: alleen leden."""
+
+        class Member:
+            def __init__(self, id, name):
+                self.id = id
+                self.name = name
+                self.display_name = name
+                self.global_name = name
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = [
+                    Member(100, "Mario"),
+                    Member(101, "Luigi"),
+                    Member(102, "Peach"),
+                    Member(103, "Daisy"),
+                    Member(104, "Rosalina"),
+                    Member(105, "Toad"),
+                ]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+            def get_member(self, member_id):
+                channel = self.text_channels[0]
+                for m in channel.members:
+                    if m.id == member_id:
+                        return m
+                return None
+
+            async def fetch_member(self, member_id):
+                return self.get_member(member_id)
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 6 stemmen op vrijdag (drempel gehaald) - alleen leden
+        votes = {str(i): {"vrijdag": ["om 19:00 uur"]} for i in range(100, 106)}
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(
+                scheduler, "send_persistent_mention", new_callable=AsyncMock
+            ) as mock_persistent,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Verify notification was sent
+        mock_persistent.assert_awaited_once()
+
+        # Check the message content
+        args, kwargs = mock_persistent.call_args
+        channel_arg = args[0]
+        mentions_arg = args[1] if len(args) > 1 else kwargs.get("mentions", "")
+        text_arg = args[2] if len(args) > 2 else kwargs.get("text", "")
+
+        # All members should be mentioned
+        for i in range(100, 106):
+            self.assertIn(f"<@{i}>", mentions_arg)
+
+        # Text should include participant count and list
+        self.assertIn("Totaal 6 deelnemers:", text_arg)
+        self.assertIn("De DMK-avond van vrijdag om 19:00 gaat door!", text_arg)
+
+    async def test_notify_voters_if_avond_gaat_door_with_guests_only(self):
+        """Doorgaan-notificatie: alleen gasten (host afwezig)."""
+
+        class Member:
+            def __init__(self, id, name):
+                self.id = id
+                self.name = name
+                self.display_name = name
+                self.global_name = name
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = [
+                    Member(100, "Mario"),
+                    Member(101, "Luigi"),
+                    Member(102, "Peach"),
+                    Member(103, "Daisy"),
+                    Member(104, "Rosalina"),
+                    Member(105, "Toad"),
+                ]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+            def get_member(self, member_id):
+                channel = self.text_channels[0]
+                for m in channel.members:
+                    if m.id == member_id:
+                        return m
+                return None
+
+            async def fetch_member(self, member_id):
+                return self.get_member(member_id)
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # 6 gasten stemmen (host stemt niet) - 6 unieke owners, drempel gehaald
+        votes = {
+            "100_guest::Bowser": {"vrijdag": ["om 20:30 uur"]},
+            "101_guest::Wario": {"vrijdag": ["om 20:30 uur"]},
+            "102_guest::Waluigi": {"vrijdag": ["om 20:30 uur"]},
+            "103_guest::Koopa Troopa": {"vrijdag": ["om 20:30 uur"]},
+            "104_guest::Lakitu": {"vrijdag": ["om 20:30 uur"]},
+            "105_guest::Shy Guy": {"vrijdag": ["om 20:30 uur"]},
+        }
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(
+                scheduler, "send_persistent_mention", new_callable=AsyncMock
+            ) as mock_persistent,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Verify notification was sent
+        mock_persistent.assert_awaited_once()
+
+        # Check the message content
+        args, kwargs = mock_persistent.call_args
+        mentions_arg = args[1] if len(args) > 1 else kwargs.get("mentions", "")
+        text_arg = args[2] if len(args) > 2 else kwargs.get("text", "")
+
+        # No member mentions (only guests voted)
+        self.assertEqual(mentions_arg, "")
+
+        # Text should include all guests with "(gast)" suffix
+        self.assertIn("Totaal 6 deelnemers:", text_arg)
+        self.assertIn("Bowser (gast)", text_arg)
+        self.assertIn("Wario (gast)", text_arg)
+        self.assertIn("Waluigi (gast)", text_arg)
+        self.assertIn("De DMK-avond van vrijdag om 20:30 gaat door!", text_arg)
+
+    async def test_notify_voters_if_avond_gaat_door_with_members_and_guests(self):
+        """Doorgaan-notificatie: leden + gasten gemengd."""
+
+        class Member:
+            def __init__(self, id, name):
+                self.id = id
+                self.name = name
+                self.display_name = name
+                self.global_name = name
+                self.mention = f"<@{id}>"
+
+        class Channel:
+            def __init__(self, id, name="dmk"):
+                self.id = id
+                self.name = name
+                self.members = [
+                    Member(100, "Mario"),
+                    Member(101, "Luigi"),
+                    Member(102, "Peach"),
+                    Member(103, "Daisy"),
+                    Member(104, "Rosalina"),
+                    Member(105, "Toad"),
+                ]
+                self.send = AsyncMock()
+
+        class Guild:
+            def __init__(self, id):
+                self.id = id
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+            def get_member(self, member_id):
+                channel = self.text_channels[0]
+                for m in channel.members:
+                    if m.id == member_id:
+                        return m
+                return None
+
+            async def fetch_member(self, member_id):
+                return self.get_member(member_id)
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild(1)]
+
+        bot = Bot()
+
+        # Gemengd: 4 leden + 5 gasten = 9 deelnemers (6 unieke owners)
+        votes = {
+            "100": {"vrijdag": ["om 19:00 uur"]},  # Mario stemt
+            "100_guest::GastVanMario": {"vrijdag": ["om 19:00 uur"]},  # Gast van Mario
+            "101": {"vrijdag": ["om 19:00 uur"]},  # Luigi stemt
+            "102": {"vrijdag": ["om 19:00 uur"]},  # Peach stemt
+            "102_guest::GastVanPeach1": {
+                "vrijdag": ["om 19:00 uur"]
+            },  # Gast 1 van Peach
+            "102_guest::GastVanPeach2": {
+                "vrijdag": ["om 19:00 uur"]
+            },  # Gast 2 van Peach
+            "103": {"vrijdag": ["om 19:00 uur"]},  # Daisy stemt
+            "104_guest::GastVanRosalina": {
+                "vrijdag": ["om 19:00 uur"]
+            },  # Gast van Rosalina (Rosalina stemt niet)
+            "105_guest::GastVanToad": {
+                "vrijdag": ["om 19:00 uur"]
+            },  # Gast van Toad (Toad stemt niet)
+        }
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999
+
+        with (
+            patch.object(scheduler, "load_votes", return_value=votes),
+            patch.object(
+                scheduler, "send_persistent_mention", new_callable=AsyncMock
+            ) as mock_persistent,
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.notify_voters_if_avond_gaat_door(bot, "vrijdag")
+
+        # Verify notification was sent
+        mock_persistent.assert_awaited_once()
+
+        # Check the message content
+        args, kwargs = mock_persistent.call_args
+        mentions_arg = args[1] if len(args) > 1 else kwargs.get("mentions", "")
+        text_arg = args[2] if len(args) > 2 else kwargs.get("text", "")
+
+        # Members should be mentioned (Mario, Luigi, Peach, Daisy voted)
+        self.assertIn("<@100>", mentions_arg)  # Mario
+        self.assertIn("<@101>", mentions_arg)  # Luigi
+        self.assertIn("<@102>", mentions_arg)  # Peach
+        self.assertIn("<@103>", mentions_arg)  # Daisy
+
+        # Text should include total count (4 members + 5 guests = 9)
+        self.assertIn("Totaal 9 deelnemers:", text_arg)
+
+        # Text should include members with mentions
+        self.assertIn("<@100>", text_arg)
+        self.assertIn("<@101>", text_arg)
+        self.assertIn("<@102>", text_arg)
+        self.assertIn("<@103>", text_arg)
+
+        # Text should include guests with "(gast)" suffix
+        self.assertIn("GastVanMario (gast)", text_arg)
+        self.assertIn("GastVanPeach1 (gast)", text_arg)
+        self.assertIn("GastVanPeach2 (gast)", text_arg)
+        self.assertIn("GastVanRosalina (gast)", text_arg)
+        self.assertIn("GastVanToad (gast)", text_arg)
+
+        # Main message should be present
+        self.assertIn("De DMK-avond van vrijdag om 19:00 gaat door!", text_arg)

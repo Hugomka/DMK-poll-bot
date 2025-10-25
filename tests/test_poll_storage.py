@@ -155,10 +155,10 @@ class TestPollStorage(BaseTestCase):
         ), patch("apps.utils.poll_storage.is_valid_option", return_value=False):
 
             added, skipped = await poll_storage.add_guest_votes(
-                "owner", "vrijdag", "19:00", ["Alice"], 1, 2
+                "owner", "vrijdag", "19:00", ["Mario"], 1, 2
             )
             self.assertEqual(added, [])
-            self.assertEqual(skipped, ["Alice"])  # regel 263
+            self.assertEqual(skipped, ["Mario"])  # regel 263
 
     # ----------------------------------------------------
     # add_guest_votes: bestaande naam/tijd → overgeslagen
@@ -171,17 +171,17 @@ class TestPollStorage(BaseTestCase):
 
             # eerste keer
             added1, skipped1 = await poll_storage.add_guest_votes(
-                "owner", "vrijdag", "19:00", ["Alice"], 1, 2
+                "owner", "vrijdag", "19:00", ["Mario"], 1, 2
             )
-            self.assertEqual(added1, ["Alice"])
+            self.assertEqual(added1, ["Mario"])
             self.assertEqual(skipped1, [])
 
             # nog eens precies hetzelfde → overgeslagen (281-282)
             added2, skipped2 = await poll_storage.add_guest_votes(
-                "owner", "vrijdag", "19:00", ["Alice"], 1, 2
+                "owner", "vrijdag", "19:00", ["Mario"], 1, 2
             )
             self.assertEqual(added2, [])
-            self.assertEqual(skipped2, ["Alice"])
+            self.assertEqual(skipped2, ["Mario"])
 
     # -------------------------------------------------
     # remove_guest_votes: ValueError-pad en else-pad
@@ -198,7 +198,7 @@ class TestPollStorage(BaseTestCase):
                     raise ValueError("simulate race")
 
             gid, cid = "1", "2"
-            key = "owner_guest::Bob"
+            key = "owner_guest::Luigi"
             inmem = {key: {"vrijdag": TrickyList(["19:00"])}}
 
             async def fake_load_votes(g, c):
@@ -217,17 +217,17 @@ class TestPollStorage(BaseTestCase):
             ):
 
                 removed, notfound = await poll_storage.remove_guest_votes(
-                    "owner", "vrijdag", "19:00", ["Bob"], gid, cid
+                    "owner", "vrijdag", "19:00", ["Luigi"], gid, cid
                 )
                 self.assertEqual(removed, [])  # except ValueError
-                self.assertEqual(notfound, ["Bob"])  # lijn 312-313
+                self.assertEqual(notfound, ["Luigi"])  # lijn 312-313
 
                 # else-pad (320): gast niet aanwezig
                 removed2, notfound2 = await poll_storage.remove_guest_votes(
-                    "owner", "vrijdag", "19:00", ["Alice"], gid, cid
+                    "owner", "vrijdag", "19:00", ["Mario"], gid, cid
                 )
                 self.assertEqual(removed2, [])
-                self.assertEqual(notfound2, ["Alice"])
+                self.assertEqual(notfound2, ["Mario"])
 
     # ----------------------------------------------------
     # calculate_leading_time: Phase 3 vote analysis logic

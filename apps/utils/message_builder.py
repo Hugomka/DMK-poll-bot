@@ -1,5 +1,7 @@
 # apps/utils/message_builder.py
 
+from typing import Any
+
 import discord
 
 from apps.entities.poll_option import get_poll_options
@@ -62,7 +64,7 @@ async def build_grouped_names_for(
 ) -> tuple[int, str]:
     """
     Retourneert (totaal_stemmen, tekst) waarbij tekst bv. is:
-      @Owner (@Owner: Gast1, Gast2), @AndereOwner, (@NogIemand: GastA)
+      @Owner (@Owner: Bowser, Wario), @AndereOwner, (@NogIemand: GastA)
 
     Regels:
     - @Owner alleen als eigenaar zelf stemt
@@ -93,7 +95,11 @@ async def build_grouped_names_for(
                         ) or await guild.fetch_member(int(owner_id))
                         if owner_member:
                             # Gebruik displaynaam in plaats van mention
-                            display = getattr(owner_member, "display_name", None) or getattr(owner_member, "global_name", None) or getattr(owner_member, "name", "Lid")
+                            display = (
+                                getattr(owner_member, "display_name", None)
+                                or getattr(owner_member, "global_name", None)
+                                or getattr(owner_member, "name", "Lid")
+                            )
                             mention = f"@{display}"
                     except Exception:
                         pass
@@ -113,7 +119,11 @@ async def build_grouped_names_for(
                         ) or await guild.fetch_member(int(raw_id))
                         if member:
                             # Gebruik displaynaam in plaats van mention
-                            display = getattr(member, "display_name", None) or getattr(member, "global_name", None) or getattr(member, "name", "Lid")
+                            display = (
+                                getattr(member, "display_name", None)
+                                or getattr(member, "global_name", None)
+                                or getattr(member, "name", "Lid")
+                            )
                             mention = f"@{display}"
                     except Exception:
                         pass
@@ -153,3 +163,121 @@ async def build_grouped_names_for(
     )
 
     return totaal, tekst
+
+
+async def build_doorgaan_participant_list(
+    dag: str,
+    tijd: str,
+    guild: discord.Guild | None,
+    all_votes: dict,
+    channel_member_ids: dict[str, Any],
+) -> tuple[int, str, str]:
+    """
+    Bouw een deelnemerslijst voor de doorgaan-notificatie.
+
+    Retourneert (totaal_deelnemers, mentions_str, participant_list) waarbij:
+    - totaal_deelnemers: aantal stemmen (leden + gasten)
+    - mentions_str: spatie-gescheiden Discord mentions voor leden (voor notificatie)
+    - participant_list: geformatteerde lijst zoals "@Naam1, @Naam2, Naam3 (gast), @Naam4"
+
+    Regels:
+    - Leden krijgen een ping (@mention) in beide strings
+    - Gasten krijgen geen ping, worden getoond als "Naam (gast)"
+    - Gasten worden getoond ook als hun host afwezig is
+    """
+    if not all_votes:
+        return 0, "", ""
+
+    # Verzamel alle deelnemers (members + guests)
+    participants: list[dict] = []
+
+    # Track owner IDs voor gastenkoppeling
+    owner_guests: dict[str, list[str]] = {}
+
+    for raw_id, user_votes in all_votes.items():
+        try:
+            tijden = user_votes.get(dag, [])
+            if not isinstance(tijden, list) or tijd not in tijden:
+                continue
+
+            # Gast-key: "<ownerId>_guest::<gastnaam>"
+            if isinstance(raw_id, str) and "_guest::" in raw_id:
+                owner_id, guest_name = raw_id.split("_guest::", 1)
+                guest_name = (guest_name or "Gast").strip()
+
+                # Verzamel gasten per owner
+                if owner_id not in owner_guests:
+                    owner_guests[owner_id] = []
+                owner_guests[owner_id].append(guest_name)
+
+            else:
+                # Normale stemmer (lid)
+                member = None
+                mention = None
+                display_name = "Lid"
+
+                if guild:
+                    try:
+                        member = channel_member_ids.get(
+                            str(raw_id)
+                        ) or guild.get_member(int(raw_id))
+                        if not member:
+                            member = await guild.fetch_member(int(raw_id))
+
+                        if member:
+                            display_name = (
+                                getattr(member, "display_name", None)
+                                or getattr(member, "global_name", None)
+                                or getattr(member, "name", "Lid")
+                            )
+                            mention = getattr(member, "mention", None)
+                    except Exception:
+                        pass
+
+                participants.append(
+                    {
+                        "type": "member",
+                        "id": str(raw_id),
+                        "display_name": display_name,
+                        "mention": mention,
+                    }
+                )
+
+        except Exception:
+            # Onbekende of niet-parsbare id; negeren
+            continue
+
+    # Voeg alle gasten toe aan de deelnemerslijst
+    for owner_id, guests in owner_guests.items():
+        for guest_name in guests:
+            participants.append(
+                {"type": "guest", "id": owner_id, "guest_name": guest_name}
+            )
+
+    # Totaal aantal deelnemers
+    totaal = len(participants)
+
+    # Bouw mentions_str (alleen voor leden met toegang tot channel)
+    mentions: list[str] = []
+    for p in participants:
+        if p["type"] == "member" and p.get("mention"):
+            mentions.append(p["mention"])
+
+    mentions_str = " ".join(mentions) if mentions else ""
+
+    # Bouw participant_list
+    participant_parts: list[str] = []
+    for p in participants:
+        if p["type"] == "member":
+            # Gebruik mention als beschikbaar, anders display_name met @
+            if p.get("mention"):
+                participant_parts.append(p["mention"])
+            else:
+                participant_parts.append(f"@{p['display_name']}")
+        else:
+            # Gast: "Naam (gast)"
+            participant_parts.append(f"{p['guest_name']} (gast)")
+
+    participant_list = ", ".join(participant_parts) if participant_parts else ""
+
+    return totaal, mentions_str, participant_list
