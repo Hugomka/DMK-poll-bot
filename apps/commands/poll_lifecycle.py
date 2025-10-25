@@ -793,7 +793,7 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
-        description="Verwijder pollberichten en plaats sluitingsbericht - scheduler blijft actief (standaard: beheerder/moderator)",
+        description="Verwijder pollberichten en plaats sluitingsbericht - scheduler blijft actief",
     )
     async def verwijderbericht(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)

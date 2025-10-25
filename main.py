@@ -34,12 +34,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot is online als {bot.user}")
+    print(f"Bot is online als {bot.user}")
     try:
         synced = await bot.tree.sync()
-        print(f"🔧 Slash-commando's gesynchroniseerd: {len(synced)}")
+        print(f"Slash-commando's gesynchroniseerd: {len(synced)}")
     except Exception as e:
-        print(f"❌ Fout bij het synchroniseren van slash-commando's: {e}")
+        print(f"Fout bij het synchroniseren van slash-commando's: {e}")
 
 
 async def main():
