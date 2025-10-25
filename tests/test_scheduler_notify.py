@@ -1160,7 +1160,6 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         # Check the message content
         args, kwargs = mock_persistent.call_args
-        channel_arg = args[0]
         mentions_arg = args[1] if len(args) > 1 else kwargs.get("mentions", "")
         text_arg = args[2] if len(args) > 2 else kwargs.get("text", "")
 
