@@ -1,6 +1,6 @@
 # DMK-poll-bot 🇳🇱
 
-![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B%20%7C%203.13-blue.svg)
 ![discord.py 2.3.2](https://img.shields.io/badge/discord.py-2.3.2-blueviolet.svg)
 ![License](https://img.shields.io/github/license/Hugomka/DMK-poll-bot)
 ![Last Commit](https://img.shields.io/github/last-commit/Hugomka/DMK-poll-bot)
@@ -33,15 +33,16 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **🗳️ Stemmen per dag** | Voor vrijdag, zaterdag en zondag elk een eigen poll met opties. |
 | **✅ Aanpasbare pollopties** | Tijden/opties via `poll_options.json` (standaard 19:00, 20:30, misschien, niet meedoen). |
 | **🔒 Veilige opslag** | Stemmen in `votes.json` met async lock, zodat alles stabiel en snel blijft. |
-| **⏰ Automatische scheduler** | Nieuwe week op dinsdag 20:00, dag-updates om 18:00, herinneringen om 17:00, notificaties bij "gaat door". |
+| **⏰ Automatische scheduler** | Nieuwe week op dinsdag 20:00, dag-updates om 18:00, herinneringen om 16:00, notificaties bij "gaat door". |
+| **📅 Poll scheduling** | Plan polls om automatisch te activeren/deactiveren op specifieke tijden (per kanaal configureerbaar). |
 | **🏁 Automatische beslissing** | Op de dag zelf na de deadline: ≥6 stemmen nodig; bij gelijkstand wint **20:30**. |
-| **📢 Slimme notificaties** | Herinneringen voor niet-stemmers, Misschien-bevestiging, en mentions bij doorgaan-berichten. |
+| **📢 Slimme notificaties** | Herinneringen voor niet-stemmers (16:00), vroege herinnering donderdag (20:00), Misschien-bevestiging (17:00), en mentions bij doorgaan-berichten. |
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
 | **💬 Slash commando's** | `/dmk-poll-on/reset/pauze/verwijderen/stemmen/status/notify`, archief downloaden/verwijderen, en gast-commando's. |
-| **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen en optioneel namen. |
+| **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen, optioneel namen, en scheduling informatie. |
 | **🔄 Misschien-conversie** | Wie om 17:00 "misschien" heeft gestemd krijgt een bevestigingsknop; om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen". |
-| **🔔 Privacy-vriendelijke mentions** | Tijdelijke mentions (2 sec zichtbaar voor herinneringen), persistente mentions (tot 23:00 voor "gaat door"-berichten). |
+| **🔔 Privacy-vriendelijke mentions** | Tijdelijke mentions (5 sec zichtbaar voor herinneringen), persistente mentions (5 uur zichtbaar voor "gaat door"-berichten). |
 
 ---
 
@@ -218,6 +219,7 @@ journalctl -u dmk-bot -f
 DMK-poll-bot/
 ├── apps/
 │   ├── commands/           # Slash commando's (gemodulariseerd)
+│   │   ├── __init__.py             # Command utilities en helpers
 │   │   ├── dmk_poll.py             # Main entry point voor alle commando's
 │   │   ├── poll_lifecycle.py       # Lifecycle commando's (on/reset/pauze/verwijderen)
 │   │   ├── poll_votes.py           # Stemzichtbaarheid commando's
@@ -231,7 +233,7 @@ DMK-poll-bot/
 │   │   └── cleanup_confirmation.py   # Cleanup confirmation view voor oude berichten
 │   ├── utils/              # Hulpfuncties
 │   │   ├── poll_storage.py        # Stem-opslag (votes.json)
-│   │   ├── poll_settings.py       # Poll-instellingen (pauze, zichtbaarheid)
+│   │   ├── poll_settings.py       # Poll-instellingen (pauze, zichtbaarheid, scheduling)
 │   │   ├── poll_message.py        # Bericht-ID opslag en updates
 │   │   ├── message_builder.py     # Poll-bericht constructie
 │   │   ├── archive.py              # CSV-archief beheer
@@ -243,22 +245,28 @@ DMK-poll-bot/
 │   │   └── visibility.py           # Zichtbaarheidslogica (verbergen/tonen)
 │   ├── entities/           # Data models
 │   │   └── poll_option.py          # Poll optie dataclass
-│   └── scheduler.py        # APScheduler taken (reset, herinneringen, notificaties)
-├── tests/                  # Unittests (150+ tests, ~88% coverage)
-│   ├── test_poll_lifecycle.py      # Tests voor lifecycle commando's
+│   ├── data/               # Data templates (standaard data-bestanden voor nieuwe kanalen)
+│   │   ├── poll_message.json       # Template voor bericht-IDs
+│   │   └── votes.json              # Template voor stem-opslag
+│   └── scheduler.py        # APScheduler taken (reset, herinneringen, notificaties, scheduling)
+├── tests/                  # Unittests (529 tests, ~96% coverage)
+│   ├── test_poll_lifecycle*.py     # Tests voor lifecycle commando's
 │   ├── test_poll_guests.py         # Tests voor gast-commando's
 │   ├── test_poll_archive.py        # Tests voor archief commando's
 │   ├── test_poll_votes.py          # Tests voor stemzichtbaarheid
 │   ├── test_poll_message.py        # Tests voor bericht-opslag
+│   ├── test_poll_settings*.py      # Tests voor poll settings en scheduling
+│   ├── test_status*.py             # Tests voor status commando
 │   ├── test_cleanup_confirmation.py # Tests voor cleanup UI
 │   ├── test_mention_utils.py       # Tests voor mention utilities
 │   ├── test_scheduler_*.py         # Tests voor scheduler functies
+│   ├── test_permissions.py         # Tests voor command permissions
 │   └── ...                          # Andere test modules
 ├── main.py                 # Bot entry point
 ├── poll_options.json       # Config van stemopties
 ├── opening_message.txt     # Aanpasbare openingstekst voor polls
 ├── requirements.txt        # Runtime dependencies
-└── dev-requirements.txt    # Development dependencies (tests, linting)
+└── dev-requirements.txt    # Development dependencies (pytest, coverage, linting)
 ```
 
 ### Belangrijke data-bestanden
@@ -267,11 +275,12 @@ DMK-poll-bot/
 | ------------------------- | -------------------------------------------------------------------------------- |
 | `poll_options.json`       | Config van opties (tijden/emoji's) per dag.                                      |
 | `votes.json`              | Alle stemmen (per user/gast per dag). Async lock voor veilige I/O.               |
-| `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen.        |
+| `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen, scheduling (activatie/deactivatie tijden). |
 | `poll_message.json`       | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
 | `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
 | `opening_message.txt`     | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
 | `.scheduler_state.json`   | State van de scheduler (laatste uitvoering van jobs).                            |
+| `.scheduler.lock`         | File lock voor scheduler state om race conditions te voorkomen.                  |
 
 ### Archief
 
@@ -298,30 +307,33 @@ De bot gebruikt APScheduler voor automatische taken:
 | Tijdstip | Dag | Taak | Beschrijving |
 |---|---|---|---|
 | **Dinsdag 20:00** | Wekelijks | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
-| **17:00** | Vrijdag, Zaterdag, Zondag | Herinnering niet-stemmers | Mention sturen naar leden die nog niet gestemd hebben voor die dag (tijdelijk, 2 sec) |
-| **17:05** | Vrijdag, Zaterdag, Zondag | Misschien-bevestiging | "Stem Nu" knop sturen naar Misschien-stemmers met leidende tijd |
+| **16:00** | Vrijdag, Zaterdag, Zondag | Herinnering niet-stemmers | Mention sturen naar leden die nog niet gestemd hebben voor die dag (tijdelijk, 5 sec) |
+| **17:00** | Vrijdag, Zaterdag, Zondag | Misschien-bevestiging | "Stem Nu" knop sturen naar Misschien-stemmers met leidende tijd |
 | **18:00** | Dagelijks | Poll-update | Aantallen tonen, beslissingsregel toevoegen onder de poll |
 | **18:00** | Vrijdag, Zaterdag, Zondag | Misschien-conversie | Resterende "misschien"-stemmen omzetten naar "niet meedoen" |
-| **18:05** | Vrijdag, Zaterdag, Zondag | Doorgaan-notificatie | Mentions van stemmers op winnende tijd (≥6), bericht blijft tot 23:00 |
-| **20:00** | Donderdag | Vroege herinnering | Mention naar leden die nog helemaal niet gestemd hebben (tijdelijk, 2 sec) |
-| **23:00** | Automatisch | Mention cleanup | Verwijder mentions uit "gaat door"-berichten |
+| **18:05** | Vrijdag, Zaterdag, Zondag | Doorgaan-notificatie | Mentions van stemmers op winnende tijd (≥6), persistente mentions (5 uur) |
+| **20:00** | Donderdag | Vroege herinnering | Mention naar leden die nog helemaal niet gestemd hebben (tijdelijk, 5 sec) |
+| **Elke minuut** | Continu | Scheduled poll activation | Activeer geplande polls op basis van activatietijd |
+| **Elke minuut** | Continu | Scheduled poll deactivation | Deactiveer geplande polls op basis van deactivatietijd |
 
 ### Notificatiesysteem
 
 De bot heeft een slim notificatiesysteem met privacy in gedachten:
 
-1. **Tijdelijke mentions** (2 seconden zichtbaar):
-   - Herinneringen voor niet-stemmers
+1. **Tijdelijke mentions** (5 seconden zichtbaar):
+   - Herinneringen voor niet-stemmers (16:00 vrijdag/zaterdag/zondag)
+   - Vroege herinneringen (20:00 donderdag)
    - Reset-meldingen (@everyone)
    - Gebruikers krijgen wel een notificatie op hun apparaat, maar de mention verdwijnt snel uit het kanaal
+   - Na 1 uur wordt het hele bericht automatisch verwijderd
 
-2. **Persistente mentions** (tot 23:00):
-   - "Gaat door"-berichten voor deelnemers
-   - Blijven zichtbaar tot 23:00, daarna worden mentions automatisch verwijderd
-   - Dit zorgt ervoor dat deelnemers de hele dag kunnen zien wie er meedoet
+2. **Persistente mentions** (5 uur zichtbaar):
+   - "Gaat door"-berichten voor deelnemers (18:05 vrijdag/zaterdag/zondag)
+   - Blijven zichtbaar voor 5 uur, daarna wordt het hele bericht automatisch verwijderd
+   - Dit zorgt ervoor dat deelnemers gedurende de dag kunnen zien wie er meedoet
 
-3. **Misschien-bevestiging** (17:00-18:00):
-   - Stemmers met "misschien" krijgen een "Stem Nu" knop
+3. **Misschien-bevestiging** (17:00):
+   - Om 17:00 krijgen stemmers met "misschien" een "Stem Nu" knop met de leidende tijd
    - Kunnen bevestigen (Ja → winnende tijd) of afzeggen (Nee → niet meedoen)
    - Om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen"
 
@@ -352,17 +364,17 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ## 🧪 Testen en dekking
 
-De bot heeft **150+ unittests** met **~88% code coverage** voor uitgebreide dekking van alle functionaliteit.
+De bot heeft **529 unittests** met **~96% code coverage** voor uitgebreide dekking van alle functionaliteit.
 
 Alle unittests draaien met:
 ```bash
-python -m unittest discover -v
+pytest -v
 ```
 
 Dekking genereren:
 ```bash
-coverage run -m unittest discover -v
-coverage report
+coverage run -m pytest -v
+coverage report -m
 coverage xml
 ```
 
@@ -373,25 +385,62 @@ coverage xml
 De tests dekken onder andere:
 - **Poll lifecycle** (on/reset/pauze/verwijderen commando's)
 - **Poll-opslag** (stemmen toevoegen/verwijderen/resetten, exception handling)
-- **Poll-settings** (pauze, zichtbaarheid, namen tonen)
+- **Poll-settings** (pauze, zichtbaarheid, namen tonen, scheduling)
+- **Scheduling** (activatie/deactivatie op tijden, scheduler state, catch-up)
 - **Gast-commando's** (toevoegen, verwijderen, groepering, validatie)
 - **Archief** (download, verwijderen, per guild/channel)
 - **Message builder** (bericht-constructie met verborgen aantallen)
 - **Beslissingslogica** (winnaar bepalen, gelijkstand, minimum stemmen)
-- **Scheduler** (catch-up, reset venster, gemiste jobs, deadline mode)
+- **Scheduler** (catch-up, reset venster, gemiste jobs, deadline mode, Misschien-flow)
 - **UI components** (poll buttons, Stem Nu button, archief view, cleanup confirmation)
 - **Notificaties** (tijdelijk, persistent, Misschien-flow, cleanup)
 - **Mention utilities** (tijdelijke/persistente mentions, auto-delete, display names)
 - **Discord client** (safe API calls met exception handling)
+- **Permissions** (command defaults, admin/mod checks)
 
 ### Recente test-verbeteringen
 
-De testdekking is recent significant verbeterd van ~59% naar ~88% door:
+De testdekking is recent significant verbeterd van ~59% naar ~96% door:
+- **529 comprehensive tests** die alle functionaliteit uitgebreid dekken
 - Uitgebreide tests voor exception handling in alle modules
 - Tests voor edge cases en error scenarios
 - Tests voor scheduler deadline mode en Misschien-flow
 - Tests voor cleanup confirmation en mention utilities
 - Tests voor gemodulariseerde command structuur
+- Tests voor permissions en default command settings
+
+---
+
+## 📅 Poll Scheduling
+
+De bot ondersteunt **automatische activering en deactivering** van polls op basis van tijden. Dit is handig als je polls alleen op bepaalde momenten beschikbaar wilt hebben.
+
+### Hoe werkt het?
+
+- **Activatietijd**: Poll wordt automatisch geactiveerd (uit pauze gehaald) op het ingestelde tijdstip
+- **Deactivatietijd**: Poll wordt automatisch gedeactiveerd (in pauze gezet) op het ingestelde tijdstip
+- **Controle**: De scheduler controleert elke minuut of er polls geactiveerd of gedeactiveerd moeten worden
+- **Per kanaal**: Elke poll-kanaal kan zijn eigen activatie/deactivatie tijden hebben
+
+### Configuratie
+
+Scheduling wordt geconfigureerd in `poll_settings.json` per kanaal:
+
+```json
+{
+  "123456789": {
+    "activation_time": "09:00",
+    "deactivation_time": "23:00"
+  }
+}
+```
+
+### Status bekijken
+
+Met `/dmk-poll-status` kun je de huidige scheduling-status bekijken, inclusief:
+- Of scheduling actief is
+- Wanneer de poll geactiveerd/gedeactiveerd wordt
+- Of de poll momenteel actief of gepauzeerd is
 
 ---
 
@@ -459,7 +508,7 @@ De codebase is recent gerefactored voor betere onderhoudbaarheid:
   - `poll_status.py` - Status en notificaties
 - **UI componenten**: Toegevoegd cleanup_confirmation.py voor oude berichten
 - **Mention utilities**: Uitgebreid met display names en auto-cleanup functies
-- **Test coverage**: Verbeterd van 59% naar 88% met uitgebreide tests
+- **Test coverage**: Verbeterd van 88% naar 96% met uitgebreide tests
 
 ### Nieuwe features toevoegen
 
@@ -495,16 +544,24 @@ cat .scheduler_state.json
 - Duidelijke scheiding van verantwoordelijkheden
 
 **Test coverage uitbreiding**:
-- Van 59% naar **88% code coverage**
-- 150+ unittests voor robuuste codebase
+- Van 88% naar **96% code coverage**
+- **529 unittests** voor robuuste codebase
 - Uitgebreide tests voor exception handling en edge cases
 - Tests voor alle nieuwe modules en functies
+- Tests voor permissions en command defaults
+
+**Scheduling feature**:
+- Automatische activatie/deactivatie van polls op ingestelde tijden
+- Per-kanaal configureerbaar via poll_settings.json
+- Status zichtbaar in `/dmk-poll-status` commando
+- Elke minuut controleert de scheduler of polls geactiveerd/gedeactiveerd moeten worden
 
 **Notificatie-verbeteringen**:
 - Display names in plaats van user mentions voor betere leesbaarheid
-- Tijdelijke mentions (2 sec) voor herinneringen
-- Persistente mentions tot 23:00 voor "gaat door"-berichten
-- Automatische cleanup van oude notificatieberichten
+- Tijdelijke mentions (5 sec) voor herinneringen (16:00 voor niet-stemmers)
+- Vroege herinnering op donderdag 20:00 voor wie nog helemaal niet gestemd heeft
+- Persistente mentions (5 uur) voor "gaat door"-berichten
+- Automatische cleanup: tijdelijke berichten na 1 uur, persistente na 5 uur
 
 **UI verbeteringen**:
 - Cleanup confirmation voor oude berichten
@@ -526,3 +583,4 @@ Deze bot is open source. Zie [LICENSE](LICENSE) voor details.
 ---
 
 **Gemaakt met ❤️ voor de Deaf Mario Kart community**
+**DMK-poll-bot is ontwikkeld met hulp van Claude en ChatGPT.**
