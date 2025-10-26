@@ -48,6 +48,7 @@ async def send_temporary_mention(
     dag: str = "",
     leading_time: str = "",
     delete_after_hours: float = 1.0,
+    message_key: str = "notification_temp",
 ) -> None:
     """
     Stuur een nieuwe notificatie met mentions die gebruikers pingt.
@@ -67,10 +68,11 @@ async def send_temporary_mention(
         dag: De dag voor de Stem Nu knop
         leading_time: De leidende tijd voor de Stem Nu knop
         delete_after_hours: Na hoeveel uur het bericht verwijderd wordt (standaard 1.0)
+        message_key: De storage key voor dit bericht (standaard 'notification_temp')
     """
     # Stap 1: Verwijder vorig notificatiebericht
     cid = getattr(channel, "id", 0)
-    old_msg_id = get_message_id(cid, "notification")
+    old_msg_id = get_message_id(cid, message_key)
     if old_msg_id:
         try:
             from apps.utils.discord_client import fetch_message_or_none
@@ -107,7 +109,7 @@ async def send_temporary_mention(
             return
 
         # Sla nieuwe message ID op
-        save_message_id(cid, "notification", msg.id)
+        save_message_id(cid, message_key, msg.id)
 
         # Stap 3: Plan privacy removal (na 5 seconden)
         asyncio.create_task(
@@ -116,7 +118,7 @@ async def send_temporary_mention(
 
         # Stap 4: Plan auto-delete (na delete_after_hours)
         delete_seconds = delete_after_hours * 3600
-        asyncio.create_task(_delete_message_after_delay(msg, delete_seconds, cid))
+        asyncio.create_task(_delete_message_after_delay(msg, delete_seconds, cid, message_key))
 
     except Exception as e:  # pragma: no cover
         print(f"❌ Fout bij versturen temporary mention: {e}")
@@ -154,7 +156,7 @@ async def _remove_mentions_after_delay(
         pass
 
 
-async def _delete_message_after_delay(message: Any, delay_seconds: float, channel_id: int) -> None:
+async def _delete_message_after_delay(message: Any, delay_seconds: float, channel_id: int, message_key: str = "notification_temp") -> None:
     """
     Interne helper: verwijder een bericht na delay_seconds en clear de message ID.
 
@@ -162,6 +164,7 @@ async def _delete_message_after_delay(message: Any, delay_seconds: float, channe
         message: Het Discord message object
         delay_seconds: Hoeveel seconden te wachten
         channel_id: Het kanaal ID (voor het opschonen van de message ID)
+        message_key: De storage key voor dit bericht (standaard 'notification_temp')
     """
     try:
         await asyncio.sleep(delay_seconds)
@@ -173,7 +176,7 @@ async def _delete_message_after_delay(message: Any, delay_seconds: float, channe
         # Clear de opgeslagen message ID
         from apps.utils.poll_message import clear_message_id
 
-        clear_message_id(channel_id, "notification")
+        clear_message_id(channel_id, message_key)
     except Exception:  # pragma: no cover
         # Stil falen (bericht kan al verwijderd zijn, bot heeft geen rechten, etc.)
         pass
@@ -183,6 +186,7 @@ async def send_persistent_mention(
     channel: Any,
     mentions: str,
     text: str,
+    message_key: str = "notification_persistent",
 ) -> Optional[Any]:
     """
     Stuur een "doorgaan" notificatie met unified layout (5 uur lifetime).
@@ -197,13 +201,14 @@ async def send_persistent_mention(
         channel: Het Discord kanaal object
         mentions: Mention string (e.g. "@user1 @user2")
         text: Body text voor de notificatie
+        message_key: De storage key voor dit bericht (standaard 'notification_persistent')
 
     Returns:
         Het verzonden bericht object, of None bij fout
     """
     # Stap 1: Verwijder vorig notificatiebericht
     cid = getattr(channel, "id", 0)
-    old_msg_id = get_message_id(cid, "notification")
+    old_msg_id = get_message_id(cid, message_key)
     if old_msg_id:
         try:
             from apps.utils.discord_client import fetch_message_or_none
@@ -232,14 +237,14 @@ async def send_persistent_mention(
 
         if msg is not None:
             # Sla nieuwe message ID op
-            save_message_id(cid, "notification", msg.id)
+            save_message_id(cid, message_key, msg.id)
 
             # Stap 3: Plan privacy removal (na 5 seconden)
             asyncio.create_task(_remove_persistent_mentions_after_delay(msg, 5.0, text))
 
             # Stap 4: Plan auto-delete (na 5 uur)
             delete_seconds = 5 * 3600
-            asyncio.create_task(_delete_message_after_delay(msg, delete_seconds, cid))
+            asyncio.create_task(_delete_message_after_delay(msg, delete_seconds, cid, message_key))
 
         return msg
     except Exception as e:  # pragma: no cover

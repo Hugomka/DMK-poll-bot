@@ -12,6 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from apps import scheduler
+from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
 from apps.utils.poll_message import is_channel_disabled
@@ -36,7 +37,7 @@ def _is_poll_channel(channel) -> bool:
         return False
     if not cid:
         return False
-    for key in ("opening", "vrijdag", "zaterdag", "zondag", "stemmen", "notification"):
+    for key in ("opening", "vrijdag", "zaterdag", "zondag", "stemmen", "notification_persistent", "notification_temp", "notification"):
         try:
             if get_message_id(cid, key):
                 return True
@@ -69,7 +70,7 @@ class PollStatus(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-status",
-        description="Toon pauze, zichtbaarheid en alle stemmen per dag. (standaard: beheerder/moderator)",
+        description=with_default_suffix("Toon pauze, zichtbaarheid en alle stemmen per dag"),
     )
     async def status(self, interaction: discord.Interaction) -> None:
         # Alleen defer hier, de echte logica staat in _status_impl

@@ -1269,10 +1269,37 @@ async def deactivate_scheduled_polls(bot) -> None:
                                 )
                         clear_message_id(cid, "stemmen")
 
-                    # 3) Notificatiebericht verwijderen
-                    n_mid = get_message_id(cid, "notification")
-                    if n_mid:
-                        n_msg = await fetch_message_or_none(channel, n_mid)
+                    # 3) Notificatieberichten verwijderen (both temp and persistent)
+                    # Clear temporary notification
+                    n_mid_temp = get_message_id(cid, "notification_temp")
+                    if n_mid_temp:
+                        n_msg = await fetch_message_or_none(channel, n_mid_temp)
+                        if n_msg is not None:
+                            try:
+                                await safe_call(n_msg.delete)
+                            except Exception:  # pragma: no cover
+                                await safe_call(
+                                    n_msg.edit, content="📴 Notificaties gesloten.", view=None
+                                )
+                        clear_message_id(cid, "notification_temp")
+
+                    # Clear persistent notification
+                    n_mid_persistent = get_message_id(cid, "notification_persistent")
+                    if n_mid_persistent:
+                        n_msg = await fetch_message_or_none(channel, n_mid_persistent)
+                        if n_msg is not None:
+                            try:
+                                await safe_call(n_msg.delete)
+                            except Exception:  # pragma: no cover
+                                await safe_call(
+                                    n_msg.edit, content="📴 Notificaties gesloten.", view=None
+                                )
+                        clear_message_id(cid, "notification_persistent")
+
+                    # Also clear old "notification" key for backward compatibility
+                    n_mid_old = get_message_id(cid, "notification")
+                    if n_mid_old:
+                        n_msg = await fetch_message_or_none(channel, n_mid_old)
                         if n_msg is not None:
                             try:
                                 await safe_call(n_msg.delete)
@@ -1417,9 +1444,10 @@ async def activate_scheduled_polls(bot) -> None:
                         if s_msg is not None:
                             save_message_id(cid, key, s_msg.id)
 
-                    # Notificatiebericht
-                    n_mid = get_message_id(cid, "notification")
-                    if not n_mid:
+                    # Notificatiebericht - check both old and new keys
+                    n_mid_persistent = get_message_id(cid, "notification_persistent")
+                    n_mid_old = get_message_id(cid, "notification")
+                    if not n_mid_persistent and not n_mid_old:
                         await create_notification_message(channel)
 
                     print(f"✅ Automatisch geactiveerd: kanaal {cid} volgens schedule")
@@ -1515,15 +1543,33 @@ async def convert_remaining_misschien(bot, dag: str) -> None:
                 except Exception:  # pragma: no cover
                     pass
 
-            # Delete notification message if it still exists (should auto-delete after 1 hour anyway)
+            # Delete notification messages if they still exist (should auto-delete anyway)
             # Since misschien notification is at 17:00 and conversion is at 18:00,
             # the notification will be auto-deleted. This is a safety cleanup.
+            # Clear both temp and persistent notification keys for safety.
             try:
                 from apps.utils.discord_client import fetch_message_or_none
 
-                msg_id = get_message_id(cid, "notification")
-                if msg_id:
-                    msg = await fetch_message_or_none(channel, msg_id)
+                # Clear temporary notification
+                msg_id_temp = get_message_id(cid, "notification_temp")
+                if msg_id_temp:
+                    msg = await fetch_message_or_none(channel, msg_id_temp)
+                    if msg is not None:
+                        await safe_call(msg.delete)
+                    clear_message_id(cid, "notification_temp")
+
+                # Clear persistent notification
+                msg_id_persistent = get_message_id(cid, "notification_persistent")
+                if msg_id_persistent:
+                    msg = await fetch_message_or_none(channel, msg_id_persistent)
+                    if msg is not None:
+                        await safe_call(msg.delete)
+                    clear_message_id(cid, "notification_persistent")
+
+                # Also clear old "notification" key for backward compatibility
+                msg_id_old = get_message_id(cid, "notification")
+                if msg_id_old:
+                    msg = await fetch_message_or_none(channel, msg_id_old)
                     if msg is not None:
                         await safe_call(msg.delete)
                     clear_message_id(cid, "notification")

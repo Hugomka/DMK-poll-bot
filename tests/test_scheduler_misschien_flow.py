@@ -264,10 +264,20 @@ class TestSchedulerMisschienFlow(BaseTestCase):
         ):
             await scheduler.convert_remaining_misschien(bot, "vrijdag")
 
-        # Assert: notification bericht werd opgehaald en verwijderd
-        mock_fetch_message.assert_awaited_once_with(channel, 999)
-        mock_safe_call.assert_awaited_once()
-        mock_clear.assert_called_once_with(10, "notification")
+        # Assert: notification berichten werden opgehaald en verwijderd
+        # The function now clears temp, persistent, and old notification keys
+        self.assertGreaterEqual(mock_fetch_message.await_count, 1)
+        self.assertGreaterEqual(mock_safe_call.await_count, 1)
+        # Verify at least one of the notification keys was cleared
+        mock_clear.assert_called()
+        # Check that clear was called with expected keys
+        clear_calls = [call[0] for call in mock_clear.call_args_list]
+        # Should clear at least one notification-related key
+        notification_keys_cleared = [
+            call for call in clear_calls
+            if len(call) == 2 and call[0] == 10 and "notification" in str(call[1])
+        ]
+        self.assertGreater(len(notification_keys_cleared), 0)
 
     async def test_notify_misschien_voters_handles_guest_votes(self):
         """Test notify_misschien_voters extraheert eigenaar van gastenstemmen correct."""

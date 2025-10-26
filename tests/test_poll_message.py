@@ -42,8 +42,8 @@ class TestCreateNotificationMessage(BaseTestCase):
         # Moet message hebben geretourneerd
         assert result == mock_msg
 
-        # save_message_id moet zijn aangeroepen
-        mock_save.assert_called_once_with(123, "notification", 999)
+        # save_message_id moet zijn aangeroepen met persistent key
+        mock_save.assert_called_once_with(123, "notification_persistent", 999)
 
     async def test_create_notification_message_safe_call_returns_none(self):
         """Test dat None wordt afgehandeld als safe_call None retourneert"""

@@ -529,7 +529,9 @@ class TestVerwijderberichtCommand(BaseTestCase):
             "zaterdag": 102,
             "zondag": 103,
             "stemmen": 104,
-            "notification": 105,
+            "notification_temp": 105,
+            "notification_persistent": 106,
+            "notification": 107,  # Old key for backward compatibility
         }
 
         def get_message_id_side_effect(_channel_id: Any, key: str) -> Any:

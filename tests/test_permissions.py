@@ -55,18 +55,17 @@ class TestCommandDefaults(unittest.TestCase):
                 has_admin or has_moderate,
                 f"{attr} moet admin of moderate_members default hebben",
             )
-            # Description hint: accepteer zowel (standaard: beheerder/moderator) als de losse varianten
+            # Description hint: moet het korte suffix "(admin/mod)" bevatten
             desc = getattr(cmd, "description", "") or ""
             self.assertTrue(
-                any(
-                    tag in desc
-                    for tag in (
-                        "(standaard: beheerder/moderator)",
-                        "(standaard: beheerder)",
-                        "(standaard: moderator)",
-                    )
-                ),
-                f"{attr} description mist '(standaard: beheerder/moderator)' of '(standaard: beheerder)' of '(standaard: moderator)'",
+                "(admin/mod)" in desc,
+                f"{attr} description mist suffix '(admin/mod)'",
+            )
+            # Verify description length ≤ 100
+            self.assertLessEqual(
+                len(desc),
+                100,
+                f"{attr} description is te lang ({len(desc)} chars, max 100)",
             )
 
     def test_public_default_commands(self):

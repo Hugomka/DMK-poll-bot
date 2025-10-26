@@ -17,6 +17,7 @@ from apps import scheduler
 from apps.ui.poll_buttons import OneStemButtonView
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
+from apps.commands import with_default_suffix
 from apps.utils.poll_message import (
     clear_message_id,
     create_notification_message,
@@ -162,7 +163,7 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-on",
-        description="Plaats of update de polls per avond (standaard: beheerder/moderator)",
+        description=with_default_suffix("Plaats of update de polls per avond"),
     )
     @app_commands.describe(
         dag="Weekdag (maandag t/m zondag) - verplicht met tijd",
@@ -411,7 +412,11 @@ class PollLifecycle(commands.Cog):
                     save_message_id(channel.id, key, s_msg.id)
 
             # Zesde bericht: notificatiebericht (leeg, voor later gebruik)
-            n_mid = get_message_id(channel.id, "notification")
+            # Check both old and new notification keys for backward compatibility
+            n_mid_persistent = get_message_id(channel.id, "notification_persistent")
+            n_mid_old = get_message_id(channel.id, "notification")
+            n_mid = n_mid_persistent or n_mid_old
+
             if n_mid:
                 # Check if message still exists
                 n_msg = await fetch_message_or_none(channel, n_mid)
@@ -451,7 +456,7 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-reset",
-        description="Reset alle stemmen en data (standaard: beheerder/moderator)",
+        description=with_default_suffix("Reset alle stemmen en data"),
     )
     async def reset(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -551,7 +556,7 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-pauze",
-        description="Pauzeer of hervat de poll (standaard: beheerder/moderator)",
+        description=with_default_suffix("Pauzeer of hervat de poll"),
     )
     async def pauze(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -609,7 +614,7 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-off",
-        description="Schakel polls uit en maak kanaal leeg (standaard: beheerder/moderator)",
+        description=with_default_suffix("Schakel polls uit en maak kanaal leeg"),
     )
     @app_commands.describe(
         dag="Weekdag (maandag t/m zondag) - verplicht met tijd",
@@ -749,10 +754,37 @@ class PollLifecycle(commands.Cog):
                         )
                 clear_message_id(channel.id, "stemmen")
 
-            # 3) Notificatiebericht verwijderen
-            n_mid = get_message_id(channel.id, "notification")
-            if n_mid:
-                n_msg = await fetch_message_or_none(channel, n_mid)
+            # 3) Notificatieberichten verwijderen (both temp and persistent)
+            # Clear temporary notification
+            n_mid_temp = get_message_id(channel.id, "notification_temp")
+            if n_mid_temp:
+                n_msg = await fetch_message_or_none(channel, n_mid_temp)
+                if n_msg is not None:
+                    try:
+                        await safe_call(n_msg.delete)
+                    except Exception:  # pragma: no cover
+                        await safe_call(
+                            n_msg.edit, content="📴 Notificaties gesloten.", view=None
+                        )
+                clear_message_id(channel.id, "notification_temp")
+
+            # Clear persistent notification
+            n_mid_persistent = get_message_id(channel.id, "notification_persistent")
+            if n_mid_persistent:
+                n_msg = await fetch_message_or_none(channel, n_mid_persistent)
+                if n_msg is not None:
+                    try:
+                        await safe_call(n_msg.delete)
+                    except Exception:  # pragma: no cover
+                        await safe_call(
+                            n_msg.edit, content="📴 Notificaties gesloten.", view=None
+                        )
+                clear_message_id(channel.id, "notification_persistent")
+
+            # Also clear old "notification" key for backward compatibility
+            n_mid_old = get_message_id(channel.id, "notification")
+            if n_mid_old:
+                n_msg = await fetch_message_or_none(channel, n_mid_old)
                 if n_msg is not None:
                     try:
                         await safe_call(n_msg.delete)
@@ -796,7 +828,7 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
-        description="Verwijder pollberichten en plaats sluitingsbericht - scheduler blijft actief",
+        description=with_default_suffix("Verwijder pollberichten en plaats sluitingsbericht"),
     )
     async def verwijderbericht(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -879,10 +911,33 @@ class PollLifecycle(commands.Cog):
                         pass
                 clear_message_id(channel.id, "stemmen")
 
-            # 3) Notificatiebericht verwijderen
-            n_mid = get_message_id(channel.id, "notification")
-            if n_mid:
-                n_msg = await fetch_message_or_none(channel, n_mid)
+            # 3) Notificatieberichten verwijderen (both temp and persistent)
+            # Clear temporary notification
+            n_mid_temp = get_message_id(channel.id, "notification_temp")
+            if n_mid_temp:
+                n_msg = await fetch_message_or_none(channel, n_mid_temp)
+                if n_msg is not None:
+                    try:
+                        await safe_call(n_msg.delete)
+                    except Exception:  # pragma: no cover
+                        pass
+                clear_message_id(channel.id, "notification_temp")
+
+            # Clear persistent notification
+            n_mid_persistent = get_message_id(channel.id, "notification_persistent")
+            if n_mid_persistent:
+                n_msg = await fetch_message_or_none(channel, n_mid_persistent)
+                if n_msg is not None:
+                    try:
+                        await safe_call(n_msg.delete)
+                    except Exception:  # pragma: no cover
+                        pass
+                clear_message_id(channel.id, "notification_persistent")
+
+            # Also clear old "notification" key for backward compatibility
+            n_mid_old = get_message_id(channel.id, "notification")
+            if n_mid_old:
+                n_msg = await fetch_message_or_none(channel, n_mid_old)
                 if n_msg is not None:
                     try:
                         await safe_call(n_msg.delete)

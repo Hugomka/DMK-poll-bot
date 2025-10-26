@@ -10,6 +10,7 @@ import discord
 from discord import File, app_commands
 from discord.ext import commands
 
+from apps.commands import with_default_suffix
 from apps.utils.archive import (
     archive_exists_scoped,
     delete_archive_scoped,
@@ -32,7 +33,7 @@ class PollArchive(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-download",
-        description="Download het CSV-archief met weekresultaten. (standaard: beheerder/moderator)",
+        description=with_default_suffix("Download het CSV-archief met weekresultaten"),
     )
     async def archief_download(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=False)
@@ -79,7 +80,7 @@ class PollArchive(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-archief-verwijderen",
-        description="Verwijder het volledige archief. (standaard: beheerder/moderator)",
+        description=with_default_suffix("Verwijder het volledige archief"),
     )
     async def archief_verwijderen(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)

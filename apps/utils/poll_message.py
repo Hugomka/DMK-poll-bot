@@ -104,6 +104,9 @@ async def create_notification_message(channel: Any) -> Optional[Any]:
     """
     Creëer een vriendelijk notificatiebericht wanneer de bot wordt aangezet.
 
+    Note: This is a persistent notification that should remain visible.
+    Uses 'notification_persistent' key to avoid conflicts with temporary notifications.
+
     Returns:
         Het aangemaakte bericht, of None bij fout.
     """
@@ -115,7 +118,8 @@ async def create_notification_message(channel: Any) -> Optional[Any]:
         msg = await safe_call(send, content=content, view=None)
         if msg is not None:
             cid = int(getattr(channel, "id", 0))
-            save_message_id(cid, "notification", msg.id)
+            # Use persistent key since this is a bot activation message that should stay
+            save_message_id(cid, "notification_persistent", msg.id)
         return msg
     except Exception as e:  # pragma: no cover
         print(f"❌ Fout bij aanmaken notificatiebericht: {e}")

@@ -12,6 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from apps.commands import with_default_suffix
 from apps.utils.poll_message import update_poll_message
 from apps.utils.poll_settings import set_visibility
 
@@ -26,7 +27,7 @@ class PollVotes(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
-        description="Toon of verberg stemmenaantallen tot de deadline. (standaard: beheerder/moderator)",
+        description=with_default_suffix("Toon of verberg stemmenaantallen tot de deadline"),
     )
     @app_commands.choices(
         actie=[
