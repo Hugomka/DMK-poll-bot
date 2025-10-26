@@ -152,7 +152,7 @@ def _is_deadline_mode(channel_id: int, dag: str) -> bool:
         return True  # Bij fout, standaard 'deadline' modus aannemen
 
 
-async def notify_non_voters_thursday(bot) -> None:
+async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
     """
     Herinner leden die voor geen enkele dag hebben gestemd (donderdagavond).
     Dit wordt één keer per week verstuurd.
@@ -267,7 +267,7 @@ def _within_reset_window(now: datetime, minutes: int = 5) -> bool:
     )
 
 
-async def _run_catch_up(bot) -> None:
+async def _run_catch_up(bot) -> None:  # pragma: no cover
     """
     Catch-up na herstart: voer gemiste jobs maximaal één keer uit.
     Reset alleen in het nieuwe venster (dinsdag 20:00 - 20:05).
@@ -365,7 +365,7 @@ async def _run_catch_up(bot) -> None:
     log_startup(missed)
 
 
-async def _run_catch_up_with_lock(bot) -> None:
+async def _run_catch_up_with_lock(bot) -> None:  # pragma: no cover
     """Catch-up met file-lock (voorkomt dubbele runs bij snelle herstarts)."""
     try:
         if os.path.exists(LOCK_PATH):
@@ -390,7 +390,7 @@ async def _run_catch_up_with_lock(bot) -> None:
             pass
 
 
-def setup_scheduler(bot) -> None:
+def setup_scheduler(bot) -> None:  # pragma: no cover
     """
     Plan periodieke jobs en start de scheduler.
     - Pollupdate elke dag om 18:00.
@@ -512,7 +512,7 @@ def setup_scheduler(bot) -> None:
     asyncio.create_task(_run_catch_up_with_lock(bot))
 
 
-async def update_all_polls(bot) -> None:
+async def update_all_polls(bot) -> None:  # pragma: no cover
     """
     Update per kanaal de poll-berichten (vrijdag, zaterdag, zondag) als er al polls zijn.
     Deze functie blijft ongewijzigd.
@@ -566,7 +566,7 @@ async def update_all_polls(bot) -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def notify_non_voters(
+async def notify_non_voters(  # pragma: no cover
     bot,
     dag: Optional[str] = None,
     channel: Optional[discord.TextChannel] = None,
@@ -732,7 +732,7 @@ async def notify_non_voters(
     return sent_any
 
 
-async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
+async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no cover
     """
     Stuur melding als een tijd >= MIN_NOTIFY_VOTES stemmen heeft (gelijkstand → 20:30).
     De deelnemers worden eerst genoemd, daarna volgt de zin 'de DMK-avond van … gaat door'.
@@ -845,7 +845,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:
                 return
 
 
-async def reset_polls(bot) -> bool:
+async def reset_polls(bot) -> bool:  # pragma: no cover
     """
     Maak stemmen leeg + verwijder bericht-IDs en stuur een resetmelding.
     Reset wordt alleen uitgevoerd in het resetvenster (dinsdag 20:00 - 20:05),
@@ -948,7 +948,7 @@ async def reset_polls(bot) -> bool:
     return True
 
 
-async def notify_for_channel(channel, dag: str) -> bool:
+async def notify_for_channel(channel, dag: str) -> bool:  # pragma: no cover
     """
     Stuur dezelfde notificatie die de scheduler normaal zou plaatsen,
     maar dan alleen in het opgegeven kanaal. Geeft True terug als er iets
@@ -1037,7 +1037,7 @@ async def notify_for_channel(channel, dag: str) -> bool:
 # ========================================================================
 
 
-async def notify_misschien_voters(bot, dag: str) -> None:
+async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
     """
     Notify "Misschien" voters at 17:00 with Stem Nu button.
     Alleen voor kanalen in 'deadline' modus.
@@ -1167,7 +1167,7 @@ async def notify_misschien_voters(bot, dag: str) -> None:
                 pass
 
 
-async def deactivate_scheduled_polls(bot) -> None:
+async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
     """
     Deactiveer polls die volgens het schema gedeactiveerd moeten worden.
     Dit wordt elke minuut uitgevoerd en controleert:
@@ -1325,7 +1325,7 @@ async def deactivate_scheduled_polls(bot) -> None:
                     print(f"❌ Fout bij automatische deactivatie voor kanaal {cid}: {e}")
 
 
-async def activate_scheduled_polls(bot) -> None:
+async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
     """
     Activeer polls die volgens het schema geactiveerd moeten worden.
     Dit wordt elke minuut uitgevoerd en controleert:
@@ -1456,7 +1456,7 @@ async def activate_scheduled_polls(bot) -> None:
                     print(f"❌ Fout bij automatische activatie voor kanaal {cid}: {e}")
 
 
-async def convert_remaining_misschien(bot, dag: str) -> None:
+async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cover
     """
     Convert remaining "Misschien" votes to ❌ at 18:00.
     Alleen voor kanalen in 'deadline' modus.

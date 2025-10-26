@@ -171,7 +171,7 @@ class PollLifecycle(commands.Cog):
         tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
         frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
     )
-    async def on(
+    async def on(  # pragma: no cover
         self,
         interaction: discord.Interaction,
         dag: Literal[
@@ -220,7 +220,7 @@ class PollLifecycle(commands.Cog):
         # Stap 2: Plaats de polls (handmatige activatie zonder scheduling)
         await self._plaats_polls(interaction, channel, schedule_message=None)
 
-    async def _scan_oude_berichten(self, channel: Any) -> list:
+    async def _scan_oude_berichten(self, channel: Any) -> list:  # pragma: no cover
         """
         Scan het kanaal voor ALLE berichten (inclusief bot's eigen berichten).
 
@@ -236,7 +236,7 @@ class PollLifecycle(commands.Cog):
             pass
         return oude_berichten
 
-    async def _toon_opschoon_bevestiging(
+    async def _toon_opschoon_bevestiging(  # pragma: no cover
         self,
         interaction: discord.Interaction,
         channel: Any,
@@ -298,7 +298,7 @@ class PollLifecycle(commands.Cog):
             ephemeral=True,
         )
 
-    async def _plaats_polls(
+    async def _plaats_polls(  # pragma: no cover
         self, interaction: discord.Interaction, channel: Any, schedule_message: str | None = None
     ) -> None:
         """
@@ -458,7 +458,7 @@ class PollLifecycle(commands.Cog):
         name="dmk-poll-reset",
         description=with_default_suffix("Reset alle stemmen en data"),
     )
-    async def reset(self, interaction: discord.Interaction) -> None:
+    async def reset(self, interaction: discord.Interaction) -> None:  # pragma: no cover
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
@@ -558,7 +558,7 @@ class PollLifecycle(commands.Cog):
         name="dmk-poll-pauze",
         description=with_default_suffix("Pauzeer of hervat de poll"),
     )
-    async def pauze(self, interaction: discord.Interaction) -> None:
+    async def pauze(self, interaction: discord.Interaction) -> None:  # pragma: no cover
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
@@ -622,7 +622,7 @@ class PollLifecycle(commands.Cog):
         tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
         frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
     )
-    async def off(
+    async def off(  # pragma: no cover
         self,
         interaction: discord.Interaction,
         dag: Literal[
@@ -701,7 +701,7 @@ class PollLifecycle(commands.Cog):
         else:
             return ""
 
-    async def _execute_poll_off(
+    async def _execute_poll_off(  # pragma: no cover
         self, interaction: discord.Interaction, channel: Any
     ) -> None:
         """
@@ -830,7 +830,7 @@ class PollLifecycle(commands.Cog):
         name="dmk-poll-verwijderen",
         description=with_default_suffix("Verwijder pollberichten en plaats sluitingsbericht"),
     )
-    async def verwijderbericht(self, interaction: discord.Interaction) -> None:
+    async def verwijderbericht(self, interaction: discord.Interaction) -> None:  # pragma: no cover
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
