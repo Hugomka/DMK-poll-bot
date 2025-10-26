@@ -786,29 +786,17 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
                 or {}
             )
 
-            voters_19: set[str] = set()
-            voters_2030: set[str] = set()
+            # Tel totale stemmen (inclusief gasten), niet alleen unieke eigenaren
+            c19 = 0
+            c2030 = 0
             for uid, per_dag in scoped.items():
                 tijden = (per_dag or {}).get(dag, [])
                 if not isinstance(tijden, list):
                     continue
                 if KEY_19 in tijden:
-                    # gasten bevatten "_guest::"; neem eigenaar
-                    actual_uid = (
-                        uid.split("_guest::", 1)[0]
-                        if isinstance(uid, str) and "_guest::" in uid
-                        else uid
-                    )
-                    voters_19.add(str(actual_uid))
+                    c19 += 1  # Tel elke stem (inclusief gasten)
                 if KEY_2030 in tijden:
-                    actual_uid = (
-                        uid.split("_guest::", 1)[0]
-                        if isinstance(uid, str) and "_guest::" in uid
-                        else uid
-                    )
-                    voters_2030.add(str(actual_uid))
-
-            c19, c2030 = len(voters_19), len(voters_2030)
+                    c2030 += 1  # Tel elke stem (inclusief gasten)
             if c19 < MIN_NOTIFY_VOTES and c2030 < MIN_NOTIFY_VOTES:
                 continue
 
