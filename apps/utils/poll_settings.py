@@ -245,3 +245,138 @@ def clear_scheduled_deactivation(channel_id: int) -> None:
     if "__scheduled_deactivation__" in ch:
         del ch["__scheduled_deactivation__"]
         _save_data(data)
+
+
+# ========================================================================
+# Global Default Schedules
+# ========================================================================
+
+
+def get_default_activation() -> dict | None:
+    """
+    Haal de globale standaard activatie-instellingen op.
+
+    Returns:
+        Dict met scheduling info of None als er geen standaard is.
+        Format: {
+            'type': 'wekelijks',
+            'dag': 'dinsdag',
+            'tijd': '20:00'
+        }
+    """
+    data = _load_data()
+    return data.get("defaults", {}).get("activation")
+
+
+def get_default_deactivation() -> dict | None:
+    """
+    Haal de globale standaard deactivatie-instellingen op.
+
+    Returns:
+        Dict met scheduling info of None als er geen standaard is.
+        Format: {
+            'type': 'wekelijks',
+            'dag': 'maandag',
+            'tijd': '00:00'
+        }
+    """
+    data = _load_data()
+    return data.get("defaults", {}).get("deactivation")
+
+
+def set_default_activation(value: dict | None) -> None:
+    """
+    Stel de globale standaard activatie in.
+
+    Args:
+        value: Schedule dict of None om te verwijderen
+    """
+    data = _load_data()
+    defaults = data.setdefault("defaults", {})
+    if value is None:
+        defaults.pop("activation", None)
+    else:
+        defaults["activation"] = value
+    _save_data(data)
+
+
+def set_default_deactivation(value: dict | None) -> None:
+    """
+    Stel de globale standaard deactivatie in.
+
+    Args:
+        value: Schedule dict of None om te verwijderen
+    """
+    data = _load_data()
+    defaults = data.setdefault("defaults", {})
+    if value is None:
+        defaults.pop("deactivation", None)
+    else:
+        defaults["deactivation"] = value
+    _save_data(data)
+
+
+def _seed_defaults_if_missing() -> None:
+    """
+    Seed standaard schedules als ze nog niet bestaan.
+    Alleen uitgevoerd wanneer SEED_DEFAULT_SCHEDULES=true.
+    """
+    seed_flag = os.getenv("SEED_DEFAULT_SCHEDULES", "true").lower()
+    if seed_flag not in {"1", "true", "yes", "y"}:
+        return
+
+    data = _load_data()
+    if "defaults" in data:
+        # Defaults already exist, don't overwrite
+        return
+
+    defaults = {
+        "activation": {"type": "wekelijks", "dag": "dinsdag", "tijd": "20:00"},
+        "deactivation": {"type": "wekelijks", "dag": "maandag", "tijd": "00:00"},
+    }
+    data["defaults"] = defaults
+    _save_data(data)
+
+
+# Seed defaults on module load (non-destructive)
+_seed_defaults_if_missing()
+
+
+def get_effective_activation(channel_id: int) -> tuple[dict | None, bool]:
+    """
+    Haal de effectieve activatie-instellingen op voor een kanaal.
+
+    Returns:
+        Tuple van (schedule, is_default):
+        - Als het kanaal een override heeft -> (override, False)
+        - Anders -> (defaults.activation, True) of (None, False) als er geen default is
+    """
+    channel_schedule = get_scheduled_activation(channel_id)
+    if channel_schedule is not None:
+        return (channel_schedule, False)
+
+    default_schedule = get_default_activation()
+    if default_schedule is not None:
+        return (default_schedule, True)
+
+    return (None, False)
+
+
+def get_effective_deactivation(channel_id: int) -> tuple[dict | None, bool]:
+    """
+    Haal de effectieve deactivatie-instellingen op voor een kanaal.
+
+    Returns:
+        Tuple van (schedule, is_default):
+        - Als het kanaal een override heeft -> (override, False)
+        - Anders -> (defaults.deactivation, True) of (None, False) als er geen default is
+    """
+    channel_schedule = get_scheduled_deactivation(channel_id)
+    if channel_schedule is not None:
+        return (channel_schedule, False)
+
+    default_schedule = get_default_deactivation()
+    if default_schedule is not None:
+        return (default_schedule, True)
+
+    return (None, False)

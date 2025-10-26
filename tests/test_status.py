@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from apps.commands.poll_status import PollStatus
+from apps.utils.poll_settings import set_scheduled_activation, set_scheduled_deactivation
 from apps.utils.poll_storage import toggle_vote
 from tests.base import BaseTestCase
 
@@ -323,3 +324,112 @@ class TestStatusCommand(BaseTestCase):
         # Mario mag niet in de niet-stemmers regel staan
         if niet_stemmers_line:
             self.assertNotIn("@Mario", niet_stemmers_line)
+
+    async def test_status_toont_schedules(self):
+        """Test dat geplande activatie en deactivatie worden getoond in het statusbericht"""
+        kanaal_id = 123456
+
+        # Stel schedules in voor dit kanaal
+        set_scheduled_activation(kanaal_id, "wekelijks", "10:00", dag="maandag")
+        set_scheduled_deactivation(kanaal_id, "datum", "15:30", datum="2025-11-03")
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # ⏯️ Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # 🔍 Controleer dat een embed is gestuurd
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        # Converteer embed fields naar string
+        embed_text = str(embed.description) + "".join(
+            str(field.name) + str(field.value) for field in embed.fields
+        )
+
+        # Controleer dat de schedule velden aanwezig zijn
+        self.assertIn("🗓️ Geplande activatie", embed_text)
+        self.assertIn("🗑️ Geplande deactivatie", embed_text)
+
+        # Controleer dat de formatted schedules correct zijn
+        self.assertIn("elke maandag om 10:00", embed_text)
+        self.assertIn("maandag 2025-11-03 om 15:30", embed_text)
+
+    async def test_status_geen_schedules(self):
+        """Test dat 'Geen' wordt getoond als er geen schedules zijn"""
+        kanaal_id = 654321
+
+        # Geen schedules instellen - gewoon een leeg kanaal
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # ⏯️ Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # 🔍 Controleer dat een embed is gestuurd
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        # Converteer embed fields naar string
+        embed_text = str(embed.description) + "".join(
+            str(field.name) + str(field.value) for field in embed.fields
+        )
+
+        # Controleer dat de schedule velden aanwezig zijn
+        self.assertIn("🗓️ Geplande activatie", embed_text)
+        self.assertIn("🗑️ Geplande deactivatie", embed_text)
+
+        # Controleer dat beide velden "Geen" tonen
+        # We zoeken de velden op en controleren de waarde
+        activatie_field = None
+        deactivatie_field = None
+        for field in embed.fields:
+            if "🗓️ Geplande activatie" in str(field.name):
+                activatie_field = field
+            if "🗑️ Geplande deactivatie" in str(field.name):
+                deactivatie_field = field
+
+        self.assertIsNotNone(activatie_field)
+        self.assertIsNotNone(deactivatie_field)
+        assert activatie_field is not None  # Type narrowing for Pylance
+        assert deactivatie_field is not None  # Type narrowing for Pylance
+        self.assertEqual(str(activatie_field.value), "Geen")
+        self.assertEqual(str(deactivatie_field.value), "Geen")

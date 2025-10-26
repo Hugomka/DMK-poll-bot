@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from apps.utils.mention_utils import (
     _delete_message_after_delay,
     _remove_mentions_after_delay,
-    _remove_persistent_mentions_after_delay,
     render_notification_content,
     send_persistent_mention,
     send_temporary_mention,
@@ -222,7 +221,7 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_send_persistent_mention_schedules_tasks(
         self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
     ):
-        """Test persistent mention schedules privacy removal and auto-delete."""
+        """Test persistent mention schedules auto-delete only (no mention removal)."""
         mock_create_task.side_effect = _consume_coro_task()
         mock_get_msg_id.return_value = None
 
@@ -259,8 +258,8 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify message ID was saved with correct key for persistent notification
         mock_save_msg_id.assert_called_once_with(456, "notification_persistent", 123)
 
-        # Verify two tasks were scheduled (privacy removal + 5 hour delete)
-        self.assertEqual(mock_create_task.call_count, 2)
+        # Verify only one task was scheduled (5 hour delete only, no mention removal)
+        self.assertEqual(mock_create_task.call_count, 1)
 
     @patch("asyncio.create_task")
     @patch("apps.utils.mention_utils.save_message_id")
@@ -356,58 +355,92 @@ class RemoveMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Please vote!", call_kwargs["content"])
         self.assertEqual(call_kwargs["view"], mock_view)
 
-    @patch("asyncio.sleep")
+    @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_remove_persistent_mentions(self, mock_safe_call, mock_sleep):
-        """Test that persistent mentions are removed using renderer."""
-        mock_sleep.return_value = AsyncMock()
-        mock_safe_call.return_value = AsyncMock()
-
-        mock_message = MagicMock()
-        mock_message.edit = AsyncMock()
-
-        await _remove_persistent_mentions_after_delay(
-            mock_message, 5.0, "Please respond"
-        )
-
-        # Verify sleep was called
-        mock_sleep.assert_called_once_with(5.0)
-
-        # Verify safe_call was called with edit function and cleaned content
-        mock_safe_call.assert_called_once()
-        call_kwargs = mock_safe_call.call_args[1]
-        self.assertIn("content", call_kwargs)
-        cleaned_content = call_kwargs["content"]
-        # Verify content uses renderer (no mentions, no comma artifacts)
-        self.assertIn("Please respond", cleaned_content)
-        self.assertIn(":mega: Notificatie:", cleaned_content)
-        self.assertNotIn("@", cleaned_content)  # No mentions
-        self.assertNotIn("\n\n", cleaned_content)  # No empty lines
-
-    @patch("asyncio.sleep")
-    @patch("apps.utils.mention_utils.safe_call")
-    async def test_remove_mentions_no_comma_artifacts(
-        self, mock_safe_call, mock_sleep
+    async def test_persistent_mentions_not_removed(
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
     ):
-        """Test that cleanup produces no comma artifacts."""
-        mock_sleep.return_value = AsyncMock()
-        mock_safe_call.return_value = AsyncMock()
+        """Test that persistent mentions are NOT removed after 5 seconds."""
+        mock_create_task.side_effect = _consume_coro_task()
+        mock_get_msg_id.return_value = None
+
+        # Mock sent message
+        mock_message = MagicMock()
+        mock_message.id = 123
+        mock_safe_call.return_value = mock_message
+
+        channel = MagicMock()
+        channel.id = 456
+        channel.send = AsyncMock()
+
+        mentions = "@user1 @user2"
+        text = "De avond gaat door!"
+
+        result = await send_persistent_mention(channel, mentions, text)
+
+        # Verify message was sent
+        self.assertEqual(result, mock_message)
+        mock_safe_call.assert_called_once()
+
+        # Verify content includes mentions
+        call_args = mock_safe_call.call_args
+        if len(call_args[0]) > 1:
+            content = call_args[0][1]
+        else:
+            content = call_args[1].get("content", call_args[0][0])
+
+        self.assertIn(mentions, content)
+        self.assertIn(text, content)
+
+        # Verify only ONE task was created (auto-delete only, no mention removal)
+        self.assertEqual(mock_create_task.call_count, 1)
+
+        # Verify the task is for deletion (5 hours = 18000 seconds)
+        task_call = mock_create_task.call_args[0][0]
+        # The coroutine should be _delete_message_after_delay
+        self.assertIn("_delete_message_after_delay", str(task_call))
+
+    @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_persistent_mentions_kept_until_deletion(
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
+    ):
+        """Test that persistent mentions remain visible until the 5-hour auto-delete."""
+        mock_create_task.side_effect = _consume_coro_task()
+        mock_get_msg_id.return_value = None
 
         mock_message = MagicMock()
-        mock_message.edit = AsyncMock()
+        mock_message.id = 123
+        mock_safe_call.return_value = mock_message
 
-        await _remove_persistent_mentions_after_delay(
-            mock_message, 5.0, "Important announcement"
-        )
+        channel = MagicMock()
+        channel.id = 456
+        channel.send = AsyncMock()
 
-        mock_safe_call.assert_called_once()
-        call_kwargs = mock_safe_call.call_args[1]
-        content = call_kwargs["content"]
+        mentions = "@guest1 @guest2 @regular"
+        text = "Important announcement"
 
-        # Verify no comma artifacts
-        self.assertNotIn(", ,", content)
-        self.assertNotIn("\n\n", content)
+        await send_persistent_mention(channel, mentions, text)
+
+        # Verify content has mentions (not removed)
+        call_args = mock_safe_call.call_args
+        if len(call_args[0]) > 1:
+            content = call_args[0][1]
+        else:
+            content = call_args[1].get("content", call_args[0][0])
+
+        # Mentions should be present in the original message
+        self.assertIn("@guest1", content)
+        self.assertIn("@guest2", content)
+        self.assertIn("@regular", content)
         self.assertIn("Important announcement", content)
+
+        # Only auto-delete task should be scheduled (not mention removal)
+        self.assertEqual(mock_create_task.call_count, 1)
 
 
 class DeleteMessageTestCase(unittest.IsolatedAsyncioTestCase):

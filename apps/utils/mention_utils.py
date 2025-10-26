@@ -194,7 +194,7 @@ async def send_persistent_mention(
     Flow:
     1. Verwijder vorige notificatiebericht
     2. Stuur nieuw bericht met mentions
-    3. Na 5 seconden: verwijder mentions (privacy)
+    3. Behoud mentions in het bericht (geen privacy removal voor persistent)
     4. Na 5 uur: verwijder het hele bericht
 
     Args:
@@ -239,8 +239,8 @@ async def send_persistent_mention(
             # Sla nieuwe message ID op
             save_message_id(cid, message_key, msg.id)
 
-            # Stap 3: Plan privacy removal (na 5 seconden)
-            asyncio.create_task(_remove_persistent_mentions_after_delay(msg, 5.0, text))
+            # Stap 3: SKIP privacy removal voor persistent mentions
+            # Mentions blijven zichtbaar tot het bericht verwijderd wordt
 
             # Stap 4: Plan auto-delete (na 5 uur)
             delete_seconds = 5 * 3600
@@ -252,31 +252,3 @@ async def send_persistent_mention(
         return None
 
 
-async def _remove_persistent_mentions_after_delay(
-    message: Any, delay: float, text: str
-) -> None:
-    """
-    Interne helper: verwijder mentions uit een persistent bericht na delay seconden.
-
-    Args:
-        message: Het Discord message object
-        delay: Hoeveel seconden te wachten
-        text: De tekst om te behouden
-    """
-    try:
-        await asyncio.sleep(delay)
-
-        # Build content zonder mentions using renderer (no comma artifacts)
-        content = render_notification_content(
-            heading=":mega: Notificatie:",
-            mentions=None,  # Remove mentions for privacy
-            text=text,
-            footer=None,
-        )
-
-        # Probeer te editen
-        if hasattr(message, "edit"):
-            await safe_call(message.edit, content=content)
-    except Exception:  # pragma: no cover
-        # Stil falen (bericht kan verwijderd zijn, bot heeft geen rechten, etc.)
-        pass

@@ -8,10 +8,7 @@ Tests for scheduling-related functions in poll_lifecycle.py:
 """
 
 import io
-import os
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from apps.commands.poll_lifecycle import PollLifecycle, _load_opening_message
 from tests.base import BaseTestCase

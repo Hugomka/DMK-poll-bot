@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Optional
 
 import discord
@@ -16,7 +17,12 @@ from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
 from apps.utils.poll_message import is_channel_disabled
-from apps.utils.poll_settings import get_setting, is_paused
+from apps.utils.poll_settings import (
+    get_setting,
+    is_paused,
+    get_effective_activation,
+    get_effective_deactivation,
+)
 from apps.utils.poll_storage import load_votes
 
 
@@ -98,13 +104,61 @@ class PollStatus(commands.Cog):
         except Exception:  # pragma: no cover
             cid_val = 0
 
+        # Helper function to format schedule information
+        def format_schedule(schedule: Optional[dict], is_default: bool) -> str:
+            """Format a schedule dict into a readable Dutch string with default label."""
+            if not schedule:
+                return "Geen"
+
+            day_names = ["maandag", "dinsdag", "woensdag", "donderdag",
+                        "vrijdag", "zaterdag", "zondag"]
+
+            typ = schedule.get("type")
+            tijd = schedule.get("tijd", "??:??")
+
+            if typ == "datum":
+                datum = schedule.get("datum", "")
+                try:
+                    datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+                    dag_naam = day_names[datum_obj.weekday()]
+                    result = f"{dag_naam} {datum} om {tijd}"
+                except Exception:  # pragma: no cover
+                    result = f"{datum} om {tijd}"
+            elif typ == "wekelijks":
+                dag = schedule.get("dag", "?")
+                result = f"elke {dag} om {tijd}"
+            else:  # pragma: no cover
+                result = "Onbekend"
+
+            # Add default label if this is a default schedule
+            if is_default and result != "Geen":
+                result += "  *(default)*"
+
+            return result
+
         try:
             pauze_txt = "Ja" if is_paused(cid_val) else "Nee"
+
+            # Retrieve effective schedule information (with fallback to defaults)
+            act_sched, act_is_default = get_effective_activation(cid_val)
+            deact_sched, deact_is_default = get_effective_deactivation(cid_val)
 
             embed = discord.Embed(
                 title="📊 DMK-poll status",
                 description=f"⏸️ Pauze: **{pauze_txt}**",
                 color=discord.Color.blurple(),
+            )
+
+            # Add schedule fields with default labels
+            embed.add_field(
+                name="🗓️ Geplande activatie",
+                value=format_schedule(act_sched, act_is_default),
+                inline=False,
+            )
+            embed.add_field(
+                name="🗑️ Geplande deactivatie",
+                value=format_schedule(deact_sched, deact_is_default),
+                inline=False,
             )
 
             # Gescopeerde stemmen voor dit guild en kanaal

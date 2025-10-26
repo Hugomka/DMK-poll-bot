@@ -1176,7 +1176,7 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
 
     Dit is de tegenhanger van activate_scheduled_polls voor /dmk-poll-off.
     """
-    from apps.utils.poll_settings import clear_scheduled_deactivation, get_scheduled_deactivation
+    from apps.utils.poll_settings import clear_scheduled_deactivation, get_effective_deactivation
 
     now = datetime.now(TZ)
     current_date = now.date().isoformat()  # YYYY-MM-DD
@@ -1196,8 +1196,8 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
             if is_channel_disabled(cid):
                 continue
 
-            # Haal deactivation schedule op
-            schedule = get_scheduled_deactivation(cid)
+            # Haal effective deactivation schedule op (met fallback naar default)
+            schedule, _is_default = get_effective_deactivation(cid)
             if not schedule:
                 continue
 
@@ -1335,7 +1335,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
     Prioriteit: handmatig > datum > wekelijks
     (Handmatige activatie wordt afgehandeld door /dmk-poll-on zelf)
     """
-    from apps.utils.poll_settings import clear_scheduled_activation, get_scheduled_activation
+    from apps.utils.poll_settings import clear_scheduled_activation, get_effective_activation
 
     now = datetime.now(TZ)
     current_date = now.date().isoformat()  # YYYY-MM-DD
@@ -1355,8 +1355,8 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
             if is_channel_disabled(cid):
                 continue
 
-            # Haal schedule op
-            schedule = get_scheduled_activation(cid)
+            # Haal effective schedule op (met fallback naar default)
+            schedule, _is_default = get_effective_activation(cid)
             if not schedule:
                 continue
 
