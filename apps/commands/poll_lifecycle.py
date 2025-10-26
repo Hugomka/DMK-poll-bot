@@ -100,12 +100,12 @@ class PollLifecycle(commands.Cog):
             except ValueError:
                 return "Tijd moet in HH:mm formaat zijn (bijv. 20:00)."
 
-        # Valideer datum formaat (YYYY-MM-DD)
+        # Valideer datum formaat (DD-MM-YYYY)
         if datum:
             try:
-                datetime.strptime(datum, "%Y-%m-%d")
+                datetime.strptime(datum, "%d-%m-%Y")
             except ValueError:
-                return "Datum moet in YYYY-MM-DD formaat zijn (bijv. 2025-12-31)."
+                return "Datum moet in DD-MM-YYYY formaat zijn (bijv. 31-12-2025)."
 
         # frequentie validatie
         if frequentie:
@@ -130,8 +130,10 @@ class PollLifecycle(commands.Cog):
         # Bepaal activatie type op basis van parameters
         if datum:
             activation_type = "datum"
-            set_scheduled_activation(channel_id, activation_type, tijd, datum=datum)
-            datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+            # Convert DD-MM-YYYY input to YYYY-MM-DD for internal storage
+            datum_obj = datetime.strptime(datum, "%d-%m-%Y")
+            datum_internal = datum_obj.strftime("%Y-%m-%d")
+            set_scheduled_activation(channel_id, activation_type, tijd, datum=datum_internal)
             dag_naam = [
                 "maandag",
                 "dinsdag",
@@ -141,6 +143,7 @@ class PollLifecycle(commands.Cog):
                 "zaterdag",
                 "zondag",
             ][datum_obj.weekday()]
+            # Display in DD-MM-YYYY format
             return f"📅 De poll wordt automatisch geactiveerd op **{dag_naam} {datum}** om **{tijd}** uur."
         elif dag:
             # Wekelijks als frequentie=wekelijks, of als default bij dag
@@ -167,7 +170,7 @@ class PollLifecycle(commands.Cog):
     )
     @app_commands.describe(
         dag="Weekdag (maandag t/m zondag) - verplicht met tijd",
-        datum="Specifieke datum (YYYY-MM-DD) - verplicht met tijd",
+        datum="Specifieke datum (DD-MM-YYYY) - verplicht met tijd",
         tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
         frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
     )
@@ -618,7 +621,7 @@ class PollLifecycle(commands.Cog):
     )
     @app_commands.describe(
         dag="Weekdag (maandag t/m zondag) - verplicht met tijd",
-        datum="Specifieke datum (YYYY-MM-DD) - verplicht met tijd",
+        datum="Specifieke datum (DD-MM-YYYY) - verplicht met tijd",
         tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
         frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
     )
@@ -677,8 +680,10 @@ class PollLifecycle(commands.Cog):
         # Bepaal deactivatie type op basis van parameters
         if datum:
             activation_type = "datum"
-            set_scheduled_deactivation(channel_id, activation_type, tijd, datum=datum)
-            datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+            # Convert DD-MM-YYYY input to YYYY-MM-DD for internal storage
+            datum_obj = datetime.strptime(datum, "%d-%m-%Y")
+            datum_internal = datum_obj.strftime("%Y-%m-%d")
+            set_scheduled_deactivation(channel_id, activation_type, tijd, datum=datum_internal)
             dag_naam = [
                 "maandag",
                 "dinsdag",
@@ -688,6 +693,7 @@ class PollLifecycle(commands.Cog):
                 "zaterdag",
                 "zondag",
             ][datum_obj.weekday()]
+            # Display in DD-MM-YYYY format
             return f"De poll wordt automatisch uitgeschakeld op **{dag_naam} {datum}** om **{tijd}** uur."
         elif dag:
             # Wekelijks als frequentie=wekelijks, of als default bij dag
@@ -855,7 +861,9 @@ class PollLifecycle(commands.Cog):
                     if datum:
                         from datetime import datetime
 
+                        # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
                         datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+                        datum_display = datum_obj.strftime("%d-%m-%Y")
                         dag_naam = [
                             "maandag",
                             "dinsdag",
@@ -865,7 +873,7 @@ class PollLifecycle(commands.Cog):
                             "zaterdag",
                             "zondag",
                         ][datum_obj.weekday()]
-                        closing_time = f"{dag_naam} {datum} om {tijd} uur"
+                        closing_time = f"{dag_naam} {datum_display} om {tijd} uur"
 
             sluitingsbericht = (
                 f"Deze poll is gesloten en gaat pas **{closing_time}** weer open. "

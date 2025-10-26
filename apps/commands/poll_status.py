@@ -119,9 +119,11 @@ class PollStatus(commands.Cog):
             if typ == "datum":
                 datum = schedule.get("datum", "")
                 try:
+                    # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
                     datum_obj = datetime.strptime(datum, "%Y-%m-%d")
+                    datum_display = datum_obj.strftime("%d-%m-%Y")
                     dag_naam = day_names[datum_obj.weekday()]
-                    result = f"{dag_naam} {datum} om {tijd}"
+                    result = f"{dag_naam} {datum_display} om {tijd}"
                 except Exception:  # pragma: no cover
                     result = f"{datum} om {tijd}"
             elif typ == "wekelijks":

@@ -43,7 +43,7 @@ class TestValidateSchedulingParams(BaseTestCase):
     async def test_datum_without_tijd_returns_error(self):
         """Test that datum without tijd returns error"""
         result = self.cog._validate_scheduling_params(
-            dag=None, datum="2025-12-31", tijd=None, frequentie=None
+            dag=None, datum="31-12-2025", tijd=None, frequentie=None
         )
         assert result is not None
         assert "tijd" in result.lower()
@@ -53,7 +53,7 @@ class TestValidateSchedulingParams(BaseTestCase):
     async def test_both_dag_and_datum_returns_error(self):
         """Test that both dag and datum returns error"""
         result = self.cog._validate_scheduling_params(
-            dag="maandag", datum="2025-12-31", tijd="18:00", frequentie=None
+            dag="maandag", datum="31-12-2025", tijd="18:00", frequentie=None
         )
         assert result is not None
         assert "niet zowel" in result.lower()
@@ -129,10 +129,10 @@ class TestValidateSchedulingParams(BaseTestCase):
     async def test_invalid_datum_format(self):
         """Test that invalid datum format returns error"""
         result = self.cog._validate_scheduling_params(
-            dag=None, datum="2024-13-01", tijd="18:00", frequentie=None
+            dag=None, datum="01-13-2024", tijd="18:00", frequentie=None
         )
         assert result is not None
-        assert "YYYY-MM-DD" in result
+        assert "DD-MM-YYYY" in result
 
     async def test_invalid_datum_format_wrong_separator(self):
         """Test that wrong date separator returns error"""
@@ -140,15 +140,15 @@ class TestValidateSchedulingParams(BaseTestCase):
             dag=None, datum="2024/12/31", tijd="18:00", frequentie=None
         )
         assert result is not None
-        assert "YYYY-MM-DD" in result
+        assert "DD-MM-YYYY" in result
 
     async def test_invalid_datum_day_out_of_range(self):
         """Test that invalid day returns error"""
         result = self.cog._validate_scheduling_params(
-            dag=None, datum="2024-02-30", tijd="18:00", frequentie=None
+            dag=None, datum="30-02-2024", tijd="18:00", frequentie=None
         )
         assert result is not None
-        assert "YYYY-MM-DD" in result
+        assert "DD-MM-YYYY" in result
 
     # Case: frequentie validation
     async def test_frequentie_eenmalig_without_datum(self):
@@ -163,7 +163,7 @@ class TestValidateSchedulingParams(BaseTestCase):
     async def test_frequentie_wekelijks_without_dag(self):
         """Test that frequentie=wekelijks without dag returns error"""
         result = self.cog._validate_scheduling_params(
-            dag=None, datum="2025-12-31", tijd="18:00", frequentie="wekelijks"
+            dag=None, datum="31-12-2025", tijd="18:00", frequentie="wekelijks"
         )
         assert result is not None
         assert "wekelijks" in result.lower()
@@ -180,7 +180,7 @@ class TestValidateSchedulingParams(BaseTestCase):
     async def test_valid_datum_and_tijd(self):
         """Test that valid datum and tijd returns None"""
         result = self.cog._validate_scheduling_params(
-            dag=None, datum="2025-12-31", tijd="18:00", frequentie=None
+            dag=None, datum="31-12-2025", tijd="18:00", frequentie=None
         )
         assert result is None
 
@@ -194,7 +194,7 @@ class TestValidateSchedulingParams(BaseTestCase):
     async def test_valid_datum_tijd_frequentie_eenmalig(self):
         """Test that valid datum, tijd, and frequentie=eenmalig returns None"""
         result = self.cog._validate_scheduling_params(
-            dag=None, datum="2025-12-31", tijd="23:59", frequentie="eenmalig"
+            dag=None, datum="31-12-2025", tijd="23:59", frequentie="eenmalig"
         )
         assert result is None
 
@@ -231,36 +231,37 @@ class TestSaveSchedule(BaseTestCase):
             result = await self.cog._save_schedule(
                 channel_id=123,
                 dag=None,
-                datum="2025-12-31",
+                datum="31-12-2025",
                 tijd="18:00",
                 frequentie=None,
             )
 
-            # Should call set_scheduled_activation with type "datum"
+            # Should call set_scheduled_activation with type "datum" (stored as YYYY-MM-DD)
             mock_set.assert_called_once_with(
                 123, "datum", "18:00", datum="2025-12-31"
             )
             mock_clear.assert_not_called()
 
-            # Should return message with weekday and date
-            assert "woensdag" in result.lower()  # 2025-12-31 is a Wednesday
-            assert "2025-12-31" in result
+            # Should return message with weekday and date (displayed as DD-MM-YYYY)
+            assert "woensdag" in result.lower()  # 31-12-2025 is a Wednesday
+            assert "31-12-2025" in result
             assert "18:00" in result
 
     async def test_save_schedule_with_datum_monday(self):
         """Test _save_schedule with datum on Monday"""
         with patch("apps.commands.poll_lifecycle.set_scheduled_activation") as mock_set:
             result = await self.cog._save_schedule(
-                channel_id=123, dag=None, datum="2025-12-29", tijd="20:00", frequentie=None
+                channel_id=123, dag=None, datum="29-12-2025", tijd="20:00", frequentie=None
             )
 
+            # Storage should be in YYYY-MM-DD format
             mock_set.assert_called_once_with(
                 123, "datum", "20:00", datum="2025-12-29"
             )
 
-            # 2025-12-29 is a Monday
+            # 29-12-2025 is a Monday, display should be in DD-MM-YYYY
             assert "maandag" in result.lower()
-            assert "2025-12-29" in result
+            assert "29-12-2025" in result
             assert "20:00" in result
 
     async def test_save_schedule_with_dag_wekelijks_explicit(self):
@@ -355,19 +356,19 @@ class TestSaveScheduleOff(BaseTestCase):
             result = await self.cog._save_schedule_off(
                 channel_id=123,
                 dag=None,
-                datum="2025-12-31",
+                datum="31-12-2025",
                 tijd="18:00",
                 frequentie=None,
             )
 
-            # Should call set_scheduled_deactivation with type "datum"
+            # Should call set_scheduled_deactivation with type "datum" (stored as YYYY-MM-DD)
             mock_set_deact.assert_called_once_with(
                 123, "datum", "18:00", datum="2025-12-31"
             )
 
-            # Should return message with weekday and date
-            assert "woensdag" in result.lower()  # 2025-12-31 is Wednesday
-            assert "2025-12-31" in result
+            # Should return message with weekday and date (displayed as DD-MM-YYYY)
+            assert "woensdag" in result.lower()  # 31-12-2025 is Wednesday
+            assert "31-12-2025" in result
             assert "18:00" in result
             assert "uitgeschakeld" in result.lower()
 
@@ -375,16 +376,17 @@ class TestSaveScheduleOff(BaseTestCase):
         """Test _save_schedule_off with datum on Sunday"""
         with patch("apps.utils.poll_settings.set_scheduled_deactivation") as mock_set:
             result = await self.cog._save_schedule_off(
-                channel_id=123, dag=None, datum="2025-12-28", tijd="20:00", frequentie=None
+                channel_id=123, dag=None, datum="28-12-2025", tijd="20:00", frequentie=None
             )
 
+            # Storage should be in YYYY-MM-DD format
             mock_set.assert_called_once_with(
                 123, "datum", "20:00", datum="2025-12-28"
             )
 
-            # 2025-12-28 is a Sunday
+            # 28-12-2025 is a Sunday, display should be in DD-MM-YYYY
             assert "zondag" in result.lower()
-            assert "2025-12-28" in result
+            assert "28-12-2025" in result
             assert "20:00" in result
 
     async def test_save_schedule_off_with_dag_wekelijks_explicit(self):

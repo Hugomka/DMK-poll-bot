@@ -370,9 +370,9 @@ class TestStatusCommand(BaseTestCase):
         self.assertIn("🗓️ Geplande activatie", embed_text)
         self.assertIn("🗑️ Geplande deactivatie", embed_text)
 
-        # Controleer dat de formatted schedules correct zijn
+        # Controleer dat de formatted schedules correct zijn (dates displayed as DD-MM-YYYY)
         self.assertIn("elke maandag om 10:00", embed_text)
-        self.assertIn("maandag 2025-11-03 om 15:30", embed_text)
+        self.assertIn("maandag 03-11-2025 om 15:30", embed_text)
 
     async def test_status_geen_schedules(self):
         """Test dat 'Geen' wordt getoond als er geen schedules zijn"""
