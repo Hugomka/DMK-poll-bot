@@ -49,7 +49,7 @@ async def setup(bot: commands.Bot) -> None:
     Deze parent cog registreert:
     - PollLifecycle: /dmk-poll-on, /dmk-poll-reset, /dmk-poll-pauze, /dmk-poll-verwijderen
     - PollStatus: /dmk-poll-status, /dmk-poll-notify
-    - PollArchive: /dmk-poll-archief-download, /dmk-poll-archief-verwijderen
+    - PollArchive: /dmk-poll-archief
     - PollGuests: /gast-add, /gast-remove
     - PollVotes: /dmk-poll-stemmen
     """

@@ -57,8 +57,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-pauze`** *(default: admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
 | **`/dmk-poll-verwijderen`** *(default: admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
-| **`/dmk-poll-archief-download`** *(default: admin/mod)* | Download `archive/dmk_archive.csv` met weekresultaten. |
-| **`/dmk-poll-archief-verwijderen`** *(default: admin/mod)* | Verwijder het volledige CSV-archief. |
+| **`/dmk-poll-archief`** *(default: admin/mod)* | Bekijk en beheer het CSV-archief: kies CSV-formaat (🇺🇸 Comma / 🇳🇱 Semicolon), download direct, of verwijder archief. |
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
 | **`/dmk-poll-notify`** *(default: admin/mod)* | Stuur handmatig een notificatie. Zonder dag: algemene resetmelding. Met dag: notificatie voor niet-stemmers van die specifieke dag. |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
@@ -355,8 +354,11 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ### Archief
 
-* **Download:** `/dmk-poll-archief-download` → bot uploadt `dmk_archive.csv` voor dit kanaal.
-* **Verwijderen:** `/dmk-poll-archief-verwijderen` → wist het CSV-archief voor dit kanaal.
+* **Commando:** `/dmk-poll-archief` → toont een ephemeral bericht met:
+  - 📊 **CSV-bestand** direct beschikbaar voor download
+  - **Dropdown** om formaat te kiezen: 🇺🇸 Comma (`,`) voor internationale tools of 🇳🇱 Semicolon (`;`) voor Nederlandse Excel
+  - Bij selectie wordt het bestand direct vervangen met de nieuwe delimiter
+  - **Verwijder-knop** om het hele archief permanent te verwijderen
 * Archief groeit met 1 regel per week (na reset).
 * Archief is **per guild en per kanaal**, zodat meerdere Discord-servers of meerdere kanalen op dezelfde server hun eigen archief hebben.
 

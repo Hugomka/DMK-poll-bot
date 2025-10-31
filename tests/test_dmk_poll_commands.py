@@ -129,8 +129,8 @@ class TestPollArchiveCommands(BaseTestCase):
         channel = MagicMock(id=1)
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.utils.archive.archive_exists_scoped", return_value=False):
-            await self._run(self.cog.archief_download, interaction)
+        with patch("apps.commands.poll_archive.archive_exists_scoped", return_value=False):
+            await self._run(self.cog.archief, interaction, actie="download")
 
         interaction.followup.send.assert_called()
         assert (

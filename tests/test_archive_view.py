@@ -23,21 +23,34 @@ class DummyView:
 
 
 class DummyButton:
-    def __init__(self, *, label=None, style=None, custom_id=None):
+    def __init__(self, *, label=None, style=None, custom_id=None, row=None):
         self.label = label
         self.style = style
         self.custom_id = custom_id
+        self.row = row
+
+
+class DummySelect:
+    def __init__(self, *, placeholder=None, options=None, custom_id=None, row=None):
+        self.placeholder = placeholder
+        self.options = options or []
+        self.custom_id = custom_id
+        self.row = row
 
 
 class ButtonStyle:
     danger = "danger"
+    success = "success"
 
 
 # maak attribuuten aan op de (Any-)module
 discord_mod.ui = discord_ui_mod
 discord_ui_mod.Button = DummyButton
+discord_ui_mod.Select = DummySelect
 discord_ui_mod.View = DummyView
 discord_mod.ButtonStyle = ButtonStyle
+discord_mod.SelectOption = lambda **kwargs: SimpleNamespace(**kwargs)
+discord_mod.File = lambda *args, **kwargs: SimpleNamespace(filename=kwargs.get("filename", ""))
 
 # registreer modules
 sys.modules.setdefault("discord", discord_mod)
@@ -50,96 +63,127 @@ from apps.ui import archive_view  # noqa: E402
 class TestArchiveView(BaseTestCase):
     async def test_view_initializes_with_button(self):
         """
-        ArchiveDeleteView.__init__ zou een DeleteArchiveButton moeten toevoegen.
+        ArchiveView.__init__ zou SelectMenu en Delete button moeten toevoegen.
         """
-        view = archive_view.ArchiveDeleteView()
+        view = archive_view.ArchiveView()
         assert hasattr(view, "children")
-        assert len(view.children) == 1
-        assert isinstance(view.children[0], archive_view.DeleteArchiveButton)
+        assert len(view.children) == 2  # SelectMenu, Delete (geen Download button meer)
 
-        # Button eigenschappen aanwezig (label, style, custom_id)
-        btn = view.children[0]
-        assert btn.label == "🗑️ Verwijder archief"
-        assert btn.style == archive_view.discord.ButtonStyle.danger
-        assert btn.custom_id == "delete_archive_scoped"
+        # Vind delete button
+        delete_btn = None
+        for child in view.children:
+            if isinstance(child, archive_view.DeleteArchiveButton):
+                delete_btn = child
+                break
 
-    async def test_button_callback_ok_with_message(self):
+        assert delete_btn is not None
+        assert delete_btn.label == "Verwijder archief"
+        assert delete_btn.style == archive_view.discord.ButtonStyle.danger
+        assert delete_btn.custom_id == "delete_archive_scoped"
+
+    async def test_button_callback_shows_confirmation(self):
         """
-        delete_archive_scoped() → True:
-        - response.send_message wordt aangeroepen met succes-tekst (ephemeral=True)
-        - interaction.message is niet None → message.edit(view=None) wordt gedaan
+        DeleteArchiveButton toont bevestigingsbericht:
+        - response.send_message wordt aangeroepen met bevestigingstekst
+        - view met Annuleer en Verwijder Archief knoppen
         """
         sent = []
-        edited = []
 
         class Resp:
-            async def send_message(self, content, *, ephemeral=False):
-                sent.append({"content": content, "ephemeral": ephemeral})
+            async def send_message(self, content, *, view=None, ephemeral=False):
+                sent.append({"content": content, "view": view, "ephemeral": ephemeral})
 
         class Msg:
-            async def edit(self, **kwargs):
-                edited.append(kwargs)
+            pass
 
         interaction = SimpleNamespace(response=Resp(), message=Msg())
 
-        view = archive_view.ArchiveDeleteView()
-        btn = view.children[0]
+        view = archive_view.ArchiveView()
+        # Vind delete button
+        btn = None
+        for child in view.children:
+            if isinstance(child, archive_view.DeleteArchiveButton):
+                btn = child
+                break
+        assert btn is not None
 
-        with patch("apps.ui.archive_view.delete_archive_scoped", return_value=True):
-            # cast naar Any voor Pylance
-            await btn.callback(cast(Any, interaction))
+        # cast naar Any voor Pylance
+        await btn.callback(cast(Any, interaction))
 
-        assert sent and "Archief verwijderd" in sent[0]["content"]
+        assert sent and "Weet je zeker" in sent[0]["content"]
         assert sent[0]["ephemeral"] is True
-        assert edited and edited[0].get("view") is None
+        assert sent[0]["view"] is not None
+        # Check dat view ConfirmDeleteView is
+        assert isinstance(sent[0]["view"], archive_view.ConfirmDeleteView)
 
-    async def test_button_callback_ok_without_message(self):
+    async def test_confirm_delete_button_deletes_and_updates(self):
         """
-        delete_archive_scoped() → True maar interaction.message is None:
-        - alleen response.send_message; geen edit
+        ConfirmDeleteButton verwijdert archief en update beide berichten:
+        - edit_message op bevestigingsbericht
+        - edit op origineel bericht
         """
-        sent = []
+        edited_confirmation = []
+        edited_original = []
 
         class Resp:
-            async def send_message(self, content, *, ephemeral=False):
-                sent.append({"content": content, "ephemeral": ephemeral})
+            async def edit_message(self, content, *, view=None):
+                edited_confirmation.append({"content": content, "view": view})
 
-        interaction = SimpleNamespace(response=Resp(), message=None)
+        class OrigMsg:
+            async def edit(self, **kwargs):
+                edited_original.append(kwargs)
 
-        view = archive_view.ArchiveDeleteView()
-        btn = view.children[0]
+        interaction = SimpleNamespace(response=Resp())
+
+        # Maak ConfirmDeleteView met origineel bericht (cast naar Any voor type checking)
+        confirm_view = archive_view.ConfirmDeleteView(123, 456, cast(Any, OrigMsg()))
+
+        # Vind ConfirmDeleteButton
+        confirm_btn = None
+        for child in confirm_view.children:
+            if isinstance(child, archive_view.ConfirmDeleteButton):
+                confirm_btn = child
+                break
+        assert confirm_btn is not None
 
         with patch("apps.ui.archive_view.delete_archive_scoped", return_value=True):
-            await btn.callback(cast(Any, interaction))
+            await confirm_btn.callback(cast(Any, interaction))
 
-        assert sent and "Archief verwijderd" in sent[0]["content"]
-        assert sent[0]["ephemeral"] is True
+        # Check bevestigingsbericht is geüpdatet
+        assert edited_confirmation and "Archief verwijderd" in edited_confirmation[0]["content"]
 
-    async def test_button_callback_not_ok(self):
+        # Check origineel bericht is geüpdatet
+        assert edited_original
+        assert "Archief verwijderd" in edited_original[0].get("content", "")
+        assert edited_original[0].get("attachments") == []
+        assert edited_original[0].get("view") is None
+
+    async def test_cancel_button_closes_confirmation(self):
         """
-        delete_archive_scoped() → False:
-        - response.send_message met waarschuwing
-        - geen edit
+        CancelButton sluit bevestigingsbericht:
+        - edit_message met annuleringstekst
         """
-        sent = []
         edited = []
 
         class Resp:
-            async def send_message(self, content, *, ephemeral=False):
-                sent.append({"content": content, "ephemeral": ephemeral})
+            async def edit_message(self, content, *, view=None):
+                edited.append({"content": content, "view": view})
 
-        class Msg:
-            async def edit(self, **kwargs):
-                edited.append(kwargs)
+        interaction = SimpleNamespace(response=Resp())
 
-        interaction = SimpleNamespace(response=Resp(), message=Msg())
+        # Maak ConfirmDeleteView
+        confirm_view = archive_view.ConfirmDeleteView(123, 456, None)
 
-        view = archive_view.ArchiveDeleteView()
-        btn = view.children[0]
+        # Vind CancelButton
+        cancel_btn = None
+        for child in confirm_view.children:
+            if isinstance(child, archive_view.CancelButton):
+                cancel_btn = child
+                break
+        assert cancel_btn is not None
 
-        with patch("apps.ui.archive_view.delete_archive_scoped", return_value=False):
-            await btn.callback(cast(Any, interaction))
+        await cancel_btn.callback(cast(Any, interaction))
 
-        assert sent and "geen archief" in sent[0]["content"]
-        assert sent[0]["ephemeral"] is True
-        assert edited == []  # geen edit in False-pad
+        # Check dat bericht is geüpdatet met annuleringstekst
+        assert edited and "geannuleerd" in edited[0]["content"].lower()
+        assert edited[0]["view"] is None

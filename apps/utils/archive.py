@@ -165,6 +165,71 @@ def archive_exists_scoped(
     return os.path.exists(get_archive_path_scoped(guild_id, channel_id))
 
 
+def create_archive(
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+    delimiter: str = ",",
+) -> Optional[bytes]:
+    """
+    Genereer CSV archief met gespecificeerde delimiter.
+
+    Args:
+        guild_id: Guild ID voor scoped archief
+        channel_id: Channel ID voor scoped archief
+        delimiter: CSV delimiter ("," of ";")
+
+    Returns:
+        CSV data als bytes, of None als archief niet bestaat
+    """
+    if not archive_exists_scoped(guild_id, channel_id):
+        return None
+
+    csv_path = get_archive_path_scoped(guild_id, channel_id)
+
+    # Lees originele CSV (altijd met komma delimiter)
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f, delimiter=",")
+        rows = list(reader)
+
+    if not rows:
+        return None
+
+    # Herschrijf met gewenste delimiter
+    output = []
+    for row in rows:
+        output.append(delimiter.join(str(cell) for cell in row))
+
+    return "\n".join(output).encode("utf-8")
+
+
+def generate_csv_preview(
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+    delimiter: str = ",",
+    max_lines: int = 5,
+) -> str:
+    """
+    Genereer preview van eerste N regels van CSV archief.
+
+    Args:
+        guild_id: Guild ID voor scoped archief
+        channel_id: Channel ID voor scoped archief
+        delimiter: CSV delimiter ("," of ";")
+        max_lines: Maximum aantal regels (default 5)
+
+    Returns:
+        Preview string voor codeblock
+    """
+    csv_data = create_archive(guild_id, channel_id, delimiter)
+    if not csv_data:
+        return "Geen archief beschikbaar."
+
+    lines = csv_data.decode("utf-8").split("\n")
+    preview_lines = lines[:max_lines]
+
+    return "\n".join(preview_lines)
+
+
 def open_archive_bytes_scoped(
     guild_id: Optional[int | str] = None,
     channel_id: Optional[int | str] = None,
