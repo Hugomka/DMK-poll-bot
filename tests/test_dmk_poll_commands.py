@@ -130,7 +130,7 @@ class TestPollArchiveCommands(BaseTestCase):
         interaction = _mk_interaction(channel=channel, admin=True)
 
         with patch("apps.commands.poll_archive.archive_exists_scoped", return_value=False):
-            await self._run(self.cog.archief, interaction, actie="download")
+            await self._run(self.cog.archief, interaction)
 
         interaction.followup.send.assert_called()
         assert (

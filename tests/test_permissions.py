@@ -4,11 +4,11 @@ import unittest
 
 from discord import app_commands
 
-from apps.commands.poll_lifecycle import PollLifecycle
-from apps.commands.poll_votes import PollVotes
 from apps.commands.poll_archive import PollArchive
 from apps.commands.poll_guests import PollGuests
+from apps.commands.poll_lifecycle import PollLifecycle
 from apps.commands.poll_status import PollStatus
+from apps.commands.poll_votes import PollVotes
 
 
 def _get_cmd(cog_class, attr_name):
@@ -34,8 +34,7 @@ class TestCommandDefaults(unittest.TestCase):
             (PollLifecycle, "pauze"): "dmk-poll-pauze",
             (PollLifecycle, "verwijderbericht"): "dmk-poll-verwijderen",
             (PollVotes, "stemmen"): "dmk-poll-stemmen",
-            (PollArchive, "archief_download"): "dmk-poll-archief-download",
-            (PollArchive, "archief_verwijderen"): "dmk-poll-archief-verwijderen",
+            (PollArchive, "archief"): "dmk-poll-archief",
             (PollStatus, "status"): "dmk-poll-status",
         }
         for (cog_class, attr), expected_name in admin_mod_cmds.items():

@@ -108,7 +108,7 @@ class TestPollArchive(BaseTestCase):
         content = kwargs.get("content", "")
         assert "DMK Poll Archief" in content
         assert "CSV-formaat" in content
-        assert "verwijder-knop" in content
+        assert "Verwijder archief" in content
 
         # Check file parameter
         assert "file" in kwargs
