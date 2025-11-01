@@ -55,8 +55,8 @@ class TestMessageBuilder(BaseTestCase):
             assert "🟢 Om 19:00 uur (3 stemmen)" in txt
             assert "🔵 Om 20:30 uur (5 stemmen)" in txt
 
-    async def test_build_message_hides_misschien_when_counts_hidden(self):
-        """Misschien wordt NIET getoond wanneer counts verborgen zijn."""
+    async def test_build_message_hides_misschien_in_deadline_mode_counts_hidden(self):
+        """Misschien wordt NIET getoond in deadline-modus wanneer counts verborgen zijn."""
         options = [
             opt("vrijdag", "om 19:00 uur", "🟢"),
             opt("vrijdag", "om 20:30 uur", "🔵"),
@@ -64,20 +64,52 @@ class TestMessageBuilder(BaseTestCase):
             opt("vrijdag", "niet meedoen", "❌"),
         ]
 
-        with patch("apps.utils.message_builder.get_poll_options", return_value=options):
+        with patch("apps.utils.message_builder.get_poll_options", return_value=options), \
+             patch("apps.utils.message_builder.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}):
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=True
             )
             # Normale tijdslots worden wel getoond
             assert "🟢 Om 19:00 uur (stemmen verborgen)" in txt
             assert "🔵 Om 20:30 uur (stemmen verborgen)" in txt
-            # "Misschien" wordt NIET getoond
+            # "Misschien" wordt NIET getoond in deadline-modus
             assert "Ⓜ️ Misschien" not in txt
             # "Niet meedoen" wordt wel getoond
             assert "❌ Niet meedoen (stemmen verborgen)" in txt
 
-    async def test_build_message_shows_misschien_when_counts_visible(self):
-        """Misschien wordt WEL getoond wanneer counts zichtbaar zijn."""
+    async def test_build_message_hides_misschien_in_deadline_mode_counts_visible(self):
+        """Misschien wordt NIET getoond in deadline-modus, ook niet wanneer counts zichtbaar zijn (toch altijd 0)."""
+        options = [
+            opt("vrijdag", "om 19:00 uur", "🟢"),
+            opt("vrijdag", "om 20:30 uur", "🔵"),
+            opt("vrijdag", "misschien", "Ⓜ️"),
+            opt("vrijdag", "niet meedoen", "❌"),
+        ]
+        counts = {
+            "om 19:00 uur": 3,
+            "om 20:30 uur": 5,
+            "misschien": 0,  # In deadline-modus worden misschien-stemmen omgezet naar "niet meedoen"
+            "niet meedoen": 3,
+        }
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch("apps.utils.message_builder.get_counts_for_day", return_value=counts), \
+           patch("apps.utils.message_builder.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}):
+
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag", guild_id=1, channel_id=2, hide_counts=False
+            )
+            # Normale opties worden getoond
+            assert "🟢 Om 19:00 uur (3 stemmen)" in txt
+            assert "🔵 Om 20:30 uur (5 stemmen)" in txt
+            # "Misschien" wordt NIET getoond in deadline-modus
+            assert "Ⓜ️ Misschien" not in txt
+            # "Niet meedoen" wordt wel getoond
+            assert "❌ Niet meedoen (3 stemmen)" in txt
+
+    async def test_build_message_shows_misschien_in_zichtbaar_mode(self):
+        """Misschien wordt WEL getoond in zichtbaar-modus (altijd)."""
         options = [
             opt("vrijdag", "om 19:00 uur", "🟢"),
             opt("vrijdag", "om 20:30 uur", "🔵"),
@@ -93,12 +125,13 @@ class TestMessageBuilder(BaseTestCase):
 
         with patch(
             "apps.utils.message_builder.get_poll_options", return_value=options
-        ), patch("apps.utils.message_builder.get_counts_for_day", return_value=counts):
+        ), patch("apps.utils.message_builder.get_counts_for_day", return_value=counts), \
+           patch("apps.utils.message_builder.get_setting", return_value={"modus": "altijd", "tijd": "18:00"}):
 
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=False
             )
-            # Alle opties worden getoond inclusief Misschien
+            # Alle opties worden getoond inclusief Misschien in zichtbaar-modus
             assert "🟢 Om 19:00 uur (3 stemmen)" in txt
             assert "🔵 Om 20:30 uur (5 stemmen)" in txt
             assert "Ⓜ️ Misschien (2 stemmen)" in txt

@@ -10,6 +10,7 @@ from apps.utils.poll_storage import (
     get_non_voters_for_day as get_non_voters_from_storage,
     load_votes,
 )
+from apps.utils.poll_settings import get_setting
 
 
 async def build_poll_message_for_day_async(
@@ -47,10 +48,15 @@ async def build_poll_message_for_day_async(
     # Aantallen per tijd (scoped), tenzij verborgen
     counts = {} if hide_counts else await get_counts_for_day(dag, guild_id, channel_id)
 
+    # Bepaal of we in deadline-modus zitten (voor misschien-filtering)
+    setting = get_setting(int(channel_id), dag) or {}
+    is_deadline_mode = isinstance(setting, dict) and setting.get("modus") == "deadline"
+
     for opt in opties:
-        # Filter "misschien" uit resultaten wanneer counts verborgen zijn
-        # (toont toch alleen "(stemmen verborgen)", geen meerwaarde)
-        if hide_counts and opt.tijd == "misschien":
+        # Filter "misschien" uit resultaten in deadline-modus:
+        # - Bij verborgen counts: toont toch alleen "(stemmen verborgen)", geen meerwaarde
+        # - Na deadline: toont toch alleen "(0 stemmen)", geen meerwaarde
+        if is_deadline_mode and opt.tijd == "misschien":
             continue
 
         label = f"{opt.emoji} {opt.tijd.capitalize()}"
