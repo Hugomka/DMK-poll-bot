@@ -149,7 +149,7 @@ class TestStatusCommand(BaseTestCase):
         self.assertIn("@StemmerJan", embed_text)
 
         # Controleer dat niet-stemmers worden getoond voor vrijdag
-        self.assertIn("Niet-stemmers (2)", embed_text)
+        self.assertIn("👻 niet gestemd — **2** stemmen", embed_text)
         self.assertIn("@NietStemmerKingBoo", embed_text)
         self.assertIn("@NietStemmerYoshi", embed_text)
 
@@ -304,7 +304,7 @@ class TestStatusCommand(BaseTestCase):
         self.assertIn("Bowser", embed_text)  # De gast
 
         # Controleer dat alleen Luigi als niet-stemmer wordt getoond
-        self.assertIn("Niet-stemmers (1)", embed_text)
+        self.assertIn("👻 niet gestemd — **1** stemmen", embed_text)
         self.assertIn("@Luigi", embed_text)
 
         # Mario mag NIET bij niet-stemmers staan (want hun gast heeft gestemd)

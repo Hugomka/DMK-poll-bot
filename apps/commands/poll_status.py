@@ -23,7 +23,7 @@ from apps.utils.poll_settings import (
     get_effective_activation,
     get_effective_deactivation,
 )
-from apps.utils.poll_storage import load_votes
+from apps.utils.poll_storage import get_was_misschien_count, load_votes
 
 
 # Hergebruik constants en helpers uit dmk_poll
@@ -188,14 +188,20 @@ class PollStatus(commands.Cog):
                         regel += f":  {groepen_txt}"
                     regels.append(regel)
 
-                # Voeg niet-stemmers toe als er mensen zijn die nog niet hebben gestemd
+                    # Insert was_misschien after misschien option
+                    if opt.tijd == "misschien":
+                        was_misschien = await get_was_misschien_count(dag, gid_val, cid_val)
+                        regel = f"💤 was misschien — **{was_misschien}** stemmen"
+                        regels.append(regel)
+
+                # Voeg niet-stemmers toe (altijd tonen) - at the end
                 non_voter_count, non_voter_text = await get_non_voters_for_day(
                     dag, guild, channel, scoped
                 )
-                if non_voter_count > 0:
-                    regels.append(
-                        f"\nNiet-stemmers ({non_voter_count}): {non_voter_text}"
-                    )
+                regel = f"👻 niet gestemd — **{non_voter_count}** stemmen"
+                if non_voter_text:
+                    regel += f":  {non_voter_text}"
+                regels.append(regel)
 
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
                 embed.add_field(

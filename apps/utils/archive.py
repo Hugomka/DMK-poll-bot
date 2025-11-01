@@ -8,12 +8,16 @@ from typing import Any, Optional, Tuple
 import pytz
 
 from apps.entities.poll_option import get_poll_options
-from apps.utils.poll_storage import get_non_voters_for_day, load_votes
+from apps.utils.poll_storage import (
+    get_non_voters_for_day,
+    get_was_misschien_count,
+    load_votes,
+)
 
 ARCHIVE_DIR = "archive"
 ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
 
-VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "niet meedoen", "niet gestemd"]
+VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "was misschien", "niet meedoen", "niet gestemd"]
 DAGEN = []
 for o in get_poll_options():
     if o.dag not in DAGEN and o.dag in ["vrijdag", "zaterdag", "zondag"]:
@@ -86,6 +90,10 @@ async def _build_counts_from_votes(
                 dag, votes, channel, guild_id, channel_id
             )
             telling[dag]["niet gestemd"] = non_voter_count
+
+            # Get was_misschien count (from storage)
+            was_misschien_count = await get_was_misschien_count(dag, guild_id, channel_id)
+            telling[dag]["was misschien"] = was_misschien_count
 
     return telling
 
@@ -225,16 +233,19 @@ async def append_week_snapshot_scoped(
         "vr_19",
         "vr_2030",
         "vr_misschien",
+        "vr_was_misschien",
         "vr_niet",
         "vr_niet_gestemd",
         "za_19",
         "za_2030",
         "za_misschien",
+        "za_was_misschien",
         "za_niet",
         "za_niet_gestemd",
         "zo_19",
         "zo_2030",
         "zo_misschien",
+        "zo_was_misschien",
         "zo_niet",
         "zo_niet_gestemd",
     ]
@@ -246,16 +257,19 @@ async def append_week_snapshot_scoped(
         telling["vrijdag"]["om 19:00 uur"],
         telling["vrijdag"]["om 20:30 uur"],
         telling["vrijdag"]["misschien"],
+        telling["vrijdag"]["was misschien"],
         telling["vrijdag"]["niet meedoen"],
         telling["vrijdag"]["niet gestemd"],
         telling["zaterdag"]["om 19:00 uur"],
         telling["zaterdag"]["om 20:30 uur"],
         telling["zaterdag"]["misschien"],
+        telling["zaterdag"]["was misschien"],
         telling["zaterdag"]["niet meedoen"],
         telling["zaterdag"]["niet gestemd"],
         telling["zondag"]["om 19:00 uur"],
         telling["zondag"]["om 20:30 uur"],
         telling["zondag"]["misschien"],
+        telling["zondag"]["was misschien"],
         telling["zondag"]["niet meedoen"],
         telling["zondag"]["niet gestemd"],
     ]
@@ -272,22 +286,24 @@ async def append_week_snapshot_scoped(
         if rows:
             existing_header = rows[0]
             # Check of nieuwe kolommen ontbreken
-            if "vr_niet_gestemd" not in existing_header:
+            if "vr_was_misschien" not in existing_header:
                 # Migreer oude data naar nieuwe structuur
-                # Oude header: [week, datum_vrijdag, ..., vr_19, vr_2030, vr_misschien, vr_niet, ...]
-                # Nieuwe header: [week, datum_vrijdag, ..., vr_19, vr_2030, vr_misschien, vr_niet, vr_niet_gestemd, ...]
+                # Supported CSV versions:
+                # V1 (16 columns): no niet_gestemd, no was_misschien
+                # V2 (19 columns): has niet_gestemd, no was_misschien
+                # V3 (22 columns): has niet_gestemd and was_misschien (current)
 
                 # Update header
                 rows[0] = header
 
                 # Voor elke data rij, voeg ontbrekende kolommen toe met lege waarde
-                # Oude row heeft 16 kolommen (4 datum + 4*3 opties per dag)
-                # Nieuwe row heeft 19 kolommen (4 datum + 5*3 opties per dag met niet_gestemd)
                 # Lege waarde = data niet beschikbaar (niet getrackt in die week)
                 for i in range(1, len(rows)):
                     old_row = rows[i]
-                    if len(old_row) >= 16:  # Geldig oude row formaat
-                        # Build nieuwe row met niet_gestemd kolommen toegevoegd
+
+                    if len(old_row) >= 19:
+                        # V2 format with niet_gestemd (19 columns)
+                        # Migrate to V3: Add was_misschien columns after each misschien column
                         new_row = [
                             old_row[0],   # week
                             old_row[1],   # datum_vrijdag
@@ -296,18 +312,49 @@ async def append_week_snapshot_scoped(
                             old_row[4],   # vr_19
                             old_row[5],   # vr_2030
                             old_row[6],   # vr_misschien
+                            "",           # vr_was_misschien (V3 - leeg = niet getrackt)
                             old_row[7],   # vr_niet
-                            "",           # vr_niet_gestemd (nieuw - leeg = niet getrackt)
+                            old_row[8],   # vr_niet_gestemd
+                            old_row[9],   # za_19
+                            old_row[10],  # za_2030
+                            old_row[11],  # za_misschien
+                            "",           # za_was_misschien (V3 - leeg = niet getrackt)
+                            old_row[12],  # za_niet
+                            old_row[13],  # za_niet_gestemd
+                            old_row[14],  # zo_19
+                            old_row[15],  # zo_2030
+                            old_row[16],  # zo_misschien
+                            "",           # zo_was_misschien (V3 - leeg = niet getrackt)
+                            old_row[17],  # zo_niet
+                            old_row[18],  # zo_niet_gestemd
+                        ]
+                        rows[i] = new_row
+                    elif len(old_row) >= 16:
+                        # V1 format without niet_gestemd (16 columns)
+                        # Migrate to V3: Add both niet_gestemd and was_misschien columns
+                        new_row = [
+                            old_row[0],   # week
+                            old_row[1],   # datum_vrijdag
+                            old_row[2],   # datum_zaterdag
+                            old_row[3],   # datum_zondag
+                            old_row[4],   # vr_19
+                            old_row[5],   # vr_2030
+                            old_row[6],   # vr_misschien
+                            "",           # vr_was_misschien (V3 - leeg = niet getrackt)
+                            old_row[7],   # vr_niet
+                            "",           # vr_niet_gestemd (V2/V3 - leeg = niet getrackt)
                             old_row[8],   # za_19
                             old_row[9],   # za_2030
                             old_row[10],  # za_misschien
+                            "",           # za_was_misschien (V3 - leeg = niet getrackt)
                             old_row[11],  # za_niet
-                            "",           # za_niet_gestemd (nieuw - leeg = niet getrackt)
+                            "",           # za_niet_gestemd (V2/V3 - leeg = niet getrackt)
                             old_row[12],  # zo_19
                             old_row[13],  # zo_2030
                             old_row[14],  # zo_misschien
+                            "",           # zo_was_misschien (V3 - leeg = niet getrackt)
                             old_row[15],  # zo_niet
-                            "",           # zo_niet_gestemd (nieuw - leeg = niet getrackt)
+                            "",           # zo_niet_gestemd (V2/V3 - leeg = niet getrackt)
                         ]
                         rows[i] = new_row
 

@@ -1508,6 +1508,7 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
 
             # Find remaining "misschien" voters and convert them
             converted_any = False
+            misschien_count = 0
             for uid, per_dag in votes.items():
                 tijden = (per_dag or {}).get(dag, [])
                 if not isinstance(tijden, list):
@@ -1521,8 +1522,18 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
                         await remove_vote(str(uid), dag, "misschien", gid, cid)
                         await add_vote(str(uid), dag, "niet meedoen", gid, cid)
                         converted_any = True
+                        misschien_count += 1
                     except Exception:  # pragma: no cover
                         continue
+
+            # Store the count of converted misschien votes
+            if misschien_count > 0:
+                try:
+                    from apps.utils.poll_storage import set_was_misschien_count
+
+                    await set_was_misschien_count(dag, misschien_count, gid, cid)
+                except Exception:  # pragma: no cover
+                    pass
 
             # Update poll message if we converted anyone
             if converted_any:

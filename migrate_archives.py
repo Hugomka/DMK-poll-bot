@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 One-time migration script to update all existing archive CSV files
-to include the new niet_gestemd columns.
+to include the new niet_gestemd and was_misschien columns.
 
 Run this script once to migrate all archive files:
     python migrate_archives.py
@@ -14,7 +14,12 @@ from pathlib import Path
 
 def migrate_csv_file(csv_path: str) -> bool:
     """
-    Migrate a single CSV file from old format (16 columns) to new format (19 columns).
+    Migrate a single CSV file to the newest format (V3 - 22 columns).
+
+    Supported CSV versions:
+    - V1 (16 columns): no niet_gestemd, no was_misschien
+    - V2 (19 columns): has niet_gestemd, no was_misschien
+    - V3 (22 columns): has niet_gestemd and was_misschien (current)
 
     Returns True if migration was performed, False if file was already migrated or doesn't exist.
     """
@@ -31,12 +36,12 @@ def migrate_csv_file(csv_path: str) -> bool:
 
     existing_header = rows[0]
 
-    # Check if already migrated
-    if "vr_niet_gestemd" in existing_header:
-        print(f"  [OK] Already migrated: {csv_path}")
+    # Check if already migrated to V3
+    if "vr_was_misschien" in existing_header:
+        print(f"  [OK] Already migrated to V3: {csv_path}")
         return False
 
-    # New header with niet_gestemd columns
+    # V3 header with niet_gestemd and was_misschien columns
     new_header = [
         "week",
         "datum_vrijdag",
@@ -45,16 +50,19 @@ def migrate_csv_file(csv_path: str) -> bool:
         "vr_19",
         "vr_2030",
         "vr_misschien",
+        "vr_was_misschien",
         "vr_niet",
         "vr_niet_gestemd",
         "za_19",
         "za_2030",
         "za_misschien",
+        "za_was_misschien",
         "za_niet",
         "za_niet_gestemd",
         "zo_19",
         "zo_2030",
         "zo_misschien",
+        "zo_was_misschien",
         "zo_niet",
         "zo_niet_gestemd",
     ]
@@ -66,8 +74,10 @@ def migrate_csv_file(csv_path: str) -> bool:
     migrated_count = 0
     for i in range(1, len(rows)):
         old_row = rows[i]
-        if len(old_row) >= 16:  # Valid old row format
-            # Build new row with niet_gestemd columns added as empty (data not available)
+
+        if len(old_row) >= 19:
+            # V2 format with niet_gestemd (19 columns)
+            # Migrate to V3: Add was_misschien columns after each misschien column
             new_row = [
                 old_row[0],   # week
                 old_row[1],   # datum_vrijdag
@@ -76,18 +86,50 @@ def migrate_csv_file(csv_path: str) -> bool:
                 old_row[4],   # vr_19
                 old_row[5],   # vr_2030
                 old_row[6],   # vr_misschien
+                "",           # vr_was_misschien (V3 - empty = data not tracked)
                 old_row[7],   # vr_niet
-                "",           # vr_niet_gestemd (NEW - empty = data not tracked)
+                old_row[8],   # vr_niet_gestemd
+                old_row[9],   # za_19
+                old_row[10],  # za_2030
+                old_row[11],  # za_misschien
+                "",           # za_was_misschien (V3 - empty = data not tracked)
+                old_row[12],  # za_niet
+                old_row[13],  # za_niet_gestemd
+                old_row[14],  # zo_19
+                old_row[15],  # zo_2030
+                old_row[16],  # zo_misschien
+                "",           # zo_was_misschien (V3 - empty = data not tracked)
+                old_row[17],  # zo_niet
+                old_row[18],  # zo_niet_gestemd
+            ]
+            rows[i] = new_row
+            migrated_count += 1
+        elif len(old_row) >= 16:
+            # V1 format without niet_gestemd (16 columns)
+            # Migrate to V3: Add both niet_gestemd and was_misschien columns
+            new_row = [
+                old_row[0],   # week
+                old_row[1],   # datum_vrijdag
+                old_row[2],   # datum_zaterdag
+                old_row[3],   # datum_zondag
+                old_row[4],   # vr_19
+                old_row[5],   # vr_2030
+                old_row[6],   # vr_misschien
+                "",           # vr_was_misschien (V3 - empty = data not tracked)
+                old_row[7],   # vr_niet
+                "",           # vr_niet_gestemd (V2/V3 - empty = data not tracked)
                 old_row[8],   # za_19
                 old_row[9],   # za_2030
                 old_row[10],  # za_misschien
+                "",           # za_was_misschien (V3 - empty = data not tracked)
                 old_row[11],  # za_niet
-                "",           # za_niet_gestemd (NEW - empty = data not tracked)
+                "",           # za_niet_gestemd (V2/V3 - empty = data not tracked)
                 old_row[12],  # zo_19
                 old_row[13],  # zo_2030
                 old_row[14],  # zo_misschien
+                "",           # zo_was_misschien (V3 - empty = data not tracked)
                 old_row[15],  # zo_niet
-                "",           # zo_niet_gestemd (NEW - empty = data not tracked)
+                "",           # zo_niet_gestemd (V2/V3 - empty = data not tracked)
             ]
             rows[i] = new_row
             migrated_count += 1
@@ -125,8 +167,10 @@ def main():
     print("Archive CSV Migration Tool")
     print("=" * 70)
     print("\nThis script will migrate all archive CSV files to include the new")
-    print("niet_gestemd columns (vr_niet_gestemd, za_niet_gestemd, zo_niet_gestemd).")
-    print("\nOld data will be preserved with EMPTY values for niet_gestemd columns.")
+    print("niet_gestemd and was_misschien columns:")
+    print("  - vr_niet_gestemd, za_niet_gestemd, zo_niet_gestemd")
+    print("  - vr_was_misschien, za_was_misschien, zo_was_misschien")
+    print("\nOld data will be preserved with EMPTY values for new columns.")
     print("(Empty = data was not tracked in those weeks)")
     print()
 

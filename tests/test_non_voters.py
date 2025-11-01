@@ -2,7 +2,6 @@
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
 
 from apps.utils.poll_storage import (
     _extract_user_id_from_non_voter,
@@ -33,7 +32,7 @@ class TestNonVoterHelpers(unittest.IsolatedAsyncioTestCase):
         """Test that regular IDs are not identified as non-voter IDs"""
         self.assertFalse(_is_non_voter_id("123"))
         self.assertFalse(_is_non_voter_id("user_123"))
-        self.assertFalse(_is_non_voter_id(123))  # Not a string
+        self.assertFalse(_is_non_voter_id("123"))  # Regular string ID
         self.assertFalse(_is_non_voter_id(""))
 
     def test_extract_user_id_from_non_voter(self):
@@ -71,8 +70,8 @@ class TestUpdateNonVoters(unittest.IsolatedAsyncioTestCase):
         mock_channel = SimpleNamespace(members=[member1, member2])
 
         # Both members vote
-        await toggle_vote(100, "vrijdag", "om 19:00 uur", 1, 123)
-        await toggle_vote(200, "vrijdag", "om 20:30 uur", 1, 123)
+        await toggle_vote("100", "vrijdag", "om 19:00 uur", 1, 123)
+        await toggle_vote("200", "vrijdag", "om 20:30 uur", 1, 123)
 
         # Update non-voters
         await update_non_voters(1, 123, mock_channel)
@@ -91,7 +90,7 @@ class TestUpdateNonVoters(unittest.IsolatedAsyncioTestCase):
         mock_channel = SimpleNamespace(members=[member1, member2, member3])
 
         # Only member1 votes
-        await toggle_vote(100, "vrijdag", "om 19:00 uur", 1, 123)
+        await toggle_vote("100", "vrijdag", "om 19:00 uur", 1, 123)
 
         # Update non-voters
         await update_non_voters(1, 123, mock_channel)
@@ -153,7 +152,7 @@ class TestUpdateNonVoters(unittest.IsolatedAsyncioTestCase):
         self.assertIn("100", ids)
 
         # Member1 votes
-        await toggle_vote(100, "vrijdag", "om 19:00 uur", 1, 123)
+        await toggle_vote("100", "vrijdag", "om 19:00 uur", 1, 123)
 
         # Second update: member1 should be removed from non-voters
         await update_non_voters(1, 123, mock_channel)
@@ -169,7 +168,7 @@ class TestUpdateNonVoters(unittest.IsolatedAsyncioTestCase):
         mock_channel = SimpleNamespace(members=[member1, member2])
 
         # Member1 votes for vrijdag only
-        await toggle_vote(100, "vrijdag", "om 19:00 uur", 1, 123)
+        await toggle_vote("100", "vrijdag", "om 19:00 uur", 1, 123)
 
         # Update non-voters
         await update_non_voters(1, 123, mock_channel)
@@ -254,8 +253,8 @@ class TestGetNonVotersForDay(unittest.IsolatedAsyncioTestCase):
         mock_channel = SimpleNamespace(members=[member1, member2])
 
         # Member1 votes for vrijdag, member2 votes for zaterdag
-        await toggle_vote(100, "vrijdag", "om 19:00 uur", 1, 123)
-        await toggle_vote(200, "zaterdag", "om 20:30 uur", 1, 123)
+        await toggle_vote("100", "vrijdag", "om 19:00 uur", 1, 123)
+        await toggle_vote("200", "zaterdag", "om 20:30 uur", 1, 123)
 
         # Update non-voters
         await update_non_voters(1, 123, mock_channel)

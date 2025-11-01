@@ -398,6 +398,101 @@ async def remove_guest_votes(
     return verwijderd, nietgevonden
 
 
+# === WAS_MISSCHIEN TRACKING ===============================================
+
+
+def _was_misschien_id(channel_id: int | str) -> str:
+    """Generate ID for was_misschien tracking entry."""
+    return f"_was_misschien::{channel_id}"
+
+
+def _is_was_misschien_id(raw_id: str) -> bool:
+    """Check if an ID represents a was_misschien tracking entry."""
+    return isinstance(raw_id, str) and raw_id.startswith("_was_misschien::")
+
+
+async def get_was_misschien_count(
+    dag: str, guild_id: int | str, channel_id: int | str
+) -> int:
+    """
+    Get the was_misschien count for a specific day.
+
+    This tracks how many "misschien" votes were converted to "niet meedoen"
+    when the deadline passed.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+
+    Returns:
+    - Count of was_misschien votes for this day
+    """
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    tracking_id = _was_misschien_id(cid)
+    if tracking_id in scoped:
+        per_dag = scoped[tracking_id]
+        if isinstance(per_dag, dict) and dag in per_dag:
+            tijden = per_dag[dag]
+            if isinstance(tijden, list) and len(tijden) > 0:
+                # The count is stored as the first element
+                try:
+                    return int(tijden[0])
+                except (ValueError, TypeError):  # pragma: no cover
+                    return 0
+
+    return 0
+
+
+async def set_was_misschien_count(
+    dag: str, count: int, guild_id: int | str, channel_id: int | str
+) -> None:
+    """
+    Set the was_misschien count for a specific day.
+
+    This is called when the deadline passes and "misschien" votes are
+    converted to "niet meedoen".
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - count: Number of misschien votes that were converted
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+    """
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    tracking_id = _was_misschien_id(cid)
+    if tracking_id not in scoped:
+        scoped[tracking_id] = _empty_days()
+
+    # Store the count as a list with a single element (to match the vote structure)
+    scoped[tracking_id][dag] = [str(count)]
+
+    await save_votes_scoped(gid, cid, scoped)
+
+
+async def reset_was_misschien_counts(guild_id: int | str, channel_id: int | str) -> None:
+    """
+    Reset all was_misschien counts to 0.
+
+    This is called when the poll is reset for a new week.
+
+    Parameters:
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+    """
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    tracking_id = _was_misschien_id(cid)
+    if tracking_id in scoped:
+        del scoped[tracking_id]
+        await save_votes_scoped(gid, cid, scoped)
+
+
 # === NON-VOTERS TRACKING ===================================================
 
 

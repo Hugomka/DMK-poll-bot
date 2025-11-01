@@ -562,21 +562,27 @@ class TestArchiveWithNonVoters(BaseTestCase):
             assert "vr_niet_gestemd" in new_header
             assert "za_niet_gestemd" in new_header
             assert "zo_niet_gestemd" in new_header
+            assert "vr_was_misschien" in new_header
+            assert "za_was_misschien" in new_header
+            assert "zo_was_misschien" in new_header
 
-            # Check dat oude data rij is gemigreerd met nieuwe kolommen (niet_gestemd = empty)
+            # Check dat oude data rij is gemigreerd met nieuwe kolommen (niet_gestemd en was_misschien = empty)
             # Oude: 41,2025-10-10,2025-10-11,2025-10-12,1,3,0,0,1,3,0,0,2,2,0,0 (16 kolommen)
-            # Nieuw: 41,2025-10-10,2025-10-11,2025-10-12,1,3,0,0,,1,3,0,0,,2,2,0,0, (19 kolommen)
+            # Nieuw: 41,2025-10-10,2025-10-11,2025-10-12,1,3,0,,0,,1,3,0,,0,,2,2,0,,0, (22 kolommen)
             migrated_old_row = lines[1].strip().split(",")
-            assert len(migrated_old_row) == 19, f"Migrated row should have 19 columns, got {len(migrated_old_row)}"
+            assert len(migrated_old_row) == 22, f"Migrated row should have 22 columns, got {len(migrated_old_row)}"
             assert migrated_old_row[0] == "41"  # week preserved
             assert migrated_old_row[4] == "1"   # vr_19 preserved
-            assert migrated_old_row[8] == ""    # vr_niet_gestemd added (empty = data not tracked)
-            assert migrated_old_row[13] == ""   # za_niet_gestemd added (empty = data not tracked)
-            assert migrated_old_row[18] == ""   # zo_niet_gestemd added (empty = data not tracked)
+            assert migrated_old_row[7] == ""    # vr_was_misschien added (empty = data not tracked)
+            assert migrated_old_row[9] == ""    # vr_niet_gestemd added (empty = data not tracked)
+            assert migrated_old_row[13] == ""   # za_was_misschien added (empty = data not tracked)
+            assert migrated_old_row[15] == ""   # za_niet_gestemd added (empty = data not tracked)
+            assert migrated_old_row[19] == ""   # zo_was_misschien added (empty = data not tracked)
+            assert migrated_old_row[21] == ""   # zo_niet_gestemd added (empty = data not tracked)
 
-            # Check dat nieuwe rij volledige data heeft (19 kolommen)
+            # Check dat nieuwe rij volledige data heeft (22 kolommen)
             new_data_row = lines[2].strip().split(",")
-            assert len(new_data_row) == 19  # 4 datum kolommen + 15 data kolommen (5 per dag)
+            assert len(new_data_row) == 22  # 4 datum kolommen + 18 data kolommen (6 per dag)
 
         finally:
             # Cleanup
