@@ -17,6 +17,8 @@
 # - reset_votes_scoped(guild_id, channel_id) -> None
 # - add_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
 # - remove_guest_votes(owner_user_id, dag, tijd, namen, guild_id, channel_id) -> (list[str], list[str])
+# - update_non_voters(guild_id, channel_id, channel) -> None
+# - get_non_voters_for_day(dag, guild_id, channel_id) -> (int, list[str])
 
 import asyncio
 import json
@@ -382,3 +384,148 @@ async def remove_guest_votes(
 
     await save_votes_scoped(gid, cid, scoped)
     return verwijderd, nietgevonden
+
+
+# === NON-VOTERS TRACKING ===================================================
+
+
+def _non_voter_id(user_id: int | str) -> str:
+    """Generate ID for non-voter entry."""
+    return f"_non_voter::{user_id}"
+
+
+def _is_non_voter_id(raw_id: str) -> bool:
+    """Check if an ID represents a non-voter."""
+    return isinstance(raw_id, str) and raw_id.startswith("_non_voter::")
+
+
+def _extract_user_id_from_non_voter(raw_id: str) -> str:
+    """Extract user ID from non-voter ID."""
+    if _is_non_voter_id(raw_id):
+        return raw_id.split("_non_voter::", 1)[1]
+    return raw_id
+
+
+async def update_non_voters(
+    guild_id: int | str, channel_id: int | str, channel
+) -> None:
+    """
+    Update non-voters in storage based on channel members.
+
+    This function:
+    1. Gets all channel members (excluding bots)
+    2. Checks who has voted (including via guests)
+    3. Stores non-voters with special IDs in the votes structure
+
+    Non-voters are stored per day with "niet gestemd" as their vote.
+
+    Parameters:
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+    - channel: Discord channel object (to get members)
+    """
+    if not channel:
+        return
+
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    # Get all channel members (excluding bots)
+    members = getattr(channel, "members", [])
+    all_member_ids = set()
+
+    for member in members:
+        if getattr(member, "bot", False):
+            continue
+        member_id = str(getattr(member, "id", ""))
+        if member_id:
+            all_member_ids.add(member_id)
+
+    # For each day, determine who voted and who didn't
+    unieke_dagen = {opt.dag for opt in get_poll_options()}
+
+    for dag in unieke_dagen:
+        # Collect IDs that voted for this day (including guests via their owner)
+        voted_ids: set[str] = set()
+
+        for uid, per_dag in scoped.items():
+            # Skip non-voter entries when checking who voted
+            if _is_non_voter_id(uid):
+                continue
+
+            try:
+                tijden = (per_dag or {}).get(dag, [])
+                if isinstance(tijden, list) and tijden:
+                    # Extract owner ID (handle guests)
+                    actual_uid = (
+                        uid.split("_guest::", 1)[0]
+                        if isinstance(uid, str) and "_guest::" in uid
+                        else uid
+                    )
+                    voted_ids.add(str(actual_uid))
+            except Exception:  # pragma: no cover
+                continue
+
+        # Determine non-voters
+        non_voter_ids = all_member_ids - voted_ids
+
+        # Remove old non-voter entries for this day
+        keys_to_remove = []
+        for uid in scoped.keys():
+            if _is_non_voter_id(uid):
+                # Extract actual user ID
+                actual_id = _extract_user_id_from_non_voter(uid)
+                # If this member is no longer a non-voter, remove the entry
+                if actual_id not in non_voter_ids:
+                    if dag in scoped[uid]:
+                        del scoped[uid][dag]
+                    # If no more days, mark for removal
+                    if not scoped[uid]:
+                        keys_to_remove.append(uid)
+
+        for key in keys_to_remove:
+            del scoped[key]
+
+        # Add/update non-voter entries for this day
+        for member_id in non_voter_ids:
+            non_voter_key = _non_voter_id(member_id)
+            if non_voter_key not in scoped:
+                scoped[non_voter_key] = _empty_days()
+            scoped[non_voter_key][dag] = ["niet gestemd"]
+
+    await save_votes_scoped(gid, cid, scoped)
+
+
+async def get_non_voters_for_day(
+    dag: str, guild_id: int | str, channel_id: int | str
+) -> tuple[int, list[str]]:
+    """
+    Get non-voters for a specific day from storage.
+
+    Returns:
+    - (count, list of user_ids) of non-voters for this day
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+    """
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    non_voter_ids = []
+
+    for uid, per_dag in scoped.items():
+        if not _is_non_voter_id(uid):
+            continue
+
+        try:
+            tijden = (per_dag or {}).get(dag, [])
+            if isinstance(tijden, list) and "niet gestemd" in tijden:
+                # Extract actual user ID
+                actual_id = _extract_user_id_from_non_voter(uid)
+                non_voter_ids.append(actual_id)
+        except Exception:  # pragma: no cover
+            continue
+
+    return len(non_voter_ids), non_voter_ids

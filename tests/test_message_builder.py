@@ -1,7 +1,7 @@
 # tests/test_message_builder.py
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from apps.utils import message_builder as mb
 from tests.base import BaseTestCase
@@ -52,8 +52,8 @@ class TestMessageBuilder(BaseTestCase):
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=False
             )
-            assert "🟢 om 19:00 uur (3 stemmen)" in txt
-            assert "🔵 om 20:30 uur (5 stemmen)" in txt
+            assert "🟢 Om 19:00 uur (3 stemmen)" in txt
+            assert "🔵 Om 20:30 uur (5 stemmen)" in txt
 
     async def test_build_message_hides_misschien_when_counts_hidden(self):
         """Misschien wordt NIET getoond wanneer counts verborgen zijn."""
@@ -69,12 +69,12 @@ class TestMessageBuilder(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=True
             )
             # Normale tijdslots worden wel getoond
-            assert "🟢 om 19:00 uur (stemmen verborgen)" in txt
-            assert "🔵 om 20:30 uur (stemmen verborgen)" in txt
+            assert "🟢 Om 19:00 uur (stemmen verborgen)" in txt
+            assert "🔵 Om 20:30 uur (stemmen verborgen)" in txt
             # "Misschien" wordt NIET getoond
-            assert "Ⓜ️ misschien" not in txt
+            assert "Ⓜ️ Misschien" not in txt
             # "Niet meedoen" wordt wel getoond
-            assert "❌ niet meedoen (stemmen verborgen)" in txt
+            assert "❌ Niet meedoen (stemmen verborgen)" in txt
 
     async def test_build_message_shows_misschien_when_counts_visible(self):
         """Misschien wordt WEL getoond wanneer counts zichtbaar zijn."""
@@ -99,10 +99,10 @@ class TestMessageBuilder(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=False
             )
             # Alle opties worden getoond inclusief Misschien
-            assert "🟢 om 19:00 uur (3 stemmen)" in txt
-            assert "🔵 om 20:30 uur (5 stemmen)" in txt
-            assert "Ⓜ️ misschien (2 stemmen)" in txt
-            assert "❌ niet meedoen (1 stemmen)" in txt
+            assert "🟢 Om 19:00 uur (3 stemmen)" in txt
+            assert "🔵 Om 20:30 uur (5 stemmen)" in txt
+            assert "Ⓜ️ Misschien (2 stemmen)" in txt
+            assert "❌ Niet meedoen (1 stemmen)" in txt
 
     # build_grouped_names_for
     async def test_grouped_empty_votes(self):
@@ -160,3 +160,138 @@ class TestMessageBuilder(BaseTestCase):
         )
         assert total == 0
         assert text == ""
+
+    async def test_build_message_shows_non_voters_when_all_voted(self):
+        """Toont 🎉 bericht wanneer alle leden hebben gestemd (0 niet-stemmers)."""
+        options = [
+            opt("vrijdag", "om 19:00 uur", "🟢"),
+            opt("vrijdag", "niet meedoen", "❌"),
+        ]
+        counts = {"om 19:00 uur": 2, "niet meedoen": 1}
+
+        # Mock channel met 3 leden (waarvan allemaal hebben gestemd)
+        mock_member1 = SimpleNamespace(id=123, bot=False, display_name="Alice")
+        mock_member2 = SimpleNamespace(id=456, bot=False, display_name="Bob")
+        mock_member3 = SimpleNamespace(id=789, bot=False, display_name="Carol")
+        mock_channel = SimpleNamespace(members=[mock_member1, mock_member2, mock_member3])
+        mock_guild = SimpleNamespace(id=1)
+
+        # Alle 3 leden hebben gestemd
+        all_votes = {
+            "123": {"vrijdag": ["om 19:00 uur"]},
+            "456": {"vrijdag": ["om 19:00 uur"]},
+            "789": {"vrijdag": ["niet meedoen"]},
+        }
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch(
+            "apps.utils.message_builder.get_counts_for_day", return_value=counts
+        ), patch(
+            "apps.utils.message_builder.load_votes", return_value=all_votes
+        ):
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag",
+                guild_id=1,
+                channel_id=2,
+                hide_counts=False,
+                guild=cast(mb.discord.Guild, mock_guild),
+                channel=mock_channel,
+            )
+            assert "🎉 Iedereen heeft gestemd! - *Fantastisch dat jullie allemaal hebben gestemd! Bedankt!*" in txt
+
+    async def test_build_message_shows_non_voters_count(self):
+        """Toont 👻 met aantal niet-stemmers wanneer niet iedereen heeft gestemd."""
+        options = [
+            opt("vrijdag", "om 19:00 uur", "🟢"),
+            opt("vrijdag", "niet meedoen", "❌"),
+        ]
+        counts = {"om 19:00 uur": 1, "niet meedoen": 0}
+
+        # Mock channel met 3 leden (waarvan 1 heeft gestemd)
+        mock_member1 = SimpleNamespace(id=123, bot=False, display_name="Alice")
+        mock_member2 = SimpleNamespace(id=456, bot=False, display_name="Bob")
+        mock_member3 = SimpleNamespace(id=789, bot=False, display_name="Carol")
+        mock_channel = SimpleNamespace(id=2, members=[mock_member1, mock_member2, mock_member3])
+
+        # Mock guild with get_member and fetch_member methods
+        def mock_get_member(member_id):
+            members_map = {123: mock_member1, 456: mock_member2, 789: mock_member3}
+            return members_map.get(member_id)
+
+        async def mock_fetch_member(member_id):
+            return mock_get_member(member_id)
+
+        mock_guild = SimpleNamespace(
+            id=1,
+            get_member=mock_get_member,
+            fetch_member=mock_fetch_member
+        )
+
+        # Alleen lid 123 heeft gestemd (others are non-voters calculated from channel members)
+        all_votes = {
+            "123": {"vrijdag": ["om 19:00 uur"]},
+        }
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch(
+            "apps.utils.message_builder.get_counts_for_day", return_value=counts
+        ), patch(
+            "apps.utils.message_builder.load_votes", new=AsyncMock(return_value=all_votes)
+        ), patch(
+            "apps.utils.poll_storage.load_votes", new=AsyncMock(return_value=all_votes)
+        ):
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag",
+                guild_id=1,
+                channel_id=2,
+                hide_counts=False,
+                guild=cast(mb.discord.Guild, mock_guild),
+                channel=mock_channel,
+            )
+            assert "👻 Niet gestemd (2 personen)" in txt
+            assert "🎉" not in txt
+
+    async def test_build_message_shows_non_voters_when_counts_hidden(self):
+        """Niet-stemmers worden WEL getoond wanneer counts verborgen zijn (om te motiveren)."""
+        options = [opt("vrijdag", "om 19:00 uur", "🟢")]
+
+        mock_member1 = SimpleNamespace(id=123, bot=False, display_name="Alice")
+        mock_channel = SimpleNamespace(id=2, members=[mock_member1])
+
+        # Mock guild with get_member and fetch_member methods
+        def mock_get_member(member_id):
+            if member_id == 123:
+                return mock_member1
+            return None
+
+        async def mock_fetch_member(member_id):
+            return mock_get_member(member_id)
+
+        mock_guild = SimpleNamespace(
+            id=1,
+            get_member=mock_get_member,
+            fetch_member=mock_fetch_member
+        )
+
+        # Niemand heeft gestemd, Alice is non-voter (calculated from channel members)
+        all_votes = {}
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch(
+            "apps.utils.message_builder.load_votes", new=AsyncMock(return_value=all_votes)
+        ), patch(
+            "apps.utils.poll_storage.load_votes", new=AsyncMock(return_value=all_votes)
+        ):
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag",
+                guild_id=1,
+                channel_id=2,
+                hide_counts=True,
+                guild=cast(mb.discord.Guild, mock_guild),
+                channel=mock_channel,
+            )
+            # Niet-stemmers worden altijd getoond, ook bij verborgen counts (motivatie!)
+            assert "👻 Niet gestemd (1 personen)" in txt

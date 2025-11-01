@@ -81,7 +81,7 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
                     "vrijdag": ["onbekend"],  # Tijd niet in telling[dag] → overslaan
                 }
             }
-            telling = ar._build_counts_from_votes(votes)
+            telling = await ar._build_counts_from_votes(votes)
             # Alles 0 gebleven
             for dag in ["vrijdag", "zaterdag", "zondag"]:
                 self.assertEqual(telling[dag]["om 19:00 uur"], 0)
@@ -140,7 +140,7 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
                 "u1": {"vrijdag": ["om 19:00 uur", "om 19:00 uur"]},
                 "u2": {"vrijdag": ["om 19:00 uur"]},
             }
-            telling = ar._build_counts_from_votes(votes)
+            telling = await ar._build_counts_from_votes(votes)
             # 2 + 1 = 3 keer 'om 19:00 uur'
             self.assertEqual(telling["vrijdag"]["om 19:00 uur"], 3)
             # Andere tellers blijven 0

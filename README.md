@@ -283,7 +283,24 @@ DMK-poll-bot/
 
 ### Archief
 
-Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen. Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/{guild_id}/{channel_id}/dmk_archive.csv`.
+Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen, en niet gestemd. Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/dmk_archive_{guild_id}_{channel_id}.csv`.
+
+#### Archive migratie
+
+Als je oude archive bestanden hebt (zonder de `niet_gestemd` kolommen), kun je deze migreren met het migratie-script:
+
+```bash
+python migrate_archives.py
+```
+
+Dit script:
+- Vindt automatisch alle archive CSV bestanden
+- Voegt de nieuwe `vr_niet_gestemd`, `za_niet_gestemd`, `zo_niet_gestemd` kolommen toe
+- Behoudt alle bestaande data
+- Gebruikt **lege waarden** voor oude data (om aan te geven dat niet-stemmers niet getrackt werden in die weken)
+- Is veilig om meerdere keren uit te voeren (slaat reeds gemigreerde bestanden over)
+
+**Wanneer migreren?** Bij eerste deployment na de niet-stemmer tracking update. Nieuwe archives krijgen automatisch het correcte formaat.
 
 ### Beslissingsregels
 

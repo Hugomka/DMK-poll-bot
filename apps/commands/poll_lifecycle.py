@@ -357,7 +357,7 @@ class PollLifecycle(commands.Cog):
                 gid_val = getattr(guild, "id", "0") if guild is not None else "0"
                 cid_val = getattr(channel, "id", "0") or "0"
                 content = await build_poll_message_for_day_async(
-                    dag, gid_val, cid_val, guild=guild
+                    dag, gid_val, cid_val, guild=guild, channel=channel
                 )
 
                 mid = get_message_id(channel.id, dag)
@@ -478,7 +478,7 @@ class PollLifecycle(commands.Cog):
             try:
                 from apps.utils.archive import append_week_snapshot_scoped
 
-                await append_week_snapshot_scoped(gid, cid)
+                await append_week_snapshot_scoped(gid, cid, channel=channel)
             except Exception as e:  # pragma: no cover
                 print(f"⚠️ append_week_snapshot_scoped mislukte: {e}")
 
@@ -524,6 +524,7 @@ class PollLifecycle(commands.Cog):
                     hide_counts=hide,
                     pauze=paused,
                     guild=_get_attr(channel, "guild"),
+                    channel=channel,
                 )
                 await safe_call(
                     msg.edit, content=content, view=None

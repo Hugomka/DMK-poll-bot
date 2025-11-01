@@ -396,6 +396,194 @@ class TestArchiveView(BaseTestCase):
         assert kwargs["ephemeral"] is True
 
 
+class TestArchiveWithNonVoters(BaseTestCase):
+    """Tests voor niet-stemmers in CSV archief"""
+
+    async def test_append_week_snapshot_includes_non_voters_columns(self):
+        """Test dat CSV niet-stemmers kolommen bevat in header"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        import os
+
+        guild_id = 789
+        channel_id = 654
+        csv_path = get_archive_path_scoped(guild_id, channel_id)
+
+        # Cleanup als bestand al bestaat
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+
+        try:
+            # Append zonder channel (niet-stemmers zullen 0 zijn)
+            await append_week_snapshot_scoped(guild_id, channel_id, channel=None)
+
+            # Lees CSV en check header
+            with open(csv_path, "r", encoding="utf-8") as f:
+                header = f.readline().strip()
+
+            # Check dat niet-stemmers kolommen aanwezig zijn
+            assert "vr_niet_gestemd" in header
+            assert "za_niet_gestemd" in header
+            assert "zo_niet_gestemd" in header
+
+            # Check volgorde: na elke dag moet niet_gestemd komen
+            columns = header.split(",")
+            assert "vr_niet_gestemd" in columns
+            assert "za_niet_gestemd" in columns
+            assert "zo_niet_gestemd" in columns
+
+        finally:
+            # Cleanup
+            if os.path.exists(csv_path):
+                os.remove(csv_path)
+
+    async def test_append_week_snapshot_with_channel_counts_non_voters(self):
+        """Test dat niet-stemmers correct worden geteld met channel"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from types import SimpleNamespace
+        import os
+
+        guild_id = 111
+        channel_id = 222
+        csv_path = get_archive_path_scoped(guild_id, channel_id)
+
+        # Cleanup als bestand al bestaat
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+
+        try:
+            # Mock channel met 3 leden
+            mock_member1 = SimpleNamespace(id=123, bot=False)
+            mock_member2 = SimpleNamespace(id=456, bot=False)
+            mock_member3 = SimpleNamespace(id=789, bot=False)
+            mock_channel = SimpleNamespace(members=[mock_member1, mock_member2, mock_member3])
+
+            # Mock stemmen: alleen lid 123 heeft gestemd voor vrijdag
+            with patch("apps.utils.archive.load_votes", return_value={
+                "123": {"vrijdag": ["om 19:00 uur"]},
+            }):
+                await append_week_snapshot_scoped(guild_id, channel_id, channel=mock_channel)
+
+            # Lees CSV en check data row
+            with open(csv_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            # Should have header + 1 data row
+            assert len(lines) == 2
+
+            header = lines[0].strip().split(",")
+            data = lines[1].strip().split(",")
+
+            # Vind indices van niet_gestemd kolommen
+            vr_idx = header.index("vr_niet_gestemd")
+            za_idx = header.index("za_niet_gestemd")
+            zo_idx = header.index("zo_niet_gestemd")
+
+            # Check waarden: vrijdag heeft 2 niet-stemmers (3 leden - 1 stemmer)
+            #                zaterdag en zondag hebben 3 niet-stemmers (niemand heeft gestemd)
+            assert data[vr_idx] == "2"
+            assert data[za_idx] == "3"
+            assert data[zo_idx] == "3"
+
+        finally:
+            # Cleanup
+            if os.path.exists(csv_path):
+                os.remove(csv_path)
+
+    async def test_append_week_snapshot_without_channel_shows_zero_non_voters(self):
+        """Test dat niet-stemmers 0 zijn zonder channel"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        import os
+
+        guild_id = 333
+        channel_id = 444
+        csv_path = get_archive_path_scoped(guild_id, channel_id)
+
+        # Cleanup als bestand al bestaat
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+
+        try:
+            # Append zonder channel
+            await append_week_snapshot_scoped(guild_id, channel_id, channel=None)
+
+            # Lees CSV en check data row
+            with open(csv_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            header = lines[0].strip().split(",")
+            data = lines[1].strip().split(",")
+
+            # Vind indices van niet_gestemd kolommen
+            vr_idx = header.index("vr_niet_gestemd")
+            za_idx = header.index("za_niet_gestemd")
+            zo_idx = header.index("zo_niet_gestemd")
+
+            # Check dat alle niet-stemmers waarden 0 zijn
+            assert data[vr_idx] == "0"
+            assert data[za_idx] == "0"
+            assert data[zo_idx] == "0"
+
+        finally:
+            # Cleanup
+            if os.path.exists(csv_path):
+                os.remove(csv_path)
+
+    async def test_append_migrates_old_csv_header(self):
+        """Test dat oude CSV bestanden automatisch gemigreerd worden naar nieuwe header"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        import os
+
+        guild_id = 555
+        channel_id = 666
+        csv_path = get_archive_path_scoped(guild_id, channel_id)
+
+        # Cleanup als bestand al bestaat
+        if os.path.exists(csv_path):
+            os.remove(csv_path)
+
+        try:
+            # Maak een oud CSV bestand aan (zonder niet_gestemd kolommen)
+            old_header = "week,datum_vrijdag,datum_zaterdag,datum_zondag,vr_19,vr_2030,vr_misschien,vr_niet,za_19,za_2030,za_misschien,za_niet,zo_19,zo_2030,zo_misschien,zo_niet"
+            old_data = "41,2025-10-10,2025-10-11,2025-10-12,1,3,0,0,1,3,0,0,2,2,0,0"
+
+            with open(csv_path, "w", encoding="utf-8") as f:
+                f.write(old_header + "\n")
+                f.write(old_data + "\n")
+
+            # Append nieuwe week (dit zou header moeten migreren)
+            await append_week_snapshot_scoped(guild_id, channel_id, channel=None)
+
+            # Lees CSV en check
+            with open(csv_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            # Check dat header is gemigreerd
+            new_header = lines[0].strip()
+            assert "vr_niet_gestemd" in new_header
+            assert "za_niet_gestemd" in new_header
+            assert "zo_niet_gestemd" in new_header
+
+            # Check dat oude data rij is gemigreerd met nieuwe kolommen (niet_gestemd = empty)
+            # Oude: 41,2025-10-10,2025-10-11,2025-10-12,1,3,0,0,1,3,0,0,2,2,0,0 (16 kolommen)
+            # Nieuw: 41,2025-10-10,2025-10-11,2025-10-12,1,3,0,0,,1,3,0,0,,2,2,0,0, (19 kolommen)
+            migrated_old_row = lines[1].strip().split(",")
+            assert len(migrated_old_row) == 19, f"Migrated row should have 19 columns, got {len(migrated_old_row)}"
+            assert migrated_old_row[0] == "41"  # week preserved
+            assert migrated_old_row[4] == "1"   # vr_19 preserved
+            assert migrated_old_row[8] == ""    # vr_niet_gestemd added (empty = data not tracked)
+            assert migrated_old_row[13] == ""   # za_niet_gestemd added (empty = data not tracked)
+            assert migrated_old_row[18] == ""   # zo_niet_gestemd added (empty = data not tracked)
+
+            # Check dat nieuwe rij volledige data heeft (19 kolommen)
+            new_data_row = lines[2].strip().split(",")
+            assert len(new_data_row) == 19  # 4 datum kolommen + 15 data kolommen (5 per dag)
+
+        finally:
+            # Cleanup
+            if os.path.exists(csv_path):
+                os.remove(csv_path)
+
+
 if __name__ == "__main__":
     import unittest
 

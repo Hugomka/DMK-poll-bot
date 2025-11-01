@@ -3,17 +3,17 @@
 import csv
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import pytz
 
 from apps.entities.poll_option import get_poll_options
-from apps.utils.poll_storage import load_votes
+from apps.utils.poll_storage import get_non_voters_for_day, load_votes
 
 ARCHIVE_DIR = "archive"
 ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
 
-VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "niet meedoen"]
+VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "niet meedoen", "niet gestemd"]
 DAGEN = []
 for o in get_poll_options():
     if o.dag not in DAGEN and o.dag in ["vrijdag", "zaterdag", "zondag"]:
@@ -50,8 +50,27 @@ def _empty_counts():
     return {dag: {k: 0 for k in VOLGORDE} for dag in DAGEN}
 
 
-def _build_counts_from_votes(votes: dict):
+async def _build_counts_from_votes(
+    votes: dict,
+    channel: Any = None,
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+):
+    """
+    Bouw tellingen voor alle opties inclusief niet-stemmers.
+
+    Parameters:
+    - votes: Dictionary met alle stemmen
+    - channel: Discord channel (kept for compatibility, not used)
+    - guild_id: Guild ID for retrieving stored non-voters
+    - channel_id: Channel ID for retrieving stored non-voters
+
+    Returns:
+    - Dictionary met tellingen per dag en optie
+    """
     telling = _empty_counts()
+
+    # Tel gewone stemmen
     for per_dag in votes.values():
         for dag, keuzes in per_dag.items():
             if dag not in telling:
@@ -59,7 +78,92 @@ def _build_counts_from_votes(votes: dict):
             for tijd in keuzes:
                 if tijd in telling[dag]:
                     telling[dag][tijd] += 1
+
+    # Tel niet-stemmers per dag (from storage)
+    if guild_id is not None and channel_id is not None:
+        for dag in DAGEN:
+            non_voter_count = await _count_non_voters(
+                dag, votes, channel, guild_id, channel_id
+            )
+            telling[dag]["niet gestemd"] = non_voter_count
+
     return telling
+
+
+async def _count_non_voters(
+    dag: str,
+    votes: dict,
+    channel: Any = None,
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+) -> int:
+    """
+    Tel aantal niet-stemmers voor een specifieke dag.
+
+    Tries to use stored non-voters from poll_storage, falls back to calculating from channel.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - votes: Dictionary met alle stemmen (used for fallback calculation)
+    - channel: Discord channel (used for fallback calculation)
+    - guild_id: Guild ID for retrieving stored non-voters
+    - channel_id: Channel ID for retrieving stored non-voters
+
+    Returns:
+    - Aantal niet-stemmers
+    """
+    # Try to get count from storage first
+    if guild_id is not None and channel_id is not None:
+        try:
+            count, _ = await get_non_voters_for_day(dag, guild_id, channel_id)
+            if count > 0:
+                return count
+        except Exception:  # pragma: no cover
+            pass
+
+    # Fallback: calculate from channel members (legacy behavior)
+    if not channel:
+        return 0
+
+    # Verzamel IDs die voor deze dag hebben gestemd (inclusief gasten via hun owner)
+    voted_ids: set[str] = set()
+    for uid, per_dag in votes.items():
+        try:
+            # Skip non-voter entries
+            if isinstance(uid, str) and uid.startswith("_non_voter::"):
+                continue
+
+            tijden = (per_dag or {}).get(dag, [])
+            if isinstance(tijden, list) and tijden:
+                # Extract owner ID (handle guests)
+                actual_uid = (
+                    uid.split("_guest::", 1)[0]
+                    if isinstance(uid, str) and "_guest::" in uid
+                    else uid
+                )
+                voted_ids.add(str(actual_uid))
+        except Exception:
+            continue
+
+    # Tel leden die toegang hebben tot dit specifieke kanaal (exclusief bots)
+    members = getattr(channel, "members", [])
+    total_members = 0
+
+    for member in members:
+        if getattr(member, "bot", False):
+            continue
+        total_members += 1
+
+    # Aantal stemmers (alleen die ook toegang hebben tot het kanaal)
+    voters_count = 0
+    for member in members:
+        if getattr(member, "bot", False):
+            continue
+        member_id = str(getattr(member, "id", ""))
+        if member_id in voted_ids:
+            voters_count += 1
+
+    return total_members - voters_count
 
 
 def _week_dates_eu(now):
@@ -86,9 +190,10 @@ async def append_week_snapshot_scoped(
     guild_id: Optional[int | str] = None,
     channel_id: Optional[int | str] = None,
     now: Optional[datetime] = None,
+    channel: Any = None,
 ) -> None:
     """
-    Schrijf 1 rij naar CSV met week+datums+tellingen.
+    Schrijf 1 rij naar CSV met week+datums+tellingen+niet-stemmers.
     Backward compat:
       - Zonder guild/channel → gebruik globale ARCHIVE_CSV (legacy tests).
       - Sommige oude tests roepen append_week_snapshot_scoped(<now>) aan:
@@ -109,7 +214,7 @@ async def append_week_snapshot_scoped(
         if (guild_id is not None and channel_id is not None)
         else {}
     )
-    telling = _build_counts_from_votes(votes)
+    telling = await _build_counts_from_votes(votes, channel, guild_id, channel_id)
     week, vr, za, zo = _week_dates_eu(now)
 
     header = [
@@ -121,14 +226,17 @@ async def append_week_snapshot_scoped(
         "vr_2030",
         "vr_misschien",
         "vr_niet",
+        "vr_niet_gestemd",
         "za_19",
         "za_2030",
         "za_misschien",
         "za_niet",
+        "za_niet_gestemd",
         "zo_19",
         "zo_2030",
         "zo_misschien",
         "zo_niet",
+        "zo_niet_gestemd",
     ]
     row = [
         week,
@@ -139,23 +247,85 @@ async def append_week_snapshot_scoped(
         telling["vrijdag"]["om 20:30 uur"],
         telling["vrijdag"]["misschien"],
         telling["vrijdag"]["niet meedoen"],
+        telling["vrijdag"]["niet gestemd"],
         telling["zaterdag"]["om 19:00 uur"],
         telling["zaterdag"]["om 20:30 uur"],
         telling["zaterdag"]["misschien"],
         telling["zaterdag"]["niet meedoen"],
+        telling["zaterdag"]["niet gestemd"],
         telling["zondag"]["om 19:00 uur"],
         telling["zondag"]["om 20:30 uur"],
         telling["zondag"]["misschien"],
         telling["zondag"]["niet meedoen"],
+        telling["zondag"]["niet gestemd"],
     ]
 
     csv_path = get_archive_path_scoped(guild_id, channel_id)
-    write_header = not os.path.exists(csv_path)
-    with open(csv_path, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if write_header:
+
+    # Check if we need to migrate/update the header
+    if os.path.exists(csv_path):
+        # Lees bestaande CSV
+        with open(csv_path, "r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+
+        if rows:
+            existing_header = rows[0]
+            # Check of nieuwe kolommen ontbreken
+            if "vr_niet_gestemd" not in existing_header:
+                # Migreer oude data naar nieuwe structuur
+                # Oude header: [week, datum_vrijdag, ..., vr_19, vr_2030, vr_misschien, vr_niet, ...]
+                # Nieuwe header: [week, datum_vrijdag, ..., vr_19, vr_2030, vr_misschien, vr_niet, vr_niet_gestemd, ...]
+
+                # Update header
+                rows[0] = header
+
+                # Voor elke data rij, voeg ontbrekende kolommen toe met lege waarde
+                # Oude row heeft 16 kolommen (4 datum + 4*3 opties per dag)
+                # Nieuwe row heeft 19 kolommen (4 datum + 5*3 opties per dag met niet_gestemd)
+                # Lege waarde = data niet beschikbaar (niet getrackt in die week)
+                for i in range(1, len(rows)):
+                    old_row = rows[i]
+                    if len(old_row) >= 16:  # Geldig oude row formaat
+                        # Build nieuwe row met niet_gestemd kolommen toegevoegd
+                        new_row = [
+                            old_row[0],   # week
+                            old_row[1],   # datum_vrijdag
+                            old_row[2],   # datum_zaterdag
+                            old_row[3],   # datum_zondag
+                            old_row[4],   # vr_19
+                            old_row[5],   # vr_2030
+                            old_row[6],   # vr_misschien
+                            old_row[7],   # vr_niet
+                            "",           # vr_niet_gestemd (nieuw - leeg = niet getrackt)
+                            old_row[8],   # za_19
+                            old_row[9],   # za_2030
+                            old_row[10],  # za_misschien
+                            old_row[11],  # za_niet
+                            "",           # za_niet_gestemd (nieuw - leeg = niet getrackt)
+                            old_row[12],  # zo_19
+                            old_row[13],  # zo_2030
+                            old_row[14],  # zo_misschien
+                            old_row[15],  # zo_niet
+                            "",           # zo_niet_gestemd (nieuw - leeg = niet getrackt)
+                        ]
+                        rows[i] = new_row
+
+                # Herschrijf bestand met nieuwe header + gemigreerde data
+                with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                    w = csv.writer(f)
+                    w.writerows(rows)
+
+        # Append nieuwe rij
+        with open(csv_path, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(row)
+    else:
+        # Nieuw bestand: schrijf header + eerste rij
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
             w.writerow(header)
-        w.writerow(row)
+            w.writerow(row)
 
 
 def archive_exists_scoped(

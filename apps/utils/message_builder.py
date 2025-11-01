@@ -5,7 +5,11 @@ from typing import Any
 import discord
 
 from apps.entities.poll_option import get_poll_options
-from apps.utils.poll_storage import get_counts_for_day
+from apps.utils.poll_storage import (
+    get_counts_for_day,
+    get_non_voters_for_day as get_non_voters_from_storage,
+    load_votes,
+)
 
 
 async def build_poll_message_for_day_async(
@@ -15,6 +19,7 @@ async def build_poll_message_for_day_async(
     hide_counts: bool = True,
     pauze: bool = False,
     guild: discord.Guild | None = None,
+    channel: Any = None,
 ) -> str:
     """
     Bouwt de tekst van het pollbericht voor één dag, GESCOPED per guild+channel.
@@ -26,6 +31,7 @@ async def build_poll_message_for_day_async(
     - hide_counts: verberg aantallen (True/False)
     - pauze: voeg marker toe in de titel
     - guild: optioneel, voor mentions in andere helpers
+    - channel: optioneel, voor niet-stemmers tracking
     """
     title = f"**DMK-poll voor {dag.capitalize()}:**"
     if pauze:
@@ -47,13 +53,25 @@ async def build_poll_message_for_day_async(
         if hide_counts and opt.tijd == "misschien":
             continue
 
-        label = f"{opt.emoji} {opt.tijd}"
+        label = f"{opt.emoji} {opt.tijd.capitalize()}"
 
         if hide_counts:
             message += f"{label} (stemmen verborgen)\n"
         else:
             n = int(counts.get(opt.tijd, 0))
             message += f"{label} ({n} stemmen)\n"
+
+    # Voeg niet-stemmers toe (altijd zichtbaar om leden te motiveren)
+    if guild and channel:
+        all_votes = await load_votes(guild_id, channel_id)
+        non_voter_count, _ = await get_non_voters_for_day(
+            dag, guild, channel, all_votes
+        )
+
+        if non_voter_count == 0:
+            message += "🎉 Iedereen heeft gestemd! - *Fantastisch dat jullie allemaal hebben gestemd! Bedankt!*\n"
+        else:
+            message += f"👻 Niet gestemd ({non_voter_count} personen)\n"
 
     return f"{message}\u200b"
 
@@ -292,28 +310,73 @@ async def get_non_voters_for_day(
     """
     Retourneert (aantal_niet_stemmers, tekst) voor een specifieke dag.
 
+    Tries to use stored non-voters first, falls back to calculating from channel members.
+
     Parameters:
     - dag: 'vrijdag' | 'zaterdag' | 'zondag'
     - guild: Discord guild (server)
-    - channel: Discord channel (voor toegang tot members)
-    - all_votes: Dictionary met alle stemmen (van load_votes)
+    - channel: Discord channel (for member access and display names)
+    - all_votes: Dictionary met alle stemmen (used for fallback calculation)
 
     Retourneert:
     - (count, text) waarbij text bv. is: "@Naam1, @Naam2, @Naam3"
 
     Regels:
-    - Alleen leden die toegang hebben tot het kanaal worden meegenomen
-    - Bots worden uitgefilterd
-    - Gasten worden via hun owner-ID gekoppeld
-    - Als een lid (of gast van dat lid) heeft gestemd, wordt het lid niet als niet-stemmer getoond
+    - Tries to retrieve non-voters from storage
+    - Falls back to calculating from channel members if not in storage
+    - Display names are fetched from guild members
     """
     if not channel or not guild:
         return 0, ""
 
+    guild_id = getattr(guild, "id", None)
+    channel_id = getattr(channel, "id", None)
+
+    if guild_id is None or channel_id is None:
+        return 0, ""
+
+    # Try to get non-voter IDs from storage
+    try:
+        count, non_voter_ids = await get_non_voters_from_storage(dag, guild_id, channel_id)
+
+        # If we have stored non-voters, use them
+        if count > 0 and non_voter_ids:
+            # Build display names for non-voters
+            non_voters: list[str] = []
+
+            for member_id in non_voter_ids:
+                try:
+                    member = guild.get_member(int(member_id)) or await guild.fetch_member(
+                        int(member_id)
+                    )
+                    if member:
+                        display = (
+                            getattr(member, "display_name", None)
+                            or getattr(member, "global_name", None)
+                            or getattr(member, "name", "Lid")
+                        )
+                        non_voters.append(f"@{display}")
+                except Exception:  # pragma: no cover
+                    # If member not found, skip
+                    continue
+
+            count = len(non_voters)
+            text = ", ".join(non_voters) if non_voters else ""
+
+            return count, text
+    except Exception:  # pragma: no cover
+        # If storage fails, fall through to legacy calculation
+        pass
+
+    # Fallback: calculate non-voters from channel members (legacy behavior)
     # Verzamel IDs die voor deze dag hebben gestemd (inclusief gasten via hun owner)
     voted_ids: set[str] = set()
     for uid, per_dag in all_votes.items():
         try:
+            # Skip non-voter entries (they're not actual votes)
+            if isinstance(uid, str) and uid.startswith("_non_voter::"):
+                continue
+
             tijden = (per_dag or {}).get(dag, [])
             if isinstance(tijden, list) and tijden:
                 # Extract owner ID (handle guests)

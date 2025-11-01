@@ -11,6 +11,7 @@ from apps.logic.decision import build_decision_line
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import is_paused, should_hide_counts
+from apps.utils.poll_storage import update_non_voters
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
@@ -237,6 +238,9 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
         async with lock:
             mid = get_message_id(cid_val, d)
 
+            # Update non-voters in storage before building the message
+            await update_non_voters(gid_val, cid_val, channel)
+
             # Bepaal content (zowel voor edit als create)
             hide = should_hide_counts(cid_val, d, now)
             paused = is_paused(cid_val)
@@ -247,6 +251,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                 hide_counts=hide,
                 pauze=paused,
                 guild=getattr(channel, "guild", None),  # Voor namen
+                channel=channel,  # Voor niet-stemmers tracking
             )
 
             decision = await build_decision_line(gid_val, cid_val, d, now)
