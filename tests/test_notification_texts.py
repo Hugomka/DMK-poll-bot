@@ -216,6 +216,7 @@ class TestNotificationTextsList(unittest.TestCase):
         """Test get_notification_by_name met bestaande naam."""
         notif = get_notification_by_name("Poll geopend")
         self.assertIsNotNone(notif)
+        assert notif is not None  # Type narrowing voor Pylance
         self.assertEqual(notif.name, "Poll geopend")
         self.assertIn("aangezet", notif.content)
 
@@ -224,6 +225,7 @@ class TestNotificationTextsList(unittest.TestCase):
         for name in get_all_notification_names():
             notif = get_notification_by_name(name)
             self.assertIsNotNone(notif)
+            assert notif is not None  # Type narrowing voor Pylance
             self.assertEqual(notif.name, name)
 
     def test_get_notification_by_name_non_existing(self):
@@ -234,17 +236,23 @@ class TestNotificationTextsList(unittest.TestCase):
     def test_notification_poll_geopend_content(self):
         """Test content van Poll geopend notificatie."""
         notif = get_notification_by_name("Poll geopend")
+        self.assertIsNotNone(notif)
+        assert notif is not None  # Type narrowing voor Pylance
         self.assertIn("DMK-poll-bot is zojuist aangezet", notif.content)
         self.assertIn("🎮", notif.content)
 
     def test_notification_poll_gereset_content(self):
         """Test content van Poll gereset notificatie."""
         notif = get_notification_by_name("Poll gereset")
+        self.assertIsNotNone(notif)
+        assert notif is not None  # Type narrowing voor Pylance
         self.assertIn("gereset voor het nieuwe weekend", notif.content)
 
     def test_notification_poll_gesloten_has_default_time(self):
         """Test dat Poll gesloten default tijd gebruikt."""
         notif = get_notification_by_name("Poll gesloten")
+        self.assertIsNotNone(notif)
+        assert notif is not None  # Type narrowing voor Pylance
         self.assertIn("dinsdag om 20:00 uur", notif.content)
 
 
