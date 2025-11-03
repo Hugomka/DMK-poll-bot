@@ -59,7 +59,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-archief`** *(default: admin/mod)* | Bekijk en beheer het CSV-archief: kies CSV-formaat (🇺🇸 Comma / 🇳🇱 Semicolon), download direct, of verwijder archief. |
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
-| **`/dmk-poll-notify`** *(default: admin/mod)* | Stuur handmatig een notificatie. Zonder dag: algemene resetmelding. Met dag: notificatie voor niet-stemmers van die specifieke dag. |
+| **`/dmk-poll-notify`** *(default: admin/mod)* | Stuur handmatig een notificatie. Kies uit 7 standaard notificaties of gebruik een eigen tekst. Extra optie: `ping` om te kiezen tussen @everyone, @here (alleen online users) of geen ping (stille notificatie). |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
 
@@ -283,24 +283,34 @@ DMK-poll-bot/
 
 ### Archief
 
-Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: weeknummer, datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, niet meedoen, en niet gestemd. Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/dmk_archive_{guild_id}_{channel_id}.csv`.
+Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: ISO weeknummer (bijv. 2025-W44), datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, was misschien (💤), niet meedoen, en niet gestemd (👻). Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/dmk_archive_{guild_id}_{channel_id}.csv`.
 
 #### Archive migratie
 
-Als je oude archive bestanden hebt (zonder de `niet_gestemd` kolommen), kun je deze migreren met het migratie-script:
+Als je oude archive bestanden hebt (zonder de nieuwste kolommen), kun je deze migreren met het migratie-script:
 
 ```bash
-python migrate_archives.py
+py migrate_archives.py
 ```
+
+**CSV Versies:**
+- **V1** (16 kolommen): Origineel formaat, zonder niet_gestemd en was_misschien kolommen
+- **V2** (19 kolommen): Met niet_gestemd kolommen toegevoegd
+- **V3** (22 kolommen): Met was_misschien kolommen toegevoegd - **HUIDIGE VERSIE**
+- **V4** (22 kolommen): ISO week formaat (2025-W44 in plaats van alleen 44)
 
 Dit script:
 - Vindt automatisch alle archive CSV bestanden
-- Voegt de nieuwe `vr_niet_gestemd`, `za_niet_gestemd`, `zo_niet_gestemd` kolommen toe
+- Voegt de nieuwe kolommen toe: `vr_niet_gestemd`, `za_niet_gestemd`, `zo_niet_gestemd`, `vr_was_misschien`, `za_was_misschien`, `zo_was_misschien`
+- Converteert week nummers naar ISO 8601 formaat (YYYY-Www, bijvoorbeeld 2025-W44)
 - Behoudt alle bestaande data
-- Gebruikt **lege waarden** voor oude data (om aan te geven dat niet-stemmers niet getrackt werden in die weken)
+- Gebruikt **lege waarden** voor oude data (om aan te geven dat deze metrics niet getrackt werden in die weken)
 - Is veilig om meerdere keren uit te voeren (slaat reeds gemigreerde bestanden over)
 
-**Wanneer migreren?** Bij eerste deployment na de niet-stemmer tracking update. Nieuwe archives krijgen automatisch het correcte formaat.
+**Wanneer migreren?** Bij eerste deployment na updates. Nieuwe archives krijgen automatisch het correcte formaat.
+
+**Was Misschien Tracking:**
+De bot houdt nu bij hoeveel "misschien" stemmen automatisch worden omgezet naar "niet meedoen" wanneer de deadline (18:00) passeert. Dit geeft inzicht in hoeveel mensen niet op tijd hun stem hebben bevestigd. Deze data wordt getoond in `/dmk-poll-status` met een 💤 emoji en opgeslagen in het CSV-archief.
 
 ### Beslissingsregels
 
@@ -383,7 +393,7 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ## 🧪 Testen en dekking
 
-De bot heeft **529 unittests** met **~96% code coverage** voor uitgebreide dekking van alle functionaliteit.
+De bot heeft **608 unittests** met **~96% code coverage** voor uitgebreide dekking van alle functionaliteit.
 
 Alle unittests draaien met:
 ```bash
@@ -564,7 +574,7 @@ cat .scheduler_state.json
 
 **Test coverage uitbreiding**:
 - Van 88% naar **96% code coverage**
-- **529 unittests** voor robuuste codebase
+- **608 unittests** voor robuuste codebase
 - Uitgebreide tests voor exception handling en edge cases
 - Tests voor alle nieuwe modules en functies
 - Tests voor permissions en command defaults
@@ -581,6 +591,7 @@ cat .scheduler_state.json
 - Vroege herinnering op donderdag 20:00 voor wie nog helemaal niet gestemd heeft
 - Persistente mentions (5 uur) voor "gaat door"-berichten
 - Automatische cleanup: tijdelijke berichten na 1 uur, persistente na 5 uur
+- Ping-opties in `/dmk-poll-notify`: kies tussen @everyone (iedereen), @here (alleen online), of stille notificaties (geen ping)
 
 **UI verbeteringen**:
 - Cleanup confirmation voor oude berichten

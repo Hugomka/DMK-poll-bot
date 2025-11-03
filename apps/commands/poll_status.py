@@ -209,12 +209,18 @@ class PollStatus(commands.Cog):
     )
     @app_commands.describe(
         notificatie="Kies een standaard notificatietekst.",
-        eigen_tekst="Optioneel: eigen notificatietekst (overschrijft standaard keuze)."
+        eigen_tekst="Optioneel: eigen notificatietekst (overschrijft standaard keuze).",
+        ping="Kies welke ping te gebruiken (default: everyone)."
     )
     @app_commands.choices(
         notificatie=[
             app_commands.Choice(name=notif.name, value=notif.name)
             for notif in NOTIFICATION_TEXTS
+        ],
+        ping=[
+            app_commands.Choice(name="everyone", value="everyone"),
+            app_commands.Choice(name="here", value="here"),
+            app_commands.Choice(name="none", value="none")
         ]
     )
     async def notify_fallback(
@@ -222,6 +228,7 @@ class PollStatus(commands.Cog):
         interaction: discord.Interaction,
         notificatie: Optional[str] = None,
         eigen_tekst: Optional[str] = None,
+        ping: Optional[str] = "everyone",
     ):
         await interaction.response.defer(ephemeral=True)
         channel = getattr(interaction, "channel", None)
@@ -298,9 +305,20 @@ class PollStatus(commands.Cog):
             # Verstuur notificatie
             from apps.utils.mention_utils import send_temporary_mention
 
-            await send_temporary_mention(channel, mentions="@everyone", text=notification_text)
+            # Convert ping parameter to mention string
+            if ping == "none":
+                mention_str = None
+            elif ping == "here":
+                mention_str = "@here"
+            else:  # everyone (default)
+                mention_str = "@everyone"
+
+            await send_temporary_mention(channel, mentions=mention_str, text=notification_text)
+
+            # Include ping type in confirmation message
+            ping_info = f" (ping: {ping})" if ping != "everyone" else ""
             await interaction.followup.send(
-                f"✅ Notificatie verstuurd: **{notification_name}**", ephemeral=True
+                f"✅ Notificatie verstuurd: **{notification_name}**{ping_info}", ephemeral=True
             )
 
         except Exception as e:  # pragma: no cover

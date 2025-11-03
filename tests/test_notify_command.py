@@ -279,3 +279,122 @@ class TestNotifyFallbackCommand(BaseTestCase):
             # Should send error message
             msg = (interaction.followup.last_text or "").lower()
             assert "ging iets mis" in msg
+
+    async def test_notify_with_ping_everyone(self):
+        """Test dat ping=everyone @everyone gebruikt (default)."""
+        interaction, _channel, patcher = _mk_inter()
+        with patcher, patch(
+            "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
+        ) as mock_send:
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                notificatie="Poll geopend",
+                ping="everyone",
+            )
+            # Verify send_temporary_mention was called with @everyone
+            mock_send.assert_awaited_once()
+            call_args = mock_send.call_args
+            args, kwargs = call_args
+            mentions = kwargs.get("mentions", "")
+            assert mentions == "@everyone"
+            # Confirmation should not show ping info (default)
+            msg = interaction.followup.last_text or ""
+            assert "ping:" not in msg.lower()
+
+    async def test_notify_with_ping_here(self):
+        """Test dat ping=here @here gebruikt."""
+        interaction, _channel, patcher = _mk_inter()
+        with patcher, patch(
+            "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
+        ) as mock_send:
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                notificatie="Poll geopend",
+                ping="here",
+            )
+            # Verify send_temporary_mention was called with @here
+            mock_send.assert_awaited_once()
+            call_args = mock_send.call_args
+            args, kwargs = call_args
+            mentions = kwargs.get("mentions", "")
+            assert mentions == "@here"
+            # Confirmation should show ping type
+            msg = interaction.followup.last_text or ""
+            assert "ping: here" in msg.lower()
+
+    async def test_notify_with_ping_none(self):
+        """Test dat ping=none geen mention gebruikt (silent notification)."""
+        interaction, _channel, patcher = _mk_inter()
+        with patcher, patch(
+            "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
+        ) as mock_send:
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                notificatie="Poll geopend",
+                ping="none",
+            )
+            # Verify send_temporary_mention was called with None (no mentions)
+            mock_send.assert_awaited_once()
+            call_args = mock_send.call_args
+            args, kwargs = call_args
+            mentions = kwargs.get("mentions")
+            assert mentions is None
+            # Confirmation should show ping type
+            msg = interaction.followup.last_text or ""
+            assert "ping: none" in msg.lower()
+
+    async def test_notify_with_custom_text_and_ping_here(self):
+        """Test dat eigen tekst + ping=here correct werkt."""
+        interaction, _channel, patcher = _mk_inter()
+        custom_text = "Custom notification text"
+        with patcher, patch(
+            "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
+        ) as mock_send:
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                eigen_tekst=custom_text,
+                ping="here",
+            )
+            # Verify correct text and mentions
+            mock_send.assert_awaited_once()
+            call_args = mock_send.call_args
+            args, kwargs = call_args
+            assert kwargs.get("text") == custom_text
+            assert kwargs.get("mentions") == "@here"
+            # Check followup message
+            msg = interaction.followup.last_text or ""
+            assert "eigen tekst" in msg.lower()
+            assert "ping: here" in msg.lower()
+
+    async def test_notify_default_ping_is_everyone(self):
+        """Test dat default ping waarde 'everyone' is."""
+        interaction, _channel, patcher = _mk_inter()
+        with patcher, patch(
+            "apps.utils.mention_utils.send_temporary_mention", new_callable=AsyncMock
+        ) as mock_send:
+            cog = poll_status.PollStatus(MagicMock())
+            # Call without specifying ping parameter
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                notificatie="Poll geopend",
+            )
+            # Should default to @everyone
+            mock_send.assert_awaited_once()
+            call_args = mock_send.call_args
+            args, kwargs = call_args
+            mentions = kwargs.get("mentions", "")
+            assert mentions == "@everyone"

@@ -41,7 +41,7 @@ def render_notification_content(
 
 async def send_temporary_mention(
     channel: Any,
-    mentions: str,
+    mentions: Optional[str],
     text: str,
     delay: float = 5.0,
     show_button: bool = False,
@@ -61,7 +61,7 @@ async def send_temporary_mention(
 
     Args:
         channel: Het Discord kanaal object
-        mentions: Mentions string, bijv. "@user1, @user2"
+        mentions: Mentions string, bijv. "@user1, @user2", of None voor geen mentions
         text: De tekst die onder de mentions verschijnt
         delay: Hoeveel seconden de mentions zichtbaar blijven (standaard 5.0)
         show_button: Of de "Stem nu" knop getoond moet worden
