@@ -187,7 +187,9 @@ def _week_dates_eu(now):
     za = last_weekday(now, 5)
     zo = last_weekday(now, 6)
 
-    week = vr.isocalendar().week
+    # ISO week format: YYYY-Www (bijvoorbeeld 2025-W44)
+    iso_cal = vr.isocalendar()
+    week = f"{iso_cal.year}-W{iso_cal.week:02d}"
     return (week, vr.isoformat(), za.isoformat(), zo.isoformat())
 
 
@@ -363,10 +365,23 @@ async def append_week_snapshot_scoped(
                     w = csv.writer(f)
                     w.writerows(rows)
 
-        # Append nieuwe rij
-        with open(csv_path, "a", newline="", encoding="utf-8") as f:
+        # Check of deze week al bestaat, zo ja: update die rij, anders: append
+        week_exists = False
+        for i in range(1, len(rows)):
+            if rows[i] and rows[i][0] == week:
+                # Update bestaande rij voor deze week
+                rows[i] = row
+                week_exists = True
+                break
+
+        if not week_exists:
+            # Week bestaat nog niet, append nieuwe rij
+            rows.append(row)
+
+        # Herschrijf het hele bestand
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(row)
+            w.writerows(rows)
     else:
         # Nieuw bestand: schrijf header + eerste rij
         with open(csv_path, "w", newline="", encoding="utf-8") as f:

@@ -1164,7 +1164,11 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
 
     Dit is de tegenhanger van activate_scheduled_polls voor /dmk-poll-off.
     """
-    from apps.utils.poll_settings import clear_scheduled_deactivation, get_effective_deactivation
+    from apps.utils.poll_settings import (
+        clear_scheduled_deactivation,
+        get_effective_activation,
+        get_effective_deactivation,
+    )
 
     now = datetime.now(TZ)
     current_date = now.date().isoformat()  # YYYY-MM-DD
@@ -1297,10 +1301,35 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                                 )
                         clear_message_id(cid, "notification")
 
-                    # 4) Kanaal permanent uitzetten voor scheduler
+                    # 4) Archiveer huidige week's data voordat we deactiveren
+                    try:
+                        from apps.utils.archive import append_week_snapshot_scoped
+                        gid = getattr(guild, "id", 0)
+                        await append_week_snapshot_scoped(gid, cid, channel=channel)
+                    except Exception as e:  # pragma: no cover
+                        print(f"⚠️ Archiveren bij deactivatie mislukt: {e}")
+
+                    # 5) Post sluitingsbericht met heropening tijd
+                    try:
+                        from apps.utils.notification_texts import (
+                            format_opening_time_from_schedule,
+                            get_text_poll_gesloten,
+                        )
+
+                        act_schedule, _ = get_effective_activation(cid)
+                        opening_time = format_opening_time_from_schedule(act_schedule)
+                        sluitingsbericht = get_text_poll_gesloten(opening_time)
+
+                        send = getattr(channel, "send", None)
+                        if send:
+                            await safe_call(send, content=sluitingsbericht)
+                    except Exception as e:  # pragma: no cover
+                        print(f"⚠️ Sluitingsbericht versturen mislukt: {e}")
+
+                    # 6) Kanaal permanent uitzetten voor scheduler
                     set_channel_disabled(cid, True)
 
-                    # 5) Wis geplande activatie (voor /dmk-poll-on)
+                    # 7) Wis geplande activatie (voor /dmk-poll-on)
                     try:
                         from apps.utils.poll_settings import clear_scheduled_activation
                         clear_scheduled_activation(cid)
@@ -1437,6 +1466,16 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     n_mid_old = get_message_id(cid, "notification")
                     if not n_mid_persistent and not n_mid_old:
                         await create_notification_message(channel)
+
+                    # Openingsbericht versturen
+                    try:
+                        from apps.utils.mention_utils import send_temporary_mention
+                        opening_notification = "De DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+                        await send_temporary_mention(
+                            channel, mentions="@everyone", text=opening_notification
+                        )
+                    except Exception as e:  # pragma: no cover
+                        print(f"⚠️ Openingsbericht versturen mislukt: {e}")
 
                     print(f"✅ Automatisch geactiveerd: kanaal {cid} volgens schedule")
 

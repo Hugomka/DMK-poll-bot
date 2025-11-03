@@ -58,8 +58,9 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
         """Naive datetime → wordt gelokaliseerd (Europe/Amsterdam) in _week_dates_eu."""
         naive = datetime(2025, 9, 13, 12, 0, 0)  # tzinfo=None
         week, vr, za, zo = ar._week_dates_eu(naive)
-        # Basisvorm controleren (strings YYYY-MM-DD en week als int)
-        self.assertIsInstance(week, int)
+        # Basisvorm controleren (strings YYYY-MM-DD en week als ISO format YYYY-Www)
+        self.assertIsInstance(week, str)
+        self.assertRegex(week, r"^\d{4}-W\d{2}$")  # ISO week format: 2025-W37
         for d in (vr, za, zo):
             self.assertRegex(d, r"^\d{4}-\d{2}-\d{2}$")
 
@@ -90,12 +91,12 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
                 self.assertEqual(telling[dag]["niet meedoen"], 0)
 
     async def test_append_twice_writes_header_once(self):
-        """Eerste append schrijft header; tweede append schrijft géén header opnieuw."""
+        """Eerste append schrijft header; tweede append van dezelfde week update de rij."""
         # Eerste snapshot
         await ar.append_week_snapshot_scoped(
             now=datetime.now(ZoneInfo("Europe/Amsterdam"))
         )
-        # Tweede snapshot
+        # Tweede snapshot (zelfde week → update bestaande rij)
         await ar.append_week_snapshot_scoped(
             now=datetime.now(ZoneInfo("Europe/Amsterdam"))
         )
@@ -103,8 +104,8 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
         self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
         with open(ar.ARCHIVE_CSV, "r", encoding="utf-8") as f:
             rows = list(csv.reader(f))
-        # Minimaal 3 regels: header + 2 data-rijen
-        self.assertGreaterEqual(len(rows), 3)
+        # Precies 2 regels: header + 1 data-rij (tweede append update dezelfde week)
+        self.assertEqual(len(rows), 2)
         header = rows[0]
         self.assertIn("week", header)
         # 2e regel is data en mag niet gelijk zijn aan de header

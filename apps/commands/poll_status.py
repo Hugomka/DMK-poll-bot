@@ -12,7 +12,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from apps import scheduler
 from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
@@ -24,33 +23,13 @@ from apps.utils.poll_settings import (
     get_effective_deactivation,
 )
 from apps.utils.poll_storage import get_was_misschien_count, load_votes
-
-
-# Hergebruik constants en helpers uit dmk_poll
-RESET_TEXT = (
-    "@everyone De poll is zojuist gereset voor het nieuwe weekend. "
-    "Je kunt weer stemmen. Veel plezier!"
+from apps.utils.notification_texts import (
+    NOTIFICATION_TEXTS,
+    format_opening_time_from_schedule,
+    get_notification_by_name,
+    get_text_herinnering_dag,
+    get_text_poll_gesloten,
 )
-
-
-def _is_poll_channel(channel) -> bool:
-    """Alleen toestaan in een kanaal waar de bot actief is (heeft poll-IDs)."""
-    from apps.utils.poll_message import get_message_id
-
-    try:
-        cid = int(getattr(channel, "id", 0))
-    except Exception:  # pragma: no cover
-        return False
-    if not cid:
-        return False
-    for key in ("opening", "vrijdag", "zaterdag", "zondag", "stemmen", "notification_persistent", "notification_temp", "notification"):
-        try:
-            if get_message_id(cid, key):
-                return True
-        except Exception:  # pragma: no cover
-            # defensief: negeer kapotte opslag
-            continue
-    return False
 
 
 def _is_denied_channel(channel) -> bool:
@@ -220,7 +199,7 @@ class PollStatus(commands.Cog):
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
     # -----------------------------
-    # /dmk-poll-notify (fallback)
+    # /dmk-poll-notify
     # -----------------------------
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
@@ -229,67 +208,103 @@ class PollStatus(commands.Cog):
         description="Stuur handmatig een notificatie voor DMK-poll.",
     )
     @app_commands.describe(
-        dag="Optioneel: vrijdag, zaterdag of zondag. Zonder dag wordt de algemene resetmelding gestuurd."
+        notificatie="Kies een standaard notificatietekst.",
+        eigen_tekst="Optioneel: eigen notificatietekst (overschrijft standaard keuze)."
     )
     @app_commands.choices(
-        dag=[
-            app_commands.Choice(name="vrijdag", value="vrijdag"),
-            app_commands.Choice(name="zaterdag", value="zaterdag"),
-            app_commands.Choice(name="zondag", value="zondag"),
+        notificatie=[
+            app_commands.Choice(name=notif.name, value=notif.name)
+            for notif in NOTIFICATION_TEXTS
         ]
     )
     async def notify_fallback(
         self,
         interaction: discord.Interaction,
-        dag: Optional[str] = None,
+        notificatie: Optional[str] = None,
+        eigen_tekst: Optional[str] = None,
     ):
         await interaction.response.defer(ephemeral=True)
         channel = getattr(interaction, "channel", None)
         if channel is None:
+            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
 
-        # 1) kanaal is uitgeschakeld → stil terug
-        if is_channel_disabled(getattr(channel, "id", 0)):
-            return
+        cid = getattr(channel, "id", 0)
 
-        # 2) kanaal is denied → stil terug
-        if _is_denied_channel(channel):
-            return
+        # 1) Kanaal is uitgeschakeld → toon sluitingsbericht met heropening tijd
+        if is_channel_disabled(cid):
+            try:
+                act_schedule, _ = get_effective_activation(cid)
+                opening_time = format_opening_time_from_schedule(act_schedule)
+                sluitingsbericht = get_text_poll_gesloten(opening_time)
 
-        # 3) alleen in actieve poll-kanalen → stil terug
-        allow_from_per_channel_only = os.getenv(
-            "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-        ).lower() in {"1", "true", "yes", "y"}
-        if allow_from_per_channel_only and not _is_poll_channel(channel):
-            return
+                send = getattr(channel, "send", None)
+                if send:
+                    from apps.utils.discord_client import safe_call
+                    await safe_call(send, content=sluitingsbericht)
 
-        try:
-            if dag:
-                dag_str = dag.lower()
-                handled = await scheduler.notify_non_voters(
-                    self.bot, dag=dag_str, channel=channel
+                await interaction.followup.send(
+                    f"Sluitingsbericht verstuurd (poll gaat open: **{opening_time}**).", ephemeral=True
                 )
-                if handled:
-                    await interaction.followup.send(
-                        f"Notificatie voor **{dag_str}** is verstuurd.", ephemeral=True
-                    )
+            except Exception as e:  # pragma: no cover
+                await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            return
+
+        # 2) Kanaal is denied → stil terug
+        if _is_denied_channel(channel):
+            await interaction.followup.send("❌ Dit kanaal is uitgesloten van notificaties.", ephemeral=True)
+            return
+
+        # 3) Zet scheduler aan (enable channel voor scheduler)
+        from apps.utils.poll_message import set_channel_disabled
+        set_channel_disabled(cid, False)
+
+        # 4) Bepaal de te versturen tekst
+        try:
+            # Eigen tekst heeft prioriteit
+            if eigen_tekst:
+                notification_text = eigen_tekst
+                notification_name = "Eigen tekst"
+            elif notificatie:
+                notification_name = notificatie
+
+                # Dag-specifieke herinneringen gebruiken helper functie
+                if notificatie == "Herinnering vrijdag":
+                    notification_text = get_text_herinnering_dag("vrijdag")
+                elif notificatie == "Herinnering zaterdag":
+                    notification_text = get_text_herinnering_dag("zaterdag")
+                elif notificatie == "Herinnering zondag":
+                    notification_text = get_text_herinnering_dag("zondag")
+                elif notificatie == "Poll gesloten":
+                    # Poll gesloten moet dynamisch opening time gebruiken
+                    act_schedule, _ = get_effective_activation(cid)
+                    opening_time = format_opening_time_from_schedule(act_schedule)
+                    notification_text = get_text_poll_gesloten(opening_time)
                 else:
-                    await interaction.followup.send(
-                        f"Geen notificatie verstuurd voor **{dag_str}** (geen niet-stemmers gevonden).",
-                        ephemeral=True,
-                    )
+                    # Zoek standaard notificatie op naam
+                    notif = get_notification_by_name(notificatie)
+                    if notif:
+                        notification_text = notif.content
+                    else:
+                        await interaction.followup.send("❌ Onbekende notificatie geselecteerd.", ephemeral=True)
+                        return
+            else:
+                await interaction.followup.send(
+                    "❌ Geef een notificatie of eigen tekst op.",
+                    ephemeral=True
+                )
                 return
 
-            # Geen dag → algemene melding via notificatiebericht
+            # Verstuur notificatie
             from apps.utils.mention_utils import send_temporary_mention
 
-            await send_temporary_mention(channel, mentions="@everyone", text=RESET_TEXT.replace("@everyone ", ""))
+            await send_temporary_mention(channel, mentions="@everyone", text=notification_text)
             await interaction.followup.send(
-                "Algemene melding is verstuurd.", ephemeral=True
+                f"✅ Notificatie verstuurd: **{notification_name}**", ephemeral=True
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"Er ging iets mis: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
