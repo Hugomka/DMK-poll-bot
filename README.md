@@ -248,7 +248,7 @@ DMK-poll-bot/
 │   │   ├── poll_message.json       # Template voor bericht-IDs
 │   │   └── votes.json              # Template voor stem-opslag
 │   └── scheduler.py        # APScheduler taken (reset, herinneringen, notificaties, scheduling)
-├── tests/                  # Unittests (529 tests, ~96% coverage)
+├── tests/                  # Unittests met hoge coverage
 │   ├── test_poll_lifecycle*.py     # Tests voor lifecycle commando's
 │   ├── test_poll_guests.py         # Tests voor gast-commando's
 │   ├── test_poll_archive.py        # Tests voor archief commando's
@@ -393,7 +393,7 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ## 🧪 Testen en dekking
 
-De bot heeft **608 unittests** met **~96% code coverage** voor uitgebreide dekking van alle functionaliteit.
+De bot heeft uitgebreide unittests met hoge code coverage voor alle functionaliteit.
 
 Alle unittests draaien met:
 ```bash
@@ -429,8 +429,8 @@ De tests dekken onder andere:
 
 ### Recente test-verbeteringen
 
-De testdekking is recent significant verbeterd van ~59% naar ~96% door:
-- **529 comprehensive tests** die alle functionaliteit uitgebreid dekken
+De testdekking is recent significant verbeterd door:
+- Comprehensive tests die alle functionaliteit uitgebreid dekken
 - Uitgebreide tests voor exception handling in alle modules
 - Tests voor edge cases en error scenarios
 - Tests voor scheduler deadline mode en Misschien-flow
@@ -537,7 +537,7 @@ De codebase is recent gerefactored voor betere onderhoudbaarheid:
   - `poll_status.py` - Status en notificaties
 - **UI componenten**: Toegevoegd cleanup_confirmation.py voor oude berichten
 - **Mention utilities**: Uitgebreid met display names en auto-cleanup functies
-- **Test coverage**: Verbeterd van 88% naar 96% met uitgebreide tests
+- **Test coverage**: Significant verbeterd met uitgebreide tests
 
 ### Nieuwe features toevoegen
 
@@ -545,7 +545,7 @@ De codebase is recent gerefactored voor betere onderhoudbaarheid:
 2. Implementeer de feature in de juiste module
 3. Update de README met nieuwe functionaliteit
 4. Test met `python -m unittest discover -v`
-5. Check coverage met `coverage report` (streef naar >85%)
+5. Check coverage met `coverage report` (streef naar hoge coverage)
 
 ### Debugging
 
@@ -573,8 +573,8 @@ cat .scheduler_state.json
 - Duidelijke scheiding van verantwoordelijkheden
 
 **Test coverage uitbreiding**:
-- Van 88% naar **96% code coverage**
-- **608 unittests** voor robuuste codebase
+- Significant verbeterde code coverage
+- Uitgebreide unittests voor robuuste codebase
 - Uitgebreide tests voor exception handling en edge cases
 - Tests voor alle nieuwe modules en functies
 - Tests voor permissions en command defaults
