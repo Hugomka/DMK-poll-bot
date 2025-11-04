@@ -254,7 +254,7 @@ class TestSchedulerMisschienFlow(BaseTestCase):
                 scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
             ),
             patch(
-                "apps.utils.discord_client.fetch_message_or_none", mock_fetch_message
+                "apps.scheduler.fetch_message_or_none", mock_fetch_message
             ),
             patch.object(scheduler, "safe_call", mock_safe_call),
             patch.object(scheduler, "clear_message_id") as mock_clear,

@@ -152,21 +152,153 @@ def _is_deadline_mode(channel_id: int, dag: str) -> bool:
         return True  # Bij fout, standaard 'deadline' modus aannemen
 
 
-async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
-    """
-    Herinner leden die voor geen enkele dag hebben gestemd (donderdagavond).
-    Dit wordt één keer per week verstuurd.
-    Alleen voor kanalen in 'deadline' modus.
-    """
-    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
-    deny_names = set(
+# ============================================================================
+# Helper functies om code-duplicatie te verminderen (DRY principe)
+# ============================================================================
+
+
+def _get_deny_channel_names() -> set[str]:
+    """Load en parse DENY_CHANNEL_NAMES environment variable."""
+    return set(
         n.strip().lower()
         for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
         if n.strip()
     )
-    allow_from_per_channel_only = os.getenv(
-        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-    ).lower() in {"1", "true", "yes", "y"}
+
+
+def _extract_owner_id(uid: Union[str, int]) -> str:
+    """Extraheer owner ID, handelt gaststemmen af (format: "owner_id_guest::guest_name")."""
+    uid_str = str(uid)
+    if "_guest::" in uid_str:
+        return uid_str.split("_guest::", 1)[0]
+    return uid_str
+
+
+async def _load_channel_votes(guild, channel) -> dict:
+    """Laad stemmen voor een specifiek guild/kanaal met veilige defaults."""
+    gid = getattr(guild, "id", "0")
+    cid = getattr(channel, "id", "0")
+    return await load_votes(gid, cid) or {}
+
+
+async def _get_voted_ids(
+    votes: dict, dag: Optional[str] = None, vote_type: str = "any"
+) -> set[int]:
+    """Extraheer user IDs die hebben gestemd voor specifieke dag/type."""
+    voted_ids: set[int] = set()
+
+    for uid, dagen_map in votes.items():
+        if not isinstance(dagen_map, dict):
+            continue
+
+        owner_id_str = _extract_owner_id(uid)
+        try:
+            owner_id = int(owner_id_str)
+        except (ValueError, TypeError):
+            continue
+
+        if dag:
+            # Dag-specifieke check
+            tijden = (dagen_map or {}).get(dag, [])
+            if isinstance(tijden, list):
+                if vote_type == "any":
+                    if tijden:
+                        voted_ids.add(owner_id)
+                elif vote_type in tijden:
+                    voted_ids.add(owner_id)
+        else:
+            # Weekend-brede check
+            for tijden in dagen_map.values():
+                if isinstance(tijden, list) and tijden:
+                    voted_ids.add(owner_id)
+                    break
+
+    return voted_ids
+
+
+def _get_non_voter_mentions(channel, voted_ids: set[int]) -> List[str]:
+    """Haal mentions op voor kanaalleden die niet hebben gestemd."""
+    mentions = []
+    members = getattr(channel, "members", [])
+
+    for member in members:
+        if getattr(member, "bot", False):
+            continue
+
+        mid = getattr(member, "id", None)
+        if mid and mid not in voted_ids:
+            mention = getattr(member, "mention", f"<@{mid}>")
+            if mention:
+                mentions.append(mention)
+
+    return mentions
+
+
+async def _delete_poll_message(
+    channel, cid: int, key: str, fallback_text: str = "📴 Dit bericht is gesloten."
+) -> None:
+    """Verwijder poll-bericht op key, met fallback naar bewerken."""
+    msg_id = get_message_id(cid, key)
+    if not msg_id:
+        return
+
+    msg = await fetch_message_or_none(channel, msg_id)
+    if msg is not None:
+        try:
+            await safe_call(msg.delete)
+        except Exception:  # pragma: no cover
+            await safe_call(msg.edit, content=fallback_text, view=None)
+
+    clear_message_id(cid, key)
+
+
+async def _clear_notification_messages(channel, cid: int) -> None:
+    """Wis alle notificatieberichten (temp, persistent, en legacy)."""
+    notification_keys = [
+        "notification_temp",
+        "notification_persistent",
+        "notification",  # Legacy key
+    ]
+
+    for key in notification_keys:
+        await _delete_poll_message(
+            channel, cid, key, fallback_text="📴 Notificaties gesloten."
+        )
+
+
+async def _update_or_create_message(
+    channel, cid: int, key: str, content: str, view=None
+) -> Optional[discord.Message]:
+    """Update bestaand bericht of maak nieuw bericht aan."""
+    send = getattr(channel, "send", None)
+    if not send:
+        return None
+
+    msg_id = get_message_id(cid, key)
+
+    if msg_id:
+        msg = await fetch_message_or_none(channel, msg_id)
+        if msg is not None:
+            await safe_call(msg.edit, content=content, view=view)
+            return msg
+
+    # Maak nieuw bericht
+    msg = await safe_call(send, content=content, view=view)
+    if msg is not None:
+        save_message_id(cid, key, msg.id)
+
+    return msg
+
+
+# ============================================================================
+# Scheduler functies
+# ============================================================================
+
+
+async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
+    """Herinner donderdagavond leden die nog niet hebben gestemd (alleen deadline modus)."""
+    # DENY_CHANNEL_NAMES check
+    deny_names = _get_deny_channel_names()
 
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
@@ -188,43 +320,12 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
             if ch_name in deny_names:
                 continue
 
-            # Check ALLOW_FROM_PER_CHANNEL_ONLY
-            if allow_from_per_channel_only:
-                try:
-                    has_poll = any(
-                        get_message_id(cid, key)
-                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
-                    )
-                    if not has_poll:
-                        continue
-                except Exception:  # pragma: no cover
-                    continue
-            scoped = (
-                await load_votes(getattr(guild, "id", "0"), getattr(channel, "id", "0"))
-                or {}
-            )
-            # verzamel IDs die voor één of meer dagen hebben gestemd
-            voted_ids: set[str] = set()
-            for uid, per_dag in scoped.items():
-                for tijden in (per_dag or {}).values():
-                    if tijden:
-                        actual_uid = (
-                            uid.split("_guest::", 1)[0]
-                            if "_guest::" in str(uid)
-                            else uid
-                        )
-                        voted_ids.add(str(actual_uid))
-            # Alleen leden die toegang hebben tot dit specifieke kanaal
-            members = getattr(channel, "members", [])
-            non_voters: list[str] = []
-            for member in members:
-                if getattr(member, "bot", False):
-                    continue
-                m_id = str(getattr(member, "id", ""))
-                if m_id not in voted_ids:
-                    mention = getattr(member, "mention", None)
-                    if mention:
-                        non_voters.append(mention)
+            # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
+            # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
+            # Laad stemmen en vind niet-stemmers
+            votes = await _load_channel_votes(guild, channel)
+            voted_ids = await _get_voted_ids(votes)
+            non_voters = _get_non_voter_mentions(channel, voted_ids)
             if non_voters:
                 # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
                 mentions_str = ", ".join(non_voters)
@@ -593,15 +694,8 @@ async def notify_non_voters(  # pragma: no cover
         # Scheduler-modus: alle guilds
         guilds_to_process = getattr(bot, "guilds", []) or []
 
-    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
-    deny_names = set(
-        n.strip().lower()
-        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
-        if n.strip()
-    )
-    allow_from_per_channel_only = os.getenv(
-        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-    ).lower() in {"1", "true", "yes", "y"}
+    # DENY_CHANNEL_NAMES check
+    deny_names = _get_deny_channel_names()
 
     def channels_for_guild(guild):
         if channel:
@@ -620,18 +714,8 @@ async def notify_non_voters(  # pragma: no cover
             ch_name = (getattr(ch, "name", "") or "").lower()
             if ch_name in deny_names:
                 continue
-            # Filter op ALLOW_FROM_PER_CHANNEL_ONLY
-            if allow_from_per_channel_only:
-                try:
-                    cid = int(getattr(ch, "id", 0))
-                    has_poll = any(
-                        get_message_id(cid, key)
-                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
-                    )
-                    if not has_poll:
-                        continue
-                except Exception:  # pragma: no cover
-                    continue
+            # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
+            # Notificaties werken op data-niveau, niet afhankelijk van berichten
             filtered.append(ch)
         return filtered
 
@@ -667,11 +751,7 @@ async def notify_non_voters(  # pragma: no cover
             if dag:
                 # dag-specifiek
                 for uid, dagen_map in votes.items():
-                    owner_str = (
-                        uid.split("_guest::", 1)[0]
-                        if isinstance(uid, str)
-                        else str(uid)
-                    )
+                    owner_str = _extract_owner_id(uid)
                     try:
                         owner = int(owner_str)
                     except Exception:  # pragma: no cover
@@ -683,11 +763,7 @@ async def notify_non_voters(  # pragma: no cover
             else:
                 # weekend-breed (oud gedrag)
                 for uid, dagen_map in votes.items():
-                    owner_str = (
-                        uid.split("_guest::", 1)[0]
-                        if isinstance(uid, str)
-                        else str(uid)
-                    )
+                    owner_str = _extract_owner_id(uid)
                     try:
                         owner = int(owner_str)
                     except Exception:  # pragma: no cover
@@ -741,15 +817,8 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
     KEY_19 = "om 19:00 uur"
     KEY_2030 = "om 20:30 uur"
 
-    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
-    deny_names = set(
-        n.strip().lower()
-        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
-        if n.strip()
-    )
-    allow_from_per_channel_only = os.getenv(
-        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-    ).lower() in {"1", "true", "yes", "y"}
+    # DENY_CHANNEL_NAMES check
+    deny_names = _get_deny_channel_names()
 
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
@@ -766,17 +835,8 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             if ch_name in deny_names:
                 continue
 
-            # Check ALLOW_FROM_PER_CHANNEL_ONLY
-            if allow_from_per_channel_only:
-                try:
-                    has_poll = any(
-                        get_message_id(cid, key)
-                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
-                    )
-                    if not has_poll:
-                        continue
-                except Exception:  # pragma: no cover
-                    continue
+            # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
+            # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
             scoped = (
                 await load_votes(
@@ -875,18 +935,8 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
             except Exception:  # pragma: no cover
                 continue
 
-            # Check of dit kanaal actieve poll-berichten heeft
-            has_poll = False
-            for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
-                try:
-                    if get_message_id(cid, key):
-                        has_poll = True
-                        break
-                except Exception:  # pragma: no cover
-                    pass
-
-            if not has_poll:
-                continue  # Skip kanalen zonder actieve polls
+            # Skip als kanaal uitgeschakeld is (check al gedaan, maar voor duidelijkheid)
+            # Reset werkt op data-niveau, niet afhankelijk van berichten
 
             # Reset votes voor dit specifieke kanaal
             try:
@@ -958,26 +1008,8 @@ async def notify_for_channel(channel, dag: str) -> bool:  # pragma: no cover
         if ch_name in deny_names:
             return False
 
-        # Alleen in actieve poll-kanalen wanneer ingeschakeld
-        allow_from_per_channel_only = os.getenv(
-            "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-        ).lower() in {"1", "true", "yes", "y"}
-        has_poll = False
-        if allow_from_per_channel_only:
-            try:
-                cid = int(getattr(channel, "id", 0))
-            except Exception:  # pragma: no cover
-                cid = 0
-            if cid:
-                for key in ("vrijdag", "zaterdag", "zondag", "stemmen"):
-                    try:
-                        if get_message_id(cid, key):
-                            has_poll = True
-                            break
-                    except Exception:  # pragma: no cover
-                        pass
-            if not has_poll:
-                return False
+        # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
+        # Notificaties werken op data-niveau, niet afhankelijk van berichten
 
         guild = getattr(channel, "guild", None)
         gid = getattr(guild, "id", "0") if guild is not None else "0"
@@ -1042,15 +1074,8 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
     """
     log_job("misschien_notify", dag=dag, status="executed")
 
-    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
-    deny_names = set(
-        n.strip().lower()
-        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
-        if n.strip()
-    )
-    allow_from_per_channel_only = os.getenv(
-        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-    ).lower() in {"1", "true", "yes", "y"}
+    # DENY_CHANNEL_NAMES check
+    deny_names = _get_deny_channel_names()
 
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
@@ -1072,51 +1097,26 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
             if ch_name in deny_names:
                 continue
 
-            # Check ALLOW_FROM_PER_CHANNEL_ONLY
-            if allow_from_per_channel_only:
-                try:
-                    has_poll = any(
-                        get_message_id(cid, key)
-                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
-                    )
-                    if not has_poll:
-                        continue
-                except Exception:  # pragma: no cover
-                    continue
+            # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
+            # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
             gid = getattr(guild, "id", "0")
             votes = await load_votes(gid, cid) or {}
 
-            # Find "misschien" voters for this dag
-            misschien_voter_ids: set[str] = set()
-            channel_members = getattr(channel, "members", [])
-            channel_member_ids = {str(getattr(m, "id", "")): m for m in channel_members}
+            # Vind "misschien" stemmers voor deze dag
+            misschien_voter_ids = await _get_voted_ids(votes, dag=dag, vote_type="misschien")
+            misschien_voters = _get_non_voter_mentions(channel, set())
 
-            for uid, per_dag in votes.items():
-                tijden = (per_dag or {}).get(dag, [])
-                if not isinstance(tijden, list):
+            # Filter alleen voor mensen die "misschien" hebben gestemd
+            misschien_voters = []
+            for member in getattr(channel, "members", []):
+                if getattr(member, "bot", False):
                     continue
-
-                if "misschien" in tijden:
-                    # Extract owner ID (handle guests)
-                    actual_uid = (
-                        uid.split("_guest::", 1)[0]
-                        if isinstance(uid, str) and "_guest::" in uid
-                        else uid
-                    )
-                    misschien_voter_ids.add(str(actual_uid))
-
-            # Convert IDs to mentions (deduplicated)
-            misschien_voters: list[str] = []
-            for uid in misschien_voter_ids:
-                try:
-                    member = channel_member_ids.get(uid)
-                    if member and not getattr(member, "bot", False):
-                        mention = getattr(member, "mention", None)
-                        if mention:
-                            misschien_voters.append(mention)
-                except Exception:  # pragma: no cover
-                    continue
+                mid = getattr(member, "id", None)
+                if mid and mid in misschien_voter_ids:
+                    mention = getattr(member, "mention", f"<@{mid}>")
+                    if mention:
+                        misschien_voters.append(mention)
 
             if not misschien_voters:
                 continue  # No misschien voters in this channel
@@ -1261,45 +1261,8 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                                 )
                         clear_message_id(cid, "stemmen")
 
-                    # 3) Notificatieberichten verwijderen (both temp and persistent)
-                    # Clear temporary notification
-                    n_mid_temp = get_message_id(cid, "notification_temp")
-                    if n_mid_temp:
-                        n_msg = await fetch_message_or_none(channel, n_mid_temp)
-                        if n_msg is not None:
-                            try:
-                                await safe_call(n_msg.delete)
-                            except Exception:  # pragma: no cover
-                                await safe_call(
-                                    n_msg.edit, content="📴 Notificaties gesloten.", view=None
-                                )
-                        clear_message_id(cid, "notification_temp")
-
-                    # Clear persistent notification
-                    n_mid_persistent = get_message_id(cid, "notification_persistent")
-                    if n_mid_persistent:
-                        n_msg = await fetch_message_or_none(channel, n_mid_persistent)
-                        if n_msg is not None:
-                            try:
-                                await safe_call(n_msg.delete)
-                            except Exception:  # pragma: no cover
-                                await safe_call(
-                                    n_msg.edit, content="📴 Notificaties gesloten.", view=None
-                                )
-                        clear_message_id(cid, "notification_persistent")
-
-                    # Also clear old "notification" key for backward compatibility
-                    n_mid_old = get_message_id(cid, "notification")
-                    if n_mid_old:
-                        n_msg = await fetch_message_or_none(channel, n_mid_old)
-                        if n_msg is not None:
-                            try:
-                                await safe_call(n_msg.delete)
-                            except Exception:  # pragma: no cover
-                                await safe_call(
-                                    n_msg.edit, content="📴 Notificaties gesloten.", view=None
-                                )
-                        clear_message_id(cid, "notification")
+                    # 3) Notificatieberichten verwijderen (temp, persistent en legacy)
+                    await _clear_notification_messages(channel, cid)
 
                     # 4) Archiveer huidige week's data voordat we deactiveren
                     try:
@@ -1500,15 +1463,8 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
     """
     log_job("convert_misschien", dag=dag, status="executed")
 
-    # DENY_CHANNEL_NAMES en ALLOW_FROM_PER_CHANNEL_ONLY checks
-    deny_names = set(
-        n.strip().lower()
-        for n in os.getenv("DENY_CHANNEL_NAMES", "").split(",")
-        if n.strip()
-    )
-    allow_from_per_channel_only = os.getenv(
-        "ALLOW_FROM_PER_CHANNEL_ONLY", "true"
-    ).lower() in {"1", "true", "yes", "y"}
+    # DENY_CHANNEL_NAMES check
+    deny_names = _get_deny_channel_names()
 
     for guild in getattr(bot, "guilds", []) or []:
         for channel in get_channels(guild):
@@ -1530,17 +1486,8 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
             if ch_name in deny_names:
                 continue
 
-            # Check ALLOW_FROM_PER_CHANNEL_ONLY
-            if allow_from_per_channel_only:
-                try:
-                    has_poll = any(
-                        get_message_id(cid, key)
-                        for key in ("vrijdag", "zaterdag", "zondag", "stemmen")
-                    )
-                    if not has_poll:
-                        continue
-                except Exception:  # pragma: no cover
-                    continue
+            # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
+            # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
             gid = getattr(guild, "id", "0")
             votes = await load_votes(gid, cid) or {}
@@ -1584,32 +1531,8 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
             # Delete notification messages if they still exist (should auto-delete anyway)
             # Since misschien notification is at 17:00 and conversion is at 18:00,
             # the notification will be auto-deleted. This is a safety cleanup.
-            # Clear both temp and persistent notification keys for safety.
+            # Wis alle notificatieberichten (temp, persistent en legacy)
             try:
-                from apps.utils.discord_client import fetch_message_or_none
-
-                # Clear temporary notification
-                msg_id_temp = get_message_id(cid, "notification_temp")
-                if msg_id_temp:
-                    msg = await fetch_message_or_none(channel, msg_id_temp)
-                    if msg is not None:
-                        await safe_call(msg.delete)
-                    clear_message_id(cid, "notification_temp")
-
-                # Clear persistent notification
-                msg_id_persistent = get_message_id(cid, "notification_persistent")
-                if msg_id_persistent:
-                    msg = await fetch_message_or_none(channel, msg_id_persistent)
-                    if msg is not None:
-                        await safe_call(msg.delete)
-                    clear_message_id(cid, "notification_persistent")
-
-                # Also clear old "notification" key for backward compatibility
-                msg_id_old = get_message_id(cid, "notification")
-                if msg_id_old:
-                    msg = await fetch_message_or_none(channel, msg_id_old)
-                    if msg is not None:
-                        await safe_call(msg.delete)
-                    clear_message_id(cid, "notification")
+                await _clear_notification_messages(channel, cid)
             except Exception:  # pragma: no cover
                 pass

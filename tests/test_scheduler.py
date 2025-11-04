@@ -182,8 +182,8 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(result)
 
-    async def test_reset_polls_fallback_to_global_reset(self):
-        """Test reset_polls valt terug op globale reset als geen kanalen gereset worden."""
+    async def test_reset_polls_resets_all_channels_regardless_of_messages(self):
+        """Test reset_polls reset alle kanalen, ook zonder berichten (werkt op data-niveau)."""
 
         class Channel:
             def __init__(self, id):
@@ -206,21 +206,20 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
         def fake_get_channels(guild):
             return guild.text_channels
 
-        def fake_get_message_id(_cid, _key):
-            return None  # Geen actieve polls
-
         with (
             patch.object(scheduler, "_within_reset_window", return_value=True),
             patch.object(scheduler, "_read_state", return_value={}),
             patch.object(scheduler, "_write_state", lambda s: None),
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
-            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
-            patch.object(scheduler, "reset_votes", new_callable=AsyncMock) as mock_rv,
+            patch.object(scheduler, "reset_votes_scoped", new_callable=AsyncMock) as mock_rvs,
+            patch.object(scheduler, "clear_message_id", side_effect=lambda *args: None),
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock),
         ):
             result = await scheduler.reset_polls(bot)
 
         self.assertTrue(result)
-        mock_rv.assert_awaited_once()
+        # Controleer dat reset_votes_scoped werd aangeroepen voor het kanaal
+        mock_rvs.assert_awaited_once_with(1, 10)
 
     async def test_load_poll_config_corrupt_json(self):
         """Test _load_poll_config met corrupt JSON bestand."""
