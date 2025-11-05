@@ -64,6 +64,41 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
         for d in (vr, za, zo):
             self.assertRegex(d, r"^\d{4}-\d{2}-\d{2}$")
 
+    async def test_week_dates_eu_returns_upcoming_weekend(self):
+        """Test dat _week_dates_eu aankomende weekend retourneert, niet vorige."""
+        # Dinsdag 5 november 2025
+        tuesday = datetime(2025, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        week, vr, za, zo = ar._week_dates_eu(tuesday)
+
+        # Verwacht aankomend weekend: vrijdag 7, zaterdag 8, zondag 9 november
+        self.assertEqual(vr, "2025-11-07")
+        self.assertEqual(za, "2025-11-08")
+        self.assertEqual(zo, "2025-11-09")
+        self.assertEqual(week, "2025-W45")  # Week 45
+
+    async def test_week_dates_eu_on_friday_returns_same_friday(self):
+        """Test dat _week_dates_eu op vrijdag diezelfde vrijdag retourneert."""
+        # Vrijdag 7 november 2025
+        friday = datetime(2025, 11, 7, 10, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        _, vr, za, zo = ar._week_dates_eu(friday)
+
+        # Verwacht: vrijdag 7 (vandaag), zaterdag 8, zondag 9
+        self.assertEqual(vr, "2025-11-07")
+        self.assertEqual(za, "2025-11-08")
+        self.assertEqual(zo, "2025-11-09")
+
+    async def test_week_dates_eu_on_monday_returns_next_friday(self):
+        """Test dat _week_dates_eu op maandag volgende vrijdag retourneert."""
+        # Maandag 10 november 2025 (na het weekend)
+        monday = datetime(2025, 11, 10, 9, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        week, vr, za, zo = ar._week_dates_eu(monday)
+
+        # Verwacht: vrijdag 14, zaterdag 15, zondag 16 november
+        self.assertEqual(vr, "2025-11-14")
+        self.assertEqual(za, "2025-11-15")
+        self.assertEqual(zo, "2025-11-16")
+        self.assertEqual(week, "2025-W46")
+
     async def test_build_counts_skips_unknown_day_and_time(self):
         """
         _build_counts_from_votes:

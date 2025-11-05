@@ -1,16 +1,38 @@
 # apps/utils/message_builder.py
 
+from datetime import datetime, timedelta
 from typing import Any
 
 import discord
+import pytz
 
 from apps.entities.poll_option import get_poll_options
+from apps.utils.poll_settings import get_setting
 from apps.utils.poll_storage import (
     get_counts_for_day,
-    get_non_voters_for_day as get_non_voters_from_storage,
     load_votes,
 )
-from apps.utils.poll_settings import get_setting
+from apps.utils.poll_storage import (
+    get_non_voters_for_day as get_non_voters_from_storage,
+)
+
+
+def _get_next_weekday_date(dag: str) -> str:
+    """Bereken datum voor aankomende vrijdag/zaterdag/zondag in DD-MM formaat."""
+    tz = pytz.timezone("Europe/Amsterdam")
+    now = datetime.now(tz)
+
+    dag_mapping = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
+    target_weekday = dag_mapping.get(dag.lower())
+    if target_weekday is None:
+        return ""
+
+    days_ahead = target_weekday - now.weekday()
+    if days_ahead < 0:
+        days_ahead += 7
+
+    target_date = now + timedelta(days=days_ahead)
+    return target_date.strftime("%d-%m")
 
 
 async def build_poll_message_for_day_async(
@@ -34,7 +56,8 @@ async def build_poll_message_for_day_async(
     - guild: optioneel, voor mentions in andere helpers
     - channel: optioneel, voor niet-stemmers tracking
     """
-    title = f"**DMK-poll voor {dag.capitalize()}:**"
+    datum = _get_next_weekday_date(dag)
+    title = f"**DMK-poll voor {dag.capitalize()} ({datum}):**"
     if pauze:
         title += " **- _(Gepauzeerd)_**"
     message = f"{title}\n"
@@ -343,7 +366,9 @@ async def get_non_voters_for_day(
 
     # Try to get non-voter IDs from storage
     try:
-        count, non_voter_ids = await get_non_voters_from_storage(dag, guild_id, channel_id)
+        count, non_voter_ids = await get_non_voters_from_storage(
+            dag, guild_id, channel_id
+        )
 
         # If we have stored non-voters, use them
         if count > 0 and non_voter_ids:
@@ -352,9 +377,9 @@ async def get_non_voters_for_day(
 
             for member_id in non_voter_ids:
                 try:
-                    member = guild.get_member(int(member_id)) or await guild.fetch_member(
+                    member = guild.get_member(
                         int(member_id)
-                    )
+                    ) or await guild.fetch_member(int(member_id))
                     if member:
                         display = (
                             getattr(member, "display_name", None)

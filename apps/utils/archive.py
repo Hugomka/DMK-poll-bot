@@ -179,15 +179,18 @@ def _week_dates_eu(now):
     if now.tzinfo is None:
         now = pytz.timezone("Europe/Amsterdam").localize(now)
 
-    def last_weekday(now_dt, target_weekday):
-        delta = (now_dt.weekday() - target_weekday) % 7
-        return (now_dt - timedelta(days=delta)).date()
+    def next_weekday(now_dt, target_weekday):
+        """Bereken aankomende weekdag (of vandaag als het die dag is)."""
+        days_ahead = target_weekday - now_dt.weekday()
+        if days_ahead < 0:  # Doeldag is al geweest deze week
+            days_ahead += 7
+        return (now_dt + timedelta(days=days_ahead)).date()
 
-    vr = last_weekday(now, 4)
-    za = last_weekday(now, 5)
-    zo = last_weekday(now, 6)
+    vr = next_weekday(now, 4)  # Vrijdag
+    za = next_weekday(now, 5)  # Zaterdag
+    zo = next_weekday(now, 6)  # Zondag
 
-    # ISO week format: YYYY-Www (bijvoorbeeld 2025-W44)
+    # ISO week format: YYYY-Www (bijvoorbeeld 2025-W45)
     iso_cal = vr.isocalendar()
     week = f"{iso_cal.year}-W{iso_cal.week:02d}"
     return (week, vr.isoformat(), za.isoformat(), zo.isoformat())

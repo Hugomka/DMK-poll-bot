@@ -12,6 +12,7 @@ from discord.ext import commands
 
 from apps.commands import with_default_suffix
 from apps.utils.archive import (
+    append_week_snapshot_scoped,
     archive_exists_scoped,
     create_archive,
     open_archive_bytes_scoped,
@@ -53,6 +54,9 @@ class PollArchive(commands.Cog):
         cid = int(getattr(channel, "id", 0))
 
         try:
+            # Update archief met huidige week data (overschrijft bestaande week-rij)
+            await append_week_snapshot_scoped(gid, cid, channel=channel)
+
             if not archive_exists_scoped(gid, cid):
                 await interaction.followup.send(
                     "Er is nog geen archief voor dit kanaal.", ephemeral=True

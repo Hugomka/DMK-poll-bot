@@ -332,7 +332,7 @@ De bot gebruikt APScheduler voor automatische taken:
 
 | Tijdstip | Dag | Taak | Beschrijving |
 |---|---|---|---|
-| **Dinsdag 20:00** | Wekelijks | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
+| **20:00** | Dinsdag | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
 | **16:00** | Vrijdag, Zaterdag, Zondag | Herinnering niet-stemmers | Mention sturen naar leden die nog niet gestemd hebben voor die dag (tijdelijk, 5 sec) |
 | **17:00** | Vrijdag, Zaterdag, Zondag | Misschien-bevestiging | "Stem Nu" knop sturen naar Misschien-stemmers met leidende tijd |
 | **18:00** | Dagelijks | Poll-update | Aantallen tonen, beslissingsregel toevoegen onder de poll |
@@ -612,5 +612,6 @@ Deze bot is open source. Zie [LICENSE](LICENSE) voor details.
 
 ---
 
-**Gemaakt met ❤️ voor de Deaf Mario Kart community**
-**DMK-poll-bot is ontwikkeld met hulp van Claude en ChatGPT.**
+**Gemaakt met ❤️ voor de Deaf Mario Kart community.**
+
+**DMK-poll-bot is ontwikkeld met hulp van [Claude](https://claude.com/claude-code), [Le Chat](https://chat.mistral.ai/chat) en [ChatGPT](https://chatgpt.com/).**
