@@ -177,8 +177,8 @@ class TestNotificationTextsList(unittest.TestCase):
     """Test NOTIFICATION_TEXTS lijst en gerelateerde functies."""
 
     def test_notification_texts_has_expected_count(self):
-        """Test dat NOTIFICATION_TEXTS 7 items heeft."""
-        self.assertEqual(len(NOTIFICATION_TEXTS), 7)
+        """Test dat NOTIFICATION_TEXTS 8 items heeft."""
+        self.assertEqual(len(NOTIFICATION_TEXTS), 8)
 
     def test_all_notification_texts_are_namedtuples(self):
         """Test dat alle items NotificationText namedtuples zijn."""
@@ -196,7 +196,7 @@ class TestNotificationTextsList(unittest.TestCase):
         """Test dat get_all_notification_names lijst teruggeeft."""
         names = get_all_notification_names()
         self.assertIsInstance(names, list)
-        self.assertEqual(len(names), 7)
+        self.assertEqual(len(names), 8)
 
     def test_get_all_notification_names_contains_expected_names(self):
         """Test dat alle verwachte namen aanwezig zijn."""
@@ -209,6 +209,7 @@ class TestNotificationTextsList(unittest.TestCase):
             "Herinnering zaterdag",
             "Herinnering zondag",
             "Herinnering weekend",
+            "Felicitatie (iedereen gestemd)",
         ]
         self.assertEqual(names, expected)
 

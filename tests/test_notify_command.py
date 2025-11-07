@@ -352,6 +352,106 @@ class TestNotifyFallbackCommand(BaseTestCase):
             msg = interaction.followup.last_text or ""
             assert "ping: none" in msg.lower()
 
+    async def test_notify_with_celebration(self):
+        """Test dat felicitatie notification embed + GIF bericht verstuurt."""
+        interaction, _channel, patcher = _mk_inter()
+
+        test_tenor_url = "https://tenor.com/view/test-gif-12345"
+
+        with patcher, patch(
+            "apps.utils.discord_client.safe_call", new_callable=AsyncMock
+        ) as mock_safe_call, patch(
+            "apps.commands.poll_status.get_celebration_gif_url"
+        ) as mock_get_url:
+            mock_get_url.return_value = test_tenor_url
+
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                notificatie="Felicitatie (iedereen gestemd)",
+            )
+            # Verify safe_call was called twice (embed + GIF URL)
+            assert mock_safe_call.await_count == 2
+
+            # Eerste call: embed met tekst
+            first_call_kwargs = mock_safe_call.call_args_list[0][1]
+            embed = first_call_kwargs.get("embed")
+            assert embed is not None
+            assert "🎉" in embed.title
+            assert "Iedereen heeft gestemd" in embed.title
+
+            # Tweede call: los bericht met GIF URL
+            second_call_kwargs = mock_safe_call.call_args_list[1][1]
+            content = second_call_kwargs.get("content")
+            assert content == test_tenor_url
+
+            # Confirmation should mention felicitatie
+            msg = interaction.followup.last_text or ""
+            assert "felicitatie" in msg.lower()
+
+    async def test_notify_celebration_with_tenor_fallback(self):
+        """Test dat lokale afbeelding wordt gestuurd als Tenor URL faalt."""
+        interaction, _channel, patcher = _mk_inter()
+
+        test_tenor_url = "https://tenor.com/view/test-gif-12345"
+
+        # Mock file object voor de afbeelding
+        mock_file = MagicMock()
+        mock_file.__enter__ = MagicMock(return_value=mock_file)
+        mock_file.__exit__ = MagicMock(return_value=False)
+        mock_file.read = MagicMock(return_value=b"fake image data")
+
+        with patcher, patch(
+            "apps.commands.poll_status.is_channel_disabled", return_value=False
+        ), patch(
+            "apps.utils.poll_message.set_channel_disabled"
+        ), patch(
+            "apps.utils.discord_client.safe_call", new_callable=AsyncMock
+        ) as mock_safe_call, patch(
+            "apps.commands.poll_status.get_celebration_gif_url"
+        ) as mock_get_url, patch(
+            "apps.commands.poll_status.os.path.exists"
+        ) as mock_exists, patch(
+            "apps.commands.poll_status.open", return_value=mock_file
+        ):
+            # Eerste call: embed succesvol
+            # Tweede call: Tenor URL faalt (return None)
+            # Derde call: lokale afbeelding succesvol
+            mock_safe_call.side_effect = [
+                MagicMock(id=999),  # Embed
+                None,  # Tenor faalt
+                MagicMock(id=1000)  # Lokale afbeelding
+            ]
+            mock_get_url.return_value = test_tenor_url
+            mock_exists.return_value = True
+
+            cog = poll_status.PollStatus(MagicMock())
+            await _invoke(
+                poll_status.PollStatus.notify_fallback,
+                cog,
+                interaction,
+                notificatie="Felicitatie (iedereen gestemd)",
+            )
+
+            # Verify safe_call was called 3x (embed + Tenor URL + lokale afbeelding)
+            assert mock_safe_call.await_count == 3
+
+            # Eerste call: embed
+            first_call_kwargs = mock_safe_call.call_args_list[0][1]
+            assert "embed" in first_call_kwargs
+
+            # Tweede call: Tenor URL
+            second_call_kwargs = mock_safe_call.call_args_list[1][1]
+            assert second_call_kwargs.get("content") == test_tenor_url
+
+            # Derde call: lokale afbeelding
+            third_call_kwargs = mock_safe_call.call_args_list[2][1]
+            assert "file" in third_call_kwargs
+            import discord
+            assert isinstance(third_call_kwargs["file"], discord.File)
+
     async def test_notify_with_custom_text_and_ping_here(self):
         """Test dat eigen tekst + ping=here correct werkt."""
         interaction, _channel, patcher = _mk_inter()
