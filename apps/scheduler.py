@@ -952,6 +952,14 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
                 except Exception:  # pragma: no cover
                     pass
 
+            # Wis celebration message
+            try:
+                from apps.utils.poll_message import remove_celebration_message
+
+                await remove_celebration_message(channel, cid)
+            except Exception:  # pragma: no cover
+                pass
+
             # Wis bekende message IDs
             for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
                 try:

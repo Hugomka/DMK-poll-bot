@@ -11,7 +11,7 @@ from discord.ui import Button, View
 
 from apps.entities.poll_option import get_poll_options, list_days
 from apps.logic.visibility import is_vote_button_visible
-from apps.utils.poll_message import update_poll_message
+from apps.utils.poll_message import check_all_voted_celebration, update_poll_message
 from apps.utils.poll_settings import is_paused
 from apps.utils.poll_storage import get_user_votes, toggle_vote
 
@@ -121,6 +121,10 @@ class PollButton(Button):
             # ✅ Update publieke poll (achtergrond, alleen deze dag)
             if interaction.channel is not None:
                 asyncio.create_task(update_poll_message(interaction.channel, self.dag))
+                # Check celebration (iedereen gestemd?)
+                asyncio.create_task(
+                    check_all_voted_celebration(interaction.channel, guild_id, channel_id)
+                )
 
         except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout bij verwerken stemknop: {e}")

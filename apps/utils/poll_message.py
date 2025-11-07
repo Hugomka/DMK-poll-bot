@@ -7,11 +7,13 @@ from datetime import datetime
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
+import discord
+
 from apps.logic.decision import build_decision_line
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import is_paused, should_hide_counts
-from apps.utils.poll_storage import update_non_voters
+from apps.utils.poll_storage import get_non_voters_for_day, load_votes, update_non_voters
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 
@@ -277,3 +279,61 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                     save_message_id(cid_val, d, new_msg.id)
             except Exception as e:  # pragma: no cover
                 print(f"❌ Fout bij aanmaken bericht voor {d}: {e}")
+
+
+async def check_all_voted_celebration(
+    channel: Any, guild_id: int, channel_id: int
+) -> None:
+    """Check of iedereen heeft gestemd en stuur/verwijder celebration message."""
+    try:
+        # Check alle 3 dagen voor niet-stemmers
+        votes = await load_votes(guild_id, channel_id)
+        dagen = ["vrijdag", "zaterdag", "zondag"]
+
+        all_voted = True
+        for dag in dagen:
+            count, _ = await get_non_voters_for_day(dag, guild_id, channel_id)
+            if count > 0:
+                all_voted = False
+                break
+
+        celebration_id = get_message_id(channel_id, "celebration")
+
+        if all_voted:
+            # Iedereen heeft gestemd! Stuur celebration als die nog niet bestaat
+            if not celebration_id:
+                embed = discord.Embed(
+                    title="🎉 Geweldig! Iedereen heeft gestemd!",
+                    description="Bedankt voor jullie inzet dit weekend!",
+                    color=discord.Color.gold()
+                )
+                embed.set_image(url="https://media1.tenor.com/m/7aYj9m-zlLcAAAAC/super-mario-ending-screen.gif")
+
+                send = getattr(channel, "send", None)
+                if send:
+                    new_msg = await safe_call(send, embed=embed)
+                    if new_msg:
+                        save_message_id(channel_id, "celebration", new_msg.id)
+        else:
+            # Niet iedereen heeft gestemd, verwijder celebration als die bestaat
+            if celebration_id:
+                msg = await fetch_message_or_none(channel, celebration_id)
+                if msg:
+                    await safe_call(msg.delete)
+                clear_message_id(channel_id, "celebration")
+
+    except Exception as e:  # pragma: no cover
+        print(f"❌ Fout bij celebration check: {e}")
+
+
+async def remove_celebration_message(channel: Any, channel_id: int) -> None:
+    """Verwijder celebration message (gebruikt bij reset)."""
+    try:
+        celebration_id = get_message_id(channel_id, "celebration")
+        if celebration_id:
+            msg = await fetch_message_or_none(channel, celebration_id)
+            if msg:
+                await safe_call(msg.delete)
+            clear_message_id(channel_id, "celebration")
+    except Exception as e:  # pragma: no cover
+        print(f"❌ Fout bij verwijderen celebration: {e}")
