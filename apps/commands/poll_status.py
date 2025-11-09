@@ -310,9 +310,27 @@ class PollStatus(commands.Cog):
             # Verstuur notificatie
             # Felicitatie is speciaal: stuurt embed + los GIF bericht
             if notificatie == "Felicitatie (iedereen gestemd)":
+                # Verwijder eerst ALLE oude bot-berichten in het kanaal (laatste 100)
+                # Dit voorkomt dat celebration berichten zich opstapelen
+                from apps.utils.discord_client import safe_call
+
+                try:
+                    bot_user_id = getattr(self.bot.user, "id", None)
+                    history_method = getattr(channel, "history", None)
+                    if bot_user_id and history_method:
+                        async for bericht in history_method(limit=100):
+                            # Verwijder alleen berichten van de bot
+                            if getattr(bericht.author, "id", None) == bot_user_id:
+                                try:
+                                    await safe_call(bericht.delete)
+                                except Exception:  # pragma: no cover
+                                    pass
+                except Exception:  # pragma: no cover
+                    pass  # Als cleanup faalt, ga gewoon door met celebration sturen
+
+                # Nu celebration berichten sturen
                 embed = create_celebration_embed()
 
-                from apps.utils.discord_client import safe_call
                 send = getattr(channel, "send", None)
                 if send:
                     # Stuur eerst embed met tekst

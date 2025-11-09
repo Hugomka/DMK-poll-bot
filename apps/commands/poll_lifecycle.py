@@ -14,10 +14,10 @@ from discord import app_commands
 from discord.ext import commands
 
 from apps import scheduler
+from apps.commands import with_default_suffix
 from apps.ui.poll_buttons import OneStemButtonView
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
-from apps.commands import with_default_suffix
 from apps.utils.poll_message import (
     clear_message_id,
     create_notification_message,
@@ -133,7 +133,9 @@ class PollLifecycle(commands.Cog):
             # Convert DD-MM-YYYY input to YYYY-MM-DD for internal storage
             datum_obj = datetime.strptime(datum, "%d-%m-%Y")
             datum_internal = datum_obj.strftime("%Y-%m-%d")
-            set_scheduled_activation(channel_id, activation_type, tijd, datum=datum_internal)
+            set_scheduled_activation(
+                channel_id, activation_type, tijd, datum=datum_internal
+            )
             dag_naam = [
                 "maandag",
                 "dinsdag",
@@ -177,10 +179,18 @@ class PollLifecycle(commands.Cog):
     async def on(  # pragma: no cover
         self,
         interaction: discord.Interaction,
-        dag: Literal[
-            "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"
-        ]
-        | None = None,
+        dag: (
+            Literal[
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ]
+            | None
+        ) = None,
         datum: str | None = None,
         tijd: str | None = None,
         frequentie: Literal["eenmalig", "wekelijks"] | None = None,
@@ -192,7 +202,9 @@ class PollLifecycle(commands.Cog):
             return
 
         # Valideer parameters
-        validation_error = self._validate_scheduling_params(dag, datum, tijd, frequentie)
+        validation_error = self._validate_scheduling_params(
+            dag, datum, tijd, frequentie
+        )
         if validation_error:
             await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
             return
@@ -302,7 +314,10 @@ class PollLifecycle(commands.Cog):
         )
 
     async def _plaats_polls(  # pragma: no cover
-        self, interaction: discord.Interaction, channel: Any, schedule_message: str | None = None
+        self,
+        interaction: discord.Interaction,
+        channel: Any,
+        schedule_message: str | None = None,
     ) -> None:
         """
         Plaats of update de poll-berichten in het kanaal.
@@ -432,7 +447,9 @@ class PollLifecycle(commands.Cog):
 
             # Stuur bevestiging (alleen als we direct vanuit on() komen, niet via opschoon-knoppen)
             try:
-                confirmation = "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt."
+                confirmation = (
+                    "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt."
+                )
                 if schedule_message:
                     confirmation += f"\n{schedule_message}"
                 await interaction.followup.send(
@@ -629,10 +646,18 @@ class PollLifecycle(commands.Cog):
     async def off(  # pragma: no cover
         self,
         interaction: discord.Interaction,
-        dag: Literal[
-            "maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"
-        ]
-        | None = None,
+        dag: (
+            Literal[
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ]
+            | None
+        ) = None,
         datum: str | None = None,
         tijd: str | None = None,
         frequentie: Literal["eenmalig", "wekelijks"] | None = None,
@@ -644,7 +669,9 @@ class PollLifecycle(commands.Cog):
             return
 
         # Valideer parameters
-        validation_error = self._validate_scheduling_params(dag, datum, tijd, frequentie)
+        validation_error = self._validate_scheduling_params(
+            dag, datum, tijd, frequentie
+        )
         if validation_error:
             await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
             return
@@ -684,7 +711,9 @@ class PollLifecycle(commands.Cog):
             # Convert DD-MM-YYYY input to YYYY-MM-DD for internal storage
             datum_obj = datetime.strptime(datum, "%d-%m-%Y")
             datum_internal = datum_obj.strftime("%Y-%m-%d")
-            set_scheduled_deactivation(channel_id, activation_type, tijd, datum=datum_internal)
+            set_scheduled_deactivation(
+                channel_id, activation_type, tijd, datum=datum_internal
+            )
             dag_naam = [
                 "maandag",
                 "dinsdag",
@@ -712,118 +741,52 @@ class PollLifecycle(commands.Cog):
         self, interaction: discord.Interaction, channel: Any
     ) -> None:
         """
-        Voer poll-off uit: kanaal leegmaken + scheduler uitschakelen.
+        Voer poll-off uit: verwijder alle bot-berichten + scheduler uitschakelen.
         """
-        dagen = ["vrijdag", "zaterdag", "zondag"]
-
         try:
-            gevonden = False
-
-            # 0) Opening bericht verwijderen
-            opening_mid = get_message_id(channel.id, "opening")
-            if opening_mid:
-                opening_msg = await fetch_message_or_none(channel, opening_mid)
-                if opening_msg is not None:
-                    try:
-                        await safe_call(opening_msg.delete)
-                    except Exception:  # pragma: no cover
-                        await safe_call(
-                            opening_msg.edit, content="📴 Poll gesloten.", view=None
-                        )
-                clear_message_id(channel.id, "opening")
-                gevonden = True
-
-            # 1) Dag-berichten verwijderen
-            for dag in dagen:
-                mid = get_message_id(channel.id, dag)
-                if not mid:
-                    continue
-                gevonden = True
-                msg = await fetch_message_or_none(channel, mid)
-                if msg is not None:
-                    try:
-                        await safe_call(msg.delete)
-                    except Exception:  # pragma: no cover
-                        afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
-                        await safe_call(msg.edit, content=afsluit_tekst, view=None)
-                clear_message_id(channel.id, dag)
-
-            # 2) Stemmen-bericht verwijderen
-            s_mid = get_message_id(channel.id, "stemmen")
-            if s_mid:
-                s_msg = await fetch_message_or_none(channel, s_mid)
-                if s_msg is not None:
-                    try:
-                        await safe_call(s_msg.delete)
-                    except Exception:  # pragma: no cover
-                        await safe_call(
-                            s_msg.edit, content="📴 Stemmen gesloten.", view=None
-                        )
-                clear_message_id(channel.id, "stemmen")
-
-            # 3) Notificatieberichten verwijderen (both temp and persistent)
-            # Clear temporary notification
-            n_mid_temp = get_message_id(channel.id, "notification_temp")
-            if n_mid_temp:
-                n_msg = await fetch_message_or_none(channel, n_mid_temp)
-                if n_msg is not None:
-                    try:
-                        await safe_call(n_msg.delete)
-                    except Exception:  # pragma: no cover
-                        await safe_call(
-                            n_msg.edit, content="📴 Notificaties gesloten.", view=None
-                        )
-                clear_message_id(channel.id, "notification_temp")
-
-            # Clear persistent notification
-            n_mid_persistent = get_message_id(channel.id, "notification_persistent")
-            if n_mid_persistent:
-                n_msg = await fetch_message_or_none(channel, n_mid_persistent)
-                if n_msg is not None:
-                    try:
-                        await safe_call(n_msg.delete)
-                    except Exception:  # pragma: no cover
-                        await safe_call(
-                            n_msg.edit, content="📴 Notificaties gesloten.", view=None
-                        )
-                clear_message_id(channel.id, "notification_persistent")
-
-            # Also clear old "notification" key for backward compatibility
-            n_mid_old = get_message_id(channel.id, "notification")
-            if n_mid_old:
-                n_msg = await fetch_message_or_none(channel, n_mid_old)
-                if n_msg is not None:
-                    try:
-                        await safe_call(n_msg.delete)
-                    except Exception:  # pragma: no cover
-                        await safe_call(
-                            n_msg.edit, content="📴 Notificaties gesloten.", view=None
-                        )
-                clear_message_id(channel.id, "notification")
-
-            # 4) Kanaal permanent uitzetten voor scheduler
+            # 1) Verwijder ALLE berichten van de bot in dit kanaal
             try:
-                set_channel_disabled(getattr(channel, "id", 0), True)
+                bot_user_id = getattr(self.bot.user, "id", None)
+                history_method = _get_attr(channel, "history")
+                if bot_user_id and history_method:
+                    async for bericht in history_method(limit=100):
+                        # Check of het bericht van de bot is
+                        if getattr(bericht.author, "id", None) == bot_user_id:
+                            try:
+                                await safe_call(bericht.delete)
+                            except Exception:  # pragma: no cover
+                                pass  # Sla berichten over die niet verwijderd kunnen worden
+            except Exception:  # pragma: no cover
+                pass  # Als history scan faalt, ga gewoon door
+
+            # 2) Wis alle opgeslagen message IDs voor dit kanaal
+            channel_id = getattr(channel, "id", 0)
+            message_keys = ["opening", "vrijdag", "zaterdag", "zondag", "stemmen",
+                          "notification_temp", "notification_persistent", "notification",
+                          "celebration"]
+            for key in message_keys:
+                try:
+                    clear_message_id(channel_id, key)
+                except Exception:  # pragma: no cover
+                    pass
+
+            # 3) Kanaal permanent uitzetten voor scheduler
+            try:
+                set_channel_disabled(channel_id, True)
             except Exception:  # pragma: no cover
                 pass
 
-            # 5) Wis geplande activatie (voor /dmk-poll-on)
+            # 4) Wis geplande activatie (voor /dmk-poll-on)
             try:
-                clear_scheduled_activation(getattr(channel, "id", 0))
+                clear_scheduled_activation(channel_id)
             except Exception:  # pragma: no cover
                 pass
 
-            # 6) Terugkoppeling
-            if gevonden:
-                await interaction.followup.send(
-                    "✅ Polls uitgeschakeld. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    "ℹ️ Er stonden geen poll-berichten meer in dit kanaal. De scheduler is nu uitgezet zodat ze niet terugkomen. Gebruik /dmk-poll-on om later opnieuw te starten.",
-                    ephemeral=True,
-                )
+            # 5) Terugkoppeling
+            await interaction.followup.send(
+                "✅ Alle bot-berichten zijn verwijderd. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
+                ephemeral=True,
+            )
 
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
@@ -835,15 +798,18 @@ class PollLifecycle(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-verwijderen",
-        description=with_default_suffix("Verwijder pollberichten en plaats sluitingsbericht"),
+        description=with_default_suffix(
+            "Verwijder pollberichten en plaats sluitingsbericht"
+        ),
     )
-    async def verwijderbericht(self, interaction: discord.Interaction) -> None:  # pragma: no cover
+    async def verwijderbericht(
+        self, interaction: discord.Interaction
+    ) -> None:  # pragma: no cover
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
-        dagen = ["vrijdag", "zaterdag", "zondag"]
 
         try:
             # Bepaal de sluitingstijd op basis van /dmk-poll-on instellingen
@@ -881,80 +847,33 @@ class PollLifecycle(commands.Cog):
                 "Dank voor je deelname."
             )
 
-            gevonden = False
+            # 1) Verwijder ALLE berichten van de bot in dit kanaal
+            try:
+                bot_user_id = getattr(self.bot.user, "id", None)
+                history_method = _get_attr(channel, "history")
+                if bot_user_id and history_method:
+                    async for bericht in history_method(limit=100):
+                        # Check of het bericht van de bot is
+                        if getattr(bericht.author, "id", None) == bot_user_id:
+                            try:
+                                await safe_call(bericht.delete)
+                            except Exception:  # pragma: no cover
+                                pass  # Sla berichten over die niet verwijderd kunnen worden
+            except Exception:  # pragma: no cover
+                pass  # Als history scan faalt, ga gewoon door
 
-            # 0) Opening bericht verwijderen
-            opening_mid = get_message_id(channel.id, "opening")
-            if opening_mid:
-                opening_msg = await fetch_message_or_none(channel, opening_mid)
-                if opening_msg is not None:
-                    try:
-                        await safe_call(opening_msg.delete)
-                    except Exception:  # pragma: no cover
-                        pass
-                clear_message_id(channel.id, "opening")
-                gevonden = True
+            # 2) Wis alle opgeslagen message IDs voor dit kanaal
+            channel_id = getattr(channel, "id", 0)
+            message_keys = ["opening", "vrijdag", "zaterdag", "zondag", "stemmen",
+                          "notification_temp", "notification_persistent", "notification",
+                          "celebration"]
+            for key in message_keys:
+                try:
+                    clear_message_id(channel_id, key)
+                except Exception:  # pragma: no cover
+                    pass
 
-            # 1) Dag-berichten verwijderen
-            for dag in dagen:
-                mid = get_message_id(channel.id, dag)
-                if not mid:
-                    continue
-                gevonden = True
-                msg = await fetch_message_or_none(channel, mid)
-                if msg is not None:
-                    try:
-                        await safe_call(msg.delete)
-                    except Exception:  # pragma: no cover
-                        pass
-                clear_message_id(channel.id, dag)
-
-            # 2) Stemmen-bericht verwijderen
-            s_mid = get_message_id(channel.id, "stemmen")
-            if s_mid:
-                s_msg = await fetch_message_or_none(channel, s_mid)
-                if s_msg is not None:
-                    try:
-                        await safe_call(s_msg.delete)
-                    except Exception:  # pragma: no cover
-                        pass
-                clear_message_id(channel.id, "stemmen")
-
-            # 3) Notificatieberichten verwijderen (both temp and persistent)
-            # Clear temporary notification
-            n_mid_temp = get_message_id(channel.id, "notification_temp")
-            if n_mid_temp:
-                n_msg = await fetch_message_or_none(channel, n_mid_temp)
-                if n_msg is not None:
-                    try:
-                        await safe_call(n_msg.delete)
-                    except Exception:  # pragma: no cover
-                        pass
-                clear_message_id(channel.id, "notification_temp")
-
-            # Clear persistent notification
-            n_mid_persistent = get_message_id(channel.id, "notification_persistent")
-            if n_mid_persistent:
-                n_msg = await fetch_message_or_none(channel, n_mid_persistent)
-                if n_msg is not None:
-                    try:
-                        await safe_call(n_msg.delete)
-                    except Exception:  # pragma: no cover
-                        pass
-                clear_message_id(channel.id, "notification_persistent")
-
-            # Also clear old "notification" key for backward compatibility
-            n_mid_old = get_message_id(channel.id, "notification")
-            if n_mid_old:
-                n_msg = await fetch_message_or_none(channel, n_mid_old)
-                if n_msg is not None:
-                    try:
-                        await safe_call(n_msg.delete)
-                    except Exception:  # pragma: no cover
-                        pass
-                clear_message_id(channel.id, "notification")
-
-            # 4) Plaats het sluitingsbericht
+            # 3) Plaats het sluitingsbericht
             send = _get_attr(channel, "send")
             if send:
                 try:
@@ -962,20 +881,14 @@ class PollLifecycle(commands.Cog):
                 except Exception:  # pragma: no cover
                     pass
 
-            # 5) Scheduler blijft actief - NIET uitschakelen!
+            # 4) Scheduler blijft actief - NIET uitschakelen!
             # (Dat is het verschil met /dmk-poll-off)
 
-            # 6) Terugkoppeling
-            if gevonden:
-                await interaction.followup.send(
-                    f"✅ Polls verwijderd en sluitingsbericht geplaatst. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    f"ℹ️ Er stonden geen poll-berichten meer in dit kanaal. Sluitingsbericht geplaatst. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
-                    ephemeral=True,
-                )
+            # 5) Terugkoppeling
+            await interaction.followup.send(
+                f"✅ Alle bot-berichten zijn verwijderd en sluitingsbericht geplaatst. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
+                ephemeral=True,
+            )
 
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)

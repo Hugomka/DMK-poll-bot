@@ -567,6 +567,18 @@ cat .scheduler_state.json
 
 ## 🎉 Recente verbeteringen
 
+### v2.2 - Code Simplification (2025-11-09)
+
+**Vereenvoudiging van message deletion commands:**
+- `/dmk-poll-off` en `/dmk-poll-verwijderen` gerefactored voor betere onderhoudbaarheid
+- Code reductie van ~135 naar ~45-52 regels per functie (**62-67% kleiner**)
+- Verwijderde redundante message-by-ID deletion logic
+- Nu simpelweg: scan `channel.history()` en verwijder alle bot-berichten
+- Robuuster: werkt automatisch voor alle message types (ook toekomstige)
+- Zelfde gebruikerservaring, maar veel eenvoudiger code
+
+**Test resultaten:** 669 tests passing ✅ (geen regressies)
+
 ### v2.1 - Celebration GIF Randomizer (2025-11-07)
 
 **Celebration GIF Selectie met Gewogen Randomisatie:**

@@ -486,84 +486,104 @@ class TestVerwijderberichtCommand(BaseTestCase):
         content = self._last_content(interaction.followup.send)
         assert "verwijderd" in content.lower()
 
-    async def test_verwijderbericht_fallback_to_edit_when_delete_fails(self):
-        """Test dat verwijderbericht() fallback naar edit gebruikt als delete faalt"""
+    async def test_verwijderbericht_handles_delete_failures_gracefully(self):
+        """Test dat verwijderbericht() delete failures netjes afhandelt (skippt foutieve berichten)"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel, guild=MagicMock(), admin=True)
 
-        mock_message = MagicMock()
+        # Mock bot user
+        mock_bot_user = MagicMock()
+        mock_bot_user.id = 999
+        self.cog.bot.user = mock_bot_user
 
-        # Make safe_call simulate delete failure by having first call raise exception
-        call_count = 0
-        async def safe_call_side_effect(_func: Any, *_args: Any, **_kwargs: Any) -> Any:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:  # First call (delete) raises
-                raise Exception("Delete failed")
-            # Second call (edit) succeeds
-            return None
+        # Mock messages in history - some will fail to delete
+        mock_msg1 = MagicMock()
+        mock_msg1.author.id = 999  # Bot's message
+        mock_msg1.delete = AsyncMock(side_effect=Exception("Delete failed"))
 
-        with patch("apps.commands.poll_lifecycle.get_message_id", return_value=999), \
-             patch("apps.commands.poll_lifecycle.fetch_message_or_none", new=AsyncMock(return_value=mock_message)), \
-             patch("apps.commands.poll_lifecycle.safe_call", side_effect=safe_call_side_effect), \
+        mock_msg2 = MagicMock()
+        mock_msg2.author.id = 999  # Bot's message
+        mock_msg2.delete = AsyncMock()  # This one succeeds
+
+        # Mock history to return 2 bot messages
+        async def mock_history(_limit: Any = None) -> Any:
+            for msg in [mock_msg1, mock_msg2]:
+                yield msg
+
+        channel.history = MagicMock(return_value=mock_history())
+
+        with patch("apps.utils.poll_settings.get_scheduled_activation", return_value=None), \
              patch("apps.commands.poll_lifecycle.clear_message_id"), \
-             patch("apps.commands.poll_lifecycle.set_channel_disabled"):
+             patch("apps.commands.poll_lifecycle._get_attr") as mock_get_attr:
+
+            # Mock _get_attr to return channel.history
+            def get_attr_side_effect(_obj: Any, attr: str) -> Any:
+                if attr == "history":
+                    return channel.history
+                if attr == "send":
+                    return AsyncMock()
+                return None
+
+            mock_get_attr.side_effect = get_attr_side_effect
 
             await self._run(self.cog.verwijderbericht, interaction)
 
-        # Both safe_call attempts should have been made (delete + edit fallback)
-        assert call_count >= 2
+        # Verify command completed successfully despite delete failure
+        content = self._last_content(interaction.followup.send)
+        assert "verwijderd" in content.lower()
 
-    async def test_verwijderbericht_deletes_all_day_messages(self):
-        """Test dat verwijderbericht() alle dag-berichten verwijdert"""
+    async def test_verwijderbericht_clears_all_message_ids(self):
+        """Test dat verwijderbericht() alle message IDs wist na het verwijderen van berichten"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel, guild=MagicMock(), admin=True)
 
-        mock_message = MagicMock()
+        # Expected message keys that should be cleared
+        expected_keys = ["opening", "vrijdag", "zaterdag", "zondag", "stemmen",
+                        "notification_temp", "notification_persistent", "notification",
+                        "celebration"]
 
-        message_ids = {
-            "opening": 100,
-            "vrijdag": 101,
-            "zaterdag": 102,
-            "zondag": 103,
-            "stemmen": 104,
-            "notification_temp": 105,
-            "notification_persistent": 106,
-            "notification": 107,  # Old key for backward compatibility
-        }
-
-        def get_message_id_side_effect(_channel_id: Any, key: str) -> Any:
-            return message_ids.get(key)
-
-        with patch("apps.commands.poll_lifecycle.get_message_id", side_effect=get_message_id_side_effect), \
-             patch("apps.commands.poll_lifecycle.fetch_message_or_none", new=AsyncMock(return_value=mock_message)), \
-             patch("apps.commands.poll_lifecycle.safe_call", new=AsyncMock()), \
+        with patch("apps.utils.poll_settings.get_scheduled_activation", return_value=None), \
              patch("apps.commands.poll_lifecycle.clear_message_id") as mock_clear, \
-             patch("apps.commands.poll_lifecycle.set_channel_disabled"):
+             patch("apps.commands.poll_lifecycle._get_attr") as mock_get_attr:
+
+            # Mock _get_attr to return None for history (no messages to delete)
+            def get_attr_side_effect(_obj: Any, attr: str) -> Any:
+                if attr == "send":
+                    return AsyncMock()
+                return None
+
+            mock_get_attr.side_effect = get_attr_side_effect
 
             await self._run(self.cog.verwijderbericht, interaction)
 
-        # clear_message_id should be called for all message types
-        assert mock_clear.call_count >= 6  # All message types
+        # clear_message_id should be called for all expected message types
+        assert mock_clear.call_count == len(expected_keys)
+
+        # Verify all expected keys were cleared
+        cleared_keys = [call[0][1] for call in mock_clear.call_args_list]
+        for key in expected_keys:
+            assert key in cleared_keys, f"Expected key '{key}' to be cleared"
 
         content = self._last_content(interaction.followup.send)
         assert "verwijderd" in content.lower()
 
     async def test_verwijderbericht_when_no_messages_found(self):
-        """Test dat verwijderbericht() melding geeft als er geen berichten zijn"""
+        """Test dat verwijderbericht() berichten verwijdert (ook als er geen poll-berichten zijn)"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel, guild=MagicMock(), admin=True)
 
         with patch("apps.commands.poll_lifecycle.get_message_id", return_value=None), \
-             patch("apps.commands.poll_lifecycle.set_channel_disabled"):
+             patch("apps.commands.poll_lifecycle.set_channel_disabled"), \
+             patch("apps.commands.poll_lifecycle._get_attr", return_value=None):
 
             await self._run(self.cog.verwijderbericht, interaction)
 
         content = self._last_content(interaction.followup.send)
-        assert "geen" in content.lower()
+        # Nieuwe gedrag: altijd "Alle bot-berichten zijn verwijderd"
+        assert "alle bot-berichten zijn verwijderd" in content.lower()
 
     async def test_verwijderbericht_keeps_scheduler_active(self):
         """Test dat verwijderbericht() scheduler NIET uitschakelt (nieuw gedrag)"""
