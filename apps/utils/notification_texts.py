@@ -73,6 +73,10 @@ NOTIFICATION_TEXTS = [
     NotificationText(
         name="Herinnering weekend", content=get_text_herinnering_weekend()
     ),
+    NotificationText(
+        name="Felicitatie (iedereen gestemd)",
+        content="🎉 Geweldig! Iedereen heeft gestemd!\nBedankt voor jullie inzet dit weekend!",
+    ),
 ]
 
 

@@ -439,27 +439,45 @@ class TestPollLifecycleHelpers(BaseTestCase):
         self.bot = MagicMock()
         self.cog = PollLifecycle(self.bot)
 
-    async def test_scan_oude_berichten_returns_messages(self):
-        """Test dat _scan_oude_berichten berichten retourneert"""
+    async def test_scan_non_bot_messages_returns_only_non_bot_messages(self):
+        """Test dat _scan_non_bot_messages alleen non-bot berichten retourneert"""
         channel = MagicMock()
-        msg1 = MagicMock()
-        msg2 = MagicMock()
+
+        # Mock bot user
+        self.cog.bot.user = MagicMock()
+        self.cog.bot.user.id = 999
+
+        # Create messages: some from bot, some from others
+        bot_msg = MagicMock()
+        bot_msg.author.id = 999  # Bot's message
+
+        user_msg1 = MagicMock()
+        user_msg1.author.id = 111  # User message
+
+        user_msg2 = MagicMock()
+        user_msg2.author.id = 222  # Another user message
 
         async def mock_history(limit):  # type: ignore
-            for msg in [msg1, msg2]:
+            for msg in [bot_msg, user_msg1, user_msg2]:
                 yield msg
 
         channel.history = mock_history
 
-        result = await self.cog._scan_oude_berichten(channel)
+        result = await self.cog._scan_non_bot_messages(channel)
 
+        # Should only return non-bot messages
         assert len(result) == 2
-        assert msg1 in result
-        assert msg2 in result
+        assert user_msg1 in result
+        assert user_msg2 in result
+        assert bot_msg not in result
 
-    async def test_scan_oude_berichten_handles_exception(self):
-        """Test dat _scan_oude_berichten exceptions afvangt"""
+    async def test_scan_non_bot_messages_handles_exception(self):
+        """Test dat _scan_non_bot_messages exceptions afvangt"""
         channel = MagicMock()
+
+        # Mock bot user
+        self.cog.bot.user = MagicMock()
+        self.cog.bot.user.id = 999
 
         def mock_failing_history(limit):  # type: ignore
             raise RuntimeError("Failed")
@@ -467,7 +485,7 @@ class TestPollLifecycleHelpers(BaseTestCase):
         channel.history = mock_failing_history
 
         # Moet lege lijst retourneren bij exception
-        result = await self.cog._scan_oude_berichten(channel)
+        result = await self.cog._scan_non_bot_messages(channel)
         assert result == []
 
 
@@ -501,6 +519,74 @@ class TestLoadOpeningMessage(BaseTestCase):
             result = _load_opening_message()
             # Should return the custom content (stripped)
             assert result == "Custom message content"
+
+
+class TestPollLifecycleValidationEdgeCases(BaseTestCase):
+    """Tests voor validation en exception handling edge cases"""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.bot = MagicMock()
+        self.cog = PollLifecycle(self.bot)
+
+    async def test_validate_scheduling_params_datum_validation_error(self):
+        """Test dat datum validatie foutmelding geeft bij ongeldige datum"""
+        # Test ongeldige datum
+        result = self.cog._validate_scheduling_params(
+            dag=None,
+            datum="32-13-2025",  # Ongeldige datum
+            tijd="20:00",
+            frequentie=None
+        )
+        self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing voor Pylance
+        self.assertIn("DD-MM-YYYY", result)
+
+    async def test_delete_bot_messages_with_delete_exception(self):
+        """Test dat _delete_all_bot_messages delete exceptions afvangt"""
+        channel = MagicMock()
+        channel.id = 123
+
+        # Mock bot user
+        self.cog.bot.user = MagicMock()
+        self.cog.bot.user.id = 999
+
+        # Mock message dat niet verwijderd kan worden
+        mock_msg = MagicMock()
+        mock_msg.author.id = 999
+        mock_msg.delete = AsyncMock(side_effect=Exception("Delete failed"))
+
+        async def mock_history(limit):  # type: ignore
+            yield mock_msg
+
+        channel.history = mock_history
+
+        # Moet geen exception gooien
+        await self.cog._delete_all_bot_messages(channel)
+
+    async def test_delete_bot_messages_with_also_delete_exception(self):
+        """Test dat _delete_all_bot_messages also_delete exceptions afvangt"""
+        channel = MagicMock()
+        channel.id = 123
+
+        # Mock bot user
+        self.cog.bot.user = MagicMock()
+        self.cog.bot.user.id = 999
+
+        # Mock empty history
+        async def mock_empty_history(limit):  # type: ignore
+            return
+            yield  # Unreachable but needed for async generator
+
+        channel.history = mock_empty_history
+
+        # Mock also_delete message dat niet verwijderd kan worden
+        non_bot_msg = MagicMock()
+        non_bot_msg.delete = AsyncMock(side_effect=Exception("Delete failed"))
+
+        with patch("apps.commands.poll_lifecycle.clear_message_id"):
+            # Moet geen exception gooien
+            await self.cog._delete_all_bot_messages(channel, also_delete=[non_bot_msg])
 
 
 if __name__ == "__main__":

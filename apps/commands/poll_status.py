@@ -14,8 +14,13 @@ from discord.ext import commands
 
 from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
+from apps.utils.celebration_gif import get_celebration_gif_url
 from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
-from apps.utils.poll_message import is_channel_disabled
+from apps.utils.poll_message import (
+    LOCAL_CELEBRATION_IMAGE,
+    create_celebration_embed,
+    is_channel_disabled,
+)
 from apps.utils.poll_settings import (
     get_setting,
     is_paused,
@@ -303,17 +308,60 @@ class PollStatus(commands.Cog):
                 return
 
             # Verstuur notificatie
-            from apps.utils.mention_utils import send_temporary_mention
+            # Felicitatie is speciaal: stuurt embed + los GIF bericht
+            if notificatie == "Felicitatie (iedereen gestemd)":
+                # Verwijder eerst ALLE oude bot-berichten in het kanaal (laatste 100)
+                # Dit voorkomt dat celebration berichten zich opstapelen
+                from apps.utils.discord_client import safe_call
 
-            # Convert ping parameter to mention string
-            if ping == "none":
-                mention_str = None
-            elif ping == "here":
-                mention_str = "@here"
-            else:  # everyone (default)
-                mention_str = "@everyone"
+                try:
+                    bot_user_id = getattr(self.bot.user, "id", None)
+                    history_method = getattr(channel, "history", None)
+                    if bot_user_id and history_method:
+                        async for bericht in history_method(limit=100):
+                            # Verwijder alleen berichten van de bot
+                            if getattr(bericht.author, "id", None) == bot_user_id:
+                                try:
+                                    await safe_call(bericht.delete)
+                                except Exception:  # pragma: no cover
+                                    pass
+                except Exception:  # pragma: no cover
+                    pass  # Als cleanup faalt, ga gewoon door met celebration sturen
 
-            await send_temporary_mention(channel, mentions=mention_str, text=notification_text)
+                # Nu celebration berichten sturen
+                embed = create_celebration_embed()
+
+                send = getattr(channel, "send", None)
+                if send:
+                    # Stuur eerst embed met tekst
+                    await safe_call(send, embed=embed)
+
+                    # Selecteer random Tenor URL met gewogen selectie
+                    tenor_url = get_celebration_gif_url()
+
+                    # Probeer eerst Tenor URL, fallback naar lokale afbeelding
+                    gif_msg = None
+                    if tenor_url:
+                        gif_msg = await safe_call(send, content=tenor_url)
+
+                    # Als Tenor niet werkt, stuur lokale afbeelding
+                    if not gif_msg and os.path.exists(LOCAL_CELEBRATION_IMAGE):
+                        with open(LOCAL_CELEBRATION_IMAGE, "rb") as f:
+                            file = discord.File(f, filename="bedankt.jpg")
+                            await safe_call(send, file=file)
+            else:
+                # Normale notificatie met tekst
+                from apps.utils.mention_utils import send_temporary_mention
+
+                # Convert ping parameter to mention string
+                if ping == "none":
+                    mention_str = None
+                elif ping == "here":
+                    mention_str = "@here"
+                else:  # everyone (default)
+                    mention_str = "@everyone"
+
+                await send_temporary_mention(channel, mentions=mention_str, text=notification_text)
 
             # Include ping type in confirmation message
             ping_info = f" (ping: {ping})" if ping != "everyone" else ""

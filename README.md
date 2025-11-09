@@ -278,6 +278,8 @@ DMK-poll-bot/
 | `poll_message.json`       | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
 | `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
 | `opening_message.txt`     | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
+| `tenor-links.json`        | Celebration GIF URLs met gewogen selectie (Nintendo 3x vaker dan non-Nintendo). |
+| `resources/`              | Lokale afbeeldingen voor fallback (puppies-bedankt.jpg).                        |
 | `.scheduler_state.json`   | State van de scheduler (laatste uitvoering van jobs).                            |
 | `.scheduler.lock`         | File lock voor scheduler state om race conditions te voorkomen.                  |
 
@@ -564,6 +566,42 @@ cat .scheduler_state.json
 ---
 
 ## 🎉 Recente verbeteringen
+
+### v2.2 - Code Simplification (2025-11-09)
+
+**Vereenvoudiging van message deletion commands:**
+- `/dmk-poll-off` en `/dmk-poll-verwijderen` gerefactored voor betere onderhoudbaarheid
+- Code reductie van ~135 naar ~45-52 regels per functie (**62-67% kleiner**)
+- Verwijderde redundante message-by-ID deletion logic
+- Nu simpelweg: scan `channel.history()` en verwijder alle bot-berichten
+- Robuuster: werkt automatisch voor alle message types (ook toekomstige)
+- Zelfde gebruikerservaring, maar veel eenvoudiger code
+
+**Test resultaten:** 669 tests passing ✅ (geen regressies)
+
+### v2.1 - Celebration GIF Randomizer (2025-11-07)
+
+**Celebration GIF Selectie met Gewogen Randomisatie:**
+- Dynamische selectie uit 27 Tenor GIF URLs (`tenor-links.json`)
+- Gewogen ratio: Nintendo URLs worden **3x vaker** gebruikt dan non-Nintendo URLs
+- Eerlijke distributie: Selecteert URL met laagste `count` binnen de gekozen groep
+- Automatische count incrementatie voor natuurlijke variatie per week
+- Fallback naar lokale afbeelding (`resources/puppies-bedankt.jpg`) als Tenor faalt
+
+**Hoe het werkt:**
+1. Bereken gemiddelde counts voor Nintendo en non-Nintendo groepen
+2. Als Nintendo avg ≤ (non-Nintendo avg × 3): Kies uit Nintendo pool
+3. Anders: Kies uit non-Nintendo pool
+4. Selecteer URL met laagste count uit de gekozen pool
+5. Increment count en sla op naar `tenor-links.json`
+
+**Bestanden:**
+- `tenor-links.json`: 27 GIF URLs (16 Nintendo, 11 non-Nintendo) met count tracking
+- `resources/puppies-bedankt.jpg`: Lokale fallback afbeelding
+- `apps/utils/celebration_gif.py`: Gewogen selectie algoritme
+- `tests/test_celebration_gif.py`: 8 tests voor algoritme en edge cases
+
+**Test resultaten:** 669 tests passing ✅ (was 661, +8 nieuwe tests)
 
 ### v2.0 - Code refactoring & test coverage verbetering
 
