@@ -142,3 +142,45 @@ class TestGetCelebrationGifUrl(BaseTestCase):
         # Tolerantie van +/- 5
         self.assertGreater(nintendo_count, 20)  # Minstens 20 van 40
         self.assertLess(non_nintendo_count, 20)  # Maximaal 20 van 40
+
+
+class TestCelebrationGifExceptionHandling(BaseTestCase):
+    """Tests voor exception handling in celebration_gif helpers"""
+
+    def test_load_tenor_links_json_decode_error(self):
+        """Test dat _load_tenor_links lege lijst retourneert bij JSONDecodeError"""
+        from unittest.mock import mock_open, patch
+
+        from apps.utils import celebration_gif
+
+        with patch("apps.utils.celebration_gif.os.path.exists", return_value=True), \
+             patch("builtins.open", mock_open(read_data="invalid json")):
+
+            result = celebration_gif._load_tenor_links()
+
+            self.assertEqual(result, [])
+
+    def test_load_tenor_links_file_read_exception(self):
+        """Test dat _load_tenor_links lege lijst retourneert bij algemene exception"""
+        from unittest.mock import patch
+
+        from apps.utils import celebration_gif
+
+        with patch("apps.utils.celebration_gif.os.path.exists", return_value=True), \
+             patch("builtins.open", side_effect=IOError("File read error")):
+
+            result = celebration_gif._load_tenor_links()
+
+            self.assertEqual(result, [])
+
+    def test_save_tenor_links_exception(self):
+        """Test dat _save_tenor_links exceptions afvangt"""
+        from unittest.mock import patch
+
+        from apps.utils import celebration_gif
+
+        links = [{"url": "https://tenor.com/view/test", "count": 0}]
+
+        with patch("builtins.open", side_effect=IOError("File write error")):
+            # Moet geen exception gooien
+            celebration_gif._save_tenor_links(links)

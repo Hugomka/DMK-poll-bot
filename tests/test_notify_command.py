@@ -415,7 +415,9 @@ class TestNotifyFallbackCommand(BaseTestCase):
             "apps.commands.poll_status.os.path.exists"
         ) as mock_exists, patch(
             "apps.commands.poll_status.open", return_value=mock_file
-        ):
+        ), patch(
+            "apps.commands.poll_status.discord.File"
+        ) as mock_discord_file:
             # Eerste call: embed succesvol
             # Tweede call: Tenor URL faalt (return None)
             # Derde call: lokale afbeelding succesvol
@@ -426,6 +428,10 @@ class TestNotifyFallbackCommand(BaseTestCase):
             ]
             mock_get_url.return_value = test_tenor_url
             mock_exists.return_value = True
+
+            # Create a mock discord.File - return a simple MagicMock
+            mock_file_obj = MagicMock()
+            mock_discord_file.return_value = mock_file_obj
 
             cog = poll_status.PollStatus(MagicMock())
             await _invoke(
@@ -449,8 +455,8 @@ class TestNotifyFallbackCommand(BaseTestCase):
             # Derde call: lokale afbeelding
             third_call_kwargs = mock_safe_call.call_args_list[2][1]
             assert "file" in third_call_kwargs
-            import discord
-            assert isinstance(third_call_kwargs["file"], discord.File)
+            # Verify it's the mocked discord.File
+            assert third_call_kwargs["file"] == mock_file_obj
 
     async def test_notify_with_custom_text_and_ping_here(self):
         """Test dat eigen tekst + ping=here correct werkt."""

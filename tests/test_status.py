@@ -433,3 +433,104 @@ class TestStatusCommand(BaseTestCase):
         assert deactivatie_field is not None  # Type narrowing for Pylance
         self.assertEqual(str(activatie_field.value), "Geen")
         self.assertEqual(str(deactivatie_field.value), "Geen")
+
+
+class TestNotifyCommandEdgeCases(BaseTestCase):
+    """Tests voor notify command edge cases en missing coverage"""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from typing import Any, cast
+
+        self.mock_bot = MagicMock()
+        self.cog = PollStatus(self.mock_bot)
+
+        # Helper om command aan te roepen
+        async def _invoke_notify(*args, **kwargs):
+            cb = self.cog.notify_fallback.callback
+            return await cast(Any, cb)(self.cog, *args, **kwargs)
+
+        self._invoke_notify = _invoke_notify
+
+    def _mk_interaction(self, channel=None, admin=True):
+        """Maakt een interaction-mock met response.defer en followup.send."""
+        interaction = MagicMock()
+        interaction.channel = channel
+        interaction.guild = getattr(channel, "guild", None) if channel else None
+        interaction.user = MagicMock()
+        if admin:
+            interaction.user.guild_permissions.administrator = True
+        else:
+            interaction.user.guild_permissions.administrator = False
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+        return interaction
+
+    async def test_notify_no_channel(self):
+        """Test dat notify een error geeft als er geen kanaal is"""
+        interaction = self._mk_interaction(channel=None, admin=True)
+
+        await self._invoke_notify(interaction, "Herinnering vrijdag")
+
+        interaction.followup.send.assert_awaited_once()
+        args, kwargs = interaction.followup.send.call_args
+        content = str(args[0]) if args else kwargs.get("content", "")
+        self.assertIn("Geen kanaal", content)
+
+    async def test_notify_herinnering_vrijdag(self):
+        """Test dat notify Herinnering vrijdag correct afhandelt"""
+        from unittest.mock import patch
+
+        channel = MagicMock()
+        channel.id = 123
+        interaction = self._mk_interaction(channel=channel, admin=True)
+
+        with patch("apps.commands.poll_status.is_channel_disabled", return_value=False), \
+             patch("apps.commands.poll_status._is_denied_channel", return_value=False), \
+             patch("apps.utils.poll_message.set_channel_disabled"), \
+             patch("apps.commands.poll_status.get_text_herinnering_dag", return_value="Herinnering voor vrijdag") as mock_get_text, \
+             patch("apps.utils.mention_utils.send_temporary_mention", new=AsyncMock()):
+
+            await self._invoke_notify(interaction, "Herinnering vrijdag")
+
+            # get_text_herinnering_dag moet zijn aangeroepen met "vrijdag"
+            mock_get_text.assert_called_once_with("vrijdag")
+
+    async def test_notify_herinnering_zaterdag(self):
+        """Test dat notify Herinnering zaterdag correct afhandelt"""
+        from unittest.mock import patch
+
+        channel = MagicMock()
+        channel.id = 123
+        interaction = self._mk_interaction(channel=channel, admin=True)
+
+        with patch("apps.commands.poll_status.is_channel_disabled", return_value=False), \
+             patch("apps.commands.poll_status._is_denied_channel", return_value=False), \
+             patch("apps.utils.poll_message.set_channel_disabled"), \
+             patch("apps.commands.poll_status.get_text_herinnering_dag", return_value="Herinnering voor zaterdag") as mock_get_text, \
+             patch("apps.utils.mention_utils.send_temporary_mention", new=AsyncMock()):
+
+            await self._invoke_notify(interaction, "Herinnering zaterdag")
+
+            # get_text_herinnering_dag moet zijn aangeroepen met "zaterdag"
+            mock_get_text.assert_called_once_with("zaterdag")
+
+    async def test_notify_herinnering_zondag(self):
+        """Test dat notify Herinnering zondag correct afhandelt"""
+        from unittest.mock import patch
+
+        channel = MagicMock()
+        channel.id = 123
+        interaction = self._mk_interaction(channel=channel, admin=True)
+
+        with patch("apps.commands.poll_status.is_channel_disabled", return_value=False), \
+             patch("apps.commands.poll_status._is_denied_channel", return_value=False), \
+             patch("apps.utils.poll_message.set_channel_disabled"), \
+             patch("apps.commands.poll_status.get_text_herinnering_dag", return_value="Herinnering voor zondag") as mock_get_text, \
+             patch("apps.utils.mention_utils.send_temporary_mention", new=AsyncMock()):
+
+            await self._invoke_notify(interaction, "Herinnering zondag")
+
+            # get_text_herinnering_dag moet zijn aangeroepen met "zondag"
+            mock_get_text.assert_called_once_with("zondag")
+
