@@ -88,10 +88,8 @@ class TestBuildPollMessageWithDates(BaseTestCase):
         """Test dat poll-bericht datum bevat in titel."""
         tuesday = datetime(2025, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
 
-        with patch("apps.utils.message_builder.datetime") as mock_dt, \
-             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
             mock_dt.now.return_value = tuesday
-            mock_reset.return_value = None  # Gebruik fallback
 
             message = await build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=100
@@ -104,10 +102,8 @@ class TestBuildPollMessageWithDates(BaseTestCase):
         """Test dat elke dag de correcte datum toont."""
         tuesday = datetime(2025, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
 
-        with patch("apps.utils.message_builder.datetime") as mock_dt, \
-             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
             mock_dt.now.return_value = tuesday
-            mock_reset.return_value = None  # Gebruik fallback
 
             vrijdag_msg = await build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=100
@@ -127,10 +123,8 @@ class TestBuildPollMessageWithDates(BaseTestCase):
         """Test dat gepauzeerd bericht ook datum bevat."""
         tuesday = datetime(2025, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
 
-        with patch("apps.utils.message_builder.datetime") as mock_dt, \
-             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
             mock_dt.now.return_value = tuesday
-            mock_reset.return_value = None  # Gebruik fallback
 
             message = await build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=100, pauze=True
