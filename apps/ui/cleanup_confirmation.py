@@ -1,6 +1,7 @@
 # apps/ui/cleanup_confirmation.py
 #
-# Bevestigingsview voor het opschonen van oude berichten bij /dmk-poll-on
+# Bevestigingsview voor het opschonen van oude berichten
+# Gebruikt door /dmk-poll-on, /dmk-poll-off, en /dmk-poll-verwijderen
 
 from typing import Callable
 

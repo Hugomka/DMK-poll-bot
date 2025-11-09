@@ -439,27 +439,45 @@ class TestPollLifecycleHelpers(BaseTestCase):
         self.bot = MagicMock()
         self.cog = PollLifecycle(self.bot)
 
-    async def test_scan_oude_berichten_returns_messages(self):
-        """Test dat _scan_oude_berichten berichten retourneert"""
+    async def test_scan_non_bot_messages_returns_only_non_bot_messages(self):
+        """Test dat _scan_non_bot_messages alleen non-bot berichten retourneert"""
         channel = MagicMock()
-        msg1 = MagicMock()
-        msg2 = MagicMock()
+
+        # Mock bot user
+        self.cog.bot.user = MagicMock()
+        self.cog.bot.user.id = 999
+
+        # Create messages: some from bot, some from others
+        bot_msg = MagicMock()
+        bot_msg.author.id = 999  # Bot's message
+
+        user_msg1 = MagicMock()
+        user_msg1.author.id = 111  # User message
+
+        user_msg2 = MagicMock()
+        user_msg2.author.id = 222  # Another user message
 
         async def mock_history(limit):  # type: ignore
-            for msg in [msg1, msg2]:
+            for msg in [bot_msg, user_msg1, user_msg2]:
                 yield msg
 
         channel.history = mock_history
 
-        result = await self.cog._scan_oude_berichten(channel)
+        result = await self.cog._scan_non_bot_messages(channel)
 
+        # Should only return non-bot messages
         assert len(result) == 2
-        assert msg1 in result
-        assert msg2 in result
+        assert user_msg1 in result
+        assert user_msg2 in result
+        assert bot_msg not in result
 
-    async def test_scan_oude_berichten_handles_exception(self):
-        """Test dat _scan_oude_berichten exceptions afvangt"""
+    async def test_scan_non_bot_messages_handles_exception(self):
+        """Test dat _scan_non_bot_messages exceptions afvangt"""
         channel = MagicMock()
+
+        # Mock bot user
+        self.cog.bot.user = MagicMock()
+        self.cog.bot.user.id = 999
 
         def mock_failing_history(limit):  # type: ignore
             raise RuntimeError("Failed")
@@ -467,7 +485,7 @@ class TestPollLifecycleHelpers(BaseTestCase):
         channel.history = mock_failing_history
 
         # Moet lege lijst retourneren bij exception
-        result = await self.cog._scan_oude_berichten(channel)
+        result = await self.cog._scan_non_bot_messages(channel)
         assert result == []
 
 
