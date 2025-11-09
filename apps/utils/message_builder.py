@@ -17,8 +17,56 @@ from apps.utils.poll_storage import (
 )
 
 
+def _get_last_reset_time() -> datetime | None:
+    """
+    Haal de laatste reset-tijd op uit de scheduler state.
+    Deze timestamp wordt bijgewerkt bij zowel automatische als handmatige resets.
+
+    Returns:
+        datetime | None: De laatste reset-tijd (tz-aware), of None als deze niet beschikbaar is
+    """
+    try:
+        import json
+        import os
+
+        tz = pytz.timezone("Europe/Amsterdam")
+        STATE_PATH = ".scheduler_state.json"
+
+        if not os.path.exists(STATE_PATH):
+            return None
+
+        with open(STATE_PATH, "r", encoding="utf-8") as f:
+            state = json.load(f)
+
+        last_reset_str = state.get("reset_polls")
+        if not last_reset_str:
+            return None
+
+        # Parse ISO timestamp
+        last_reset = datetime.fromisoformat(str(last_reset_str))
+
+        # Zorg dat het tz-aware is
+        if last_reset.tzinfo is None:
+            last_reset = tz.localize(last_reset)
+
+        return last_reset
+    except Exception:
+        return None
+
+
 def _get_next_weekday_date(dag: str) -> str:
-    """Bereken datum voor aankomende vrijdag/zaterdag/zondag in DD-MM formaat."""
+    """
+    Bereken datum voor vrijdag/zaterdag/zondag van de huidige poll-periode in DD-MM formaat.
+
+    De poll-periode start bij de laatste reset (automatisch of handmatig):
+    - Als er een reset timestamp beschikbaar is, gebruik deze als start van de periode
+    - Anders: gebruik de standaard reset-tijd (dinsdag 20:00) als fallback
+
+    Dit zorgt ervoor dat:
+    1. Na handmatige reset: datums tonen het volgende weekend vanaf het reset-moment
+    2. Na automatische reset: datums tonen het weekend van de nieuwe periode
+    3. Datums blijven stabiel gedurende de hele poll-periode tot de volgende reset
+    """
     tz = pytz.timezone("Europe/Amsterdam")
     now = datetime.now(tz)
 
@@ -27,11 +75,36 @@ def _get_next_weekday_date(dag: str) -> str:
     if target_weekday is None:
         return ""
 
-    days_ahead = target_weekday - now.weekday()
-    if days_ahead < 0:
-        days_ahead += 7
+    # Probeer de laatste reset-tijd op te halen (werkt voor zowel handmatige als automatische resets)
+    last_reset = _get_last_reset_time()
 
-    target_date = now + timedelta(days=days_ahead)
+    if last_reset is not None:
+        # Gebruik de werkelijke reset-tijd als start van de periode
+        period_start = last_reset
+    else:
+        # Fallback: bereken op basis van standaard reset-schema (dinsdag 20:00)
+        days_since_tuesday = (now.weekday() - 1) % 7  # 1 = dinsdag
+        last_tuesday = (now - timedelta(days=days_since_tuesday)).replace(
+            hour=20, minute=0, second=0, microsecond=0
+        )
+
+        # Als we nog niet voorbij het reset-tijdstip zijn, gebruik de dinsdag van vorige week
+        if now < last_tuesday:
+            last_tuesday -= timedelta(days=7)
+
+        period_start = last_tuesday
+
+    # Vanaf de period_start, bereken het eerstvolgende weekend
+    # We zoeken de eerstvolgende vrijdag/zaterdag/zondag NA de reset-tijd
+    days_ahead = (target_weekday - period_start.weekday()) % 7
+
+    # Als days_ahead 0 is, betekent dit dat de reset op dezelfde dag van de week was
+    # In dat geval willen we de volgende week, tenzij de reset later op die dag is
+    if days_ahead == 0:
+        days_ahead = 7
+
+    target_date = period_start + timedelta(days=days_ahead)
+
     return target_date.strftime("%d-%m")
 
 

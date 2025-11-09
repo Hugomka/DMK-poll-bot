@@ -1,7 +1,10 @@
 # tests/test_message_builder.py
+from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
+
+import pytz
 
 from apps.utils import message_builder as mb
 from tests.base import BaseTestCase
@@ -27,6 +30,118 @@ class GuildAlwaysFail:
 
 
 class TestMessageBuilder(BaseTestCase):
+
+    # _get_next_weekday_date
+    def test_get_next_weekday_date_before_reset(self):
+        """Test dat datums stabiel blijven vóór de reset (dinsdag 20:00)."""
+        tz = pytz.timezone("Europe/Amsterdam")
+
+        # Zaterdag 9 november 2024, 15:00 (vóór dinsdag 20:00 reset)
+        # Poll-periode: di 5 nov 20:00 - di 12 nov 20:00
+        # Verwachte datums: vr 8 nov, za 9 nov, zo 10 nov
+        test_time = tz.localize(datetime(2024, 11, 9, 15, 0))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt, \
+             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+            mock_dt.now.return_value = test_time
+            mock_reset.return_value = None  # Geen state file, gebruik fallback
+
+            vrijdag_date = mb._get_next_weekday_date("vrijdag")
+            zaterdag_date = mb._get_next_weekday_date("zaterdag")
+            zondag_date = mb._get_next_weekday_date("zondag")
+
+            assert vrijdag_date == "08-11"  # 8 november (vorige vrijdag)
+            assert zaterdag_date == "09-11"  # 9 november (vandaag)
+            assert zondag_date == "10-11"   # 10 november (morgen)
+
+    def test_get_next_weekday_date_after_reset(self):
+        """Test dat datums updaten ná de reset (dinsdag 20:00)."""
+        tz = pytz.timezone("Europe/Amsterdam")
+
+        # Dinsdag 12 november 2024, 20:01 (net na reset)
+        # Nieuwe poll-periode: di 12 nov 20:00 - di 19 nov 20:00
+        # Verwachte datums: vr 15 nov, za 16 nov, zo 17 nov
+        test_time = tz.localize(datetime(2024, 11, 12, 20, 1))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt, \
+             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+            mock_dt.now.return_value = test_time
+            mock_reset.return_value = None  # Geen state file, gebruik fallback
+
+            vrijdag_date = mb._get_next_weekday_date("vrijdag")
+            zaterdag_date = mb._get_next_weekday_date("zaterdag")
+            zondag_date = mb._get_next_weekday_date("zondag")
+
+            assert vrijdag_date == "15-11"  # 15 november (volgende vrijdag)
+            assert zaterdag_date == "16-11"  # 16 november
+            assert zondag_date == "17-11"   # 17 november
+
+    def test_get_next_weekday_date_on_tuesday_before_reset(self):
+        """Test dat datums stabiel blijven op dinsdag vóór 20:00."""
+        tz = pytz.timezone("Europe/Amsterdam")
+
+        # Dinsdag 12 november 2024, 19:59 (net vóór reset)
+        # Huidige poll-periode: di 5 nov 20:00 - di 12 nov 20:00
+        # Verwachte datums: vr 8 nov, za 9 nov, zo 10 nov (vorig weekend)
+        test_time = tz.localize(datetime(2024, 11, 12, 19, 59))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt, \
+             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+            mock_dt.now.return_value = test_time
+            mock_reset.return_value = None  # Geen state file, gebruik fallback
+
+            vrijdag_date = mb._get_next_weekday_date("vrijdag")
+            zaterdag_date = mb._get_next_weekday_date("zaterdag")
+            zondag_date = mb._get_next_weekday_date("zondag")
+
+            assert vrijdag_date == "08-11"  # 8 november (vorige vrijdag)
+            assert zaterdag_date == "09-11"  # 9 november
+            assert zondag_date == "10-11"   # 10 november
+
+    def test_get_next_weekday_date_after_manual_reset_on_monday(self):
+        """Test dat datums updaten na handmatige reset op maandag."""
+        tz = pytz.timezone("Europe/Amsterdam")
+
+        # Maandag 11 november 2024, 14:00
+        # Handmatig gereset op maandag 11 nov om 13:00
+        # Verwachte datums: vr 15 nov, za 16 nov, zo 17 nov (volgende weekend)
+        test_time = tz.localize(datetime(2024, 11, 11, 14, 0))
+        manual_reset_time = tz.localize(datetime(2024, 11, 11, 13, 0))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt, \
+             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+            mock_dt.now.return_value = test_time
+            mock_reset.return_value = manual_reset_time
+
+            vrijdag_date = mb._get_next_weekday_date("vrijdag")
+            zaterdag_date = mb._get_next_weekday_date("zaterdag")
+            zondag_date = mb._get_next_weekday_date("zondag")
+
+            assert vrijdag_date == "15-11"  # 15 november (volgende vrijdag na reset)
+            assert zaterdag_date == "16-11"  # 16 november
+            assert zondag_date == "17-11"   # 17 november
+
+    def test_get_next_weekday_date_fallback_when_no_state_file(self):
+        """Test dat fallback naar standaard schema werkt als er geen state file is."""
+        tz = pytz.timezone("Europe/Amsterdam")
+
+        # Zaterdag 9 november 2024, 15:00
+        # Geen state file beschikbaar → fallback naar standaard schema
+        # Verwachte datums: vr 8 nov, za 9 nov, zo 10 nov
+        test_time = tz.localize(datetime(2024, 11, 9, 15, 0))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt, \
+             patch("apps.utils.message_builder._get_last_reset_time") as mock_reset:
+            mock_dt.now.return_value = test_time
+            mock_reset.return_value = None  # Geen state file
+
+            vrijdag_date = mb._get_next_weekday_date("vrijdag")
+            zaterdag_date = mb._get_next_weekday_date("zaterdag")
+            zondag_date = mb._get_next_weekday_date("zondag")
+
+            assert vrijdag_date == "08-11"  # 8 november (vorige vrijdag)
+            assert zaterdag_date == "09-11"  # 9 november (vandaag)
+            assert zondag_date == "10-11"   # 10 november (morgen)
 
     # build_poll_message_for_day_async
     async def test_build_message_no_options(self):
