@@ -41,7 +41,8 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         # Mock channel
         channel = MagicMock()
         channel.id = 100
-        channel.send = AsyncMock(return_value=MagicMock(id=999))
+        # Eerste call: embed (ID 999), tweede call: GIF (ID 1001)
+        channel.send = AsyncMock(side_effect=[MagicMock(id=999), MagicMock(id=1001)])
 
         test_tenor_url = "https://tenor.com/view/test-gif-12345"
 
@@ -52,7 +53,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                     with patch("apps.utils.poll_message.get_celebration_gif_url") as mock_get_url:
                         # Geen niet-stemmers voor alle dagen
                         mock_non_voters.return_value = (0, [])
-                        # Nog geen celebration message
+                        # Nog geen celebration messages
                         mock_get_id.return_value = None
                         # Mock Tenor URL selector
                         mock_get_url.return_value = test_tenor_url
@@ -76,8 +77,10 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                         self.assertIn("content", second_call_kwargs)
                         self.assertEqual(second_call_kwargs["content"], test_tenor_url)
 
-                        # Verifieer dat message ID werd opgeslagen
-                        mock_save_id.assert_called_once_with(100, "celebration", 999)
+                        # Verifieer dat BEIDE message IDs werden opgeslagen
+                        self.assertEqual(mock_save_id.call_count, 2)
+                        mock_save_id.assert_any_call(100, "celebration", 999)
+                        mock_save_id.assert_any_call(100, "celebration_gif", 1001)
 
     async def test_does_not_send_celebration_when_already_exists(self):
         """Test dat celebration niet opnieuw wordt gestuurd als die al bestaat."""
@@ -99,13 +102,15 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                     channel.send.assert_not_called()
 
     async def test_deletes_celebration_when_not_all_voted(self):
-        """Test dat celebration wordt verwijderd wanneer niet iedereen heeft gestemd."""
+        """Test dat BEIDE celebration berichten worden verwijderd wanneer niet iedereen heeft gestemd."""
         channel = MagicMock()
         channel.id = 100
 
-        # Mock message
+        # Mock messages
         celebration_msg = MagicMock()
         celebration_msg.delete = AsyncMock()
+        gif_msg = MagicMock()
+        gif_msg.delete = AsyncMock()
 
         with patch("apps.utils.poll_message.load_votes") as mock_load:
             with patch("apps.utils.poll_message.get_non_voters_for_day") as mock_non_voters:
@@ -115,15 +120,19 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                             mock_load.return_value = {"123": {"vrijdag": ["19:00"]}}
                             # Vrijdag: niemand, zaterdag: 1 niet-stemmer
                             mock_non_voters.side_effect = [(0, []), (1, ["user_456"]), (0, [])]
-                            # Celebration bestaat
-                            mock_get_id.return_value = 999
-                            mock_fetch.return_value = celebration_msg
+                            # Beide celebration berichten bestaan
+                            mock_get_id.side_effect = [999, 1001]  # celebration, celebration_gif
+                            mock_fetch.side_effect = [celebration_msg, gif_msg]
 
                             await check_all_voted_celebration(channel, 1, 100)
 
-                            # Verifieer dat bericht werd verwijderd
+                            # Verifieer dat BEIDE berichten werden verwijderd
                             celebration_msg.delete.assert_called_once()
-                            mock_clear.assert_called_once_with(100, "celebration")
+                            gif_msg.delete.assert_called_once()
+                            # Verifieer dat BEIDE IDs werden gewist
+                            self.assertEqual(mock_clear.call_count, 2)
+                            mock_clear.assert_any_call(100, "celebration")
+                            mock_clear.assert_any_call(100, "celebration_gif")
 
     async def test_does_not_delete_when_not_all_voted_and_no_celebration(self):
         """Test dat er niets gebeurt als niet iedereen heeft gestemd en geen celebration bestaat."""
@@ -177,7 +186,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
             await check_all_voted_celebration(channel, 1, 100)
 
     async def test_deletes_celebration_when_message_not_found(self):
-        """Test dat celebration ID wordt gewist als bericht niet bestaat."""
+        """Test dat BEIDE celebration IDs worden gewist als berichten niet bestaan."""
         channel = MagicMock()
         channel.id = 100
 
@@ -188,18 +197,20 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                         with patch("apps.utils.poll_message.clear_message_id") as mock_clear:
                             mock_load.return_value = {}
                             mock_non_voters.return_value = (1, ["user_456"])
-                            # Celebration bestaat
-                            mock_get_id.return_value = 999
-                            # Maar bericht is weg
+                            # Beide celebrations bestaan
+                            mock_get_id.side_effect = [999, 1001]  # celebration, celebration_gif
+                            # Maar berichten zijn weg
                             mock_fetch.return_value = None
 
                             await check_all_voted_celebration(channel, 1, 100)
 
-                            # ID moet gewist worden
-                            mock_clear.assert_called_once_with(100, "celebration")
+                            # BEIDE IDs moeten gewist worden
+                            self.assertEqual(mock_clear.call_count, 2)
+                            mock_clear.assert_any_call(100, "celebration")
+                            mock_clear.assert_any_call(100, "celebration_gif")
 
     async def test_sends_local_image_when_tenor_fails(self):
-        """Test dat lokale afbeelding wordt gestuurd als Tenor URL faalt."""
+        """Test dat lokale afbeelding wordt gestuurd als Tenor URL faalt en GIF message ID wordt opgeslagen."""
         channel = MagicMock()
         channel.id = 100
         # Eerste send call: embed succesvol (return message)
@@ -244,6 +255,11 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                                 self.assertIn("file", third_call)
                                 # Verifieer dat discord.File werd aangeroepen
                                 mock_file.assert_called_once()
+
+                                # Verifieer dat BEIDE message IDs werden opgeslagen
+                                self.assertEqual(mock_save_id.call_count, 2)
+                                mock_save_id.assert_any_call(100, "celebration", 999)
+                                mock_save_id.assert_any_call(100, "celebration_gif", 1000)
 
     async def test_does_not_send_local_image_when_tenor_succeeds(self):
         """Test dat lokale afbeelding NIET wordt gestuurd als Tenor URL werkt."""
@@ -301,24 +317,30 @@ class TestRemoveCelebrationMessage(BaseTestCase):
     """Test remove_celebration_message functie."""
 
     async def test_removes_celebration_when_exists(self):
-        """Test dat celebration wordt verwijderd wanneer die bestaat."""
+        """Test dat BEIDE celebration berichten worden verwijderd wanneer die bestaan."""
         channel = MagicMock()
 
-        # Mock message
+        # Mock messages
         celebration_msg = MagicMock()
         celebration_msg.delete = AsyncMock()
+        gif_msg = MagicMock()
+        gif_msg.delete = AsyncMock()
 
         with patch("apps.utils.poll_message.get_message_id") as mock_get_id:
             with patch("apps.utils.poll_message.fetch_message_or_none") as mock_fetch:
                 with patch("apps.utils.poll_message.clear_message_id") as mock_clear:
-                    mock_get_id.return_value = 999
-                    mock_fetch.return_value = celebration_msg
+                    mock_get_id.side_effect = [999, 1001]  # celebration, celebration_gif
+                    mock_fetch.side_effect = [celebration_msg, gif_msg]
 
                     await remove_celebration_message(channel, 100)
 
-                    # Verifieer dat bericht werd verwijderd
+                    # Verifieer dat BEIDE berichten werden verwijderd
                     celebration_msg.delete.assert_called_once()
-                    mock_clear.assert_called_once_with(100, "celebration")
+                    gif_msg.delete.assert_called_once()
+                    # Verifieer dat BEIDE IDs werden gewist
+                    self.assertEqual(mock_clear.call_count, 2)
+                    mock_clear.assert_any_call(100, "celebration")
+                    mock_clear.assert_any_call(100, "celebration_gif")
 
     async def test_does_nothing_when_no_celebration(self):
         """Test dat er niets gebeurt als er geen celebration bestaat."""
@@ -334,19 +356,21 @@ class TestRemoveCelebrationMessage(BaseTestCase):
                 mock_fetch.assert_not_called()
 
     async def test_clears_id_when_message_not_found(self):
-        """Test dat ID wordt gewist als bericht niet bestaat."""
+        """Test dat BEIDE IDs worden gewist als berichten niet bestaan."""
         channel = MagicMock()
 
         with patch("apps.utils.poll_message.get_message_id") as mock_get_id:
             with patch("apps.utils.poll_message.fetch_message_or_none") as mock_fetch:
                 with patch("apps.utils.poll_message.clear_message_id") as mock_clear:
-                    mock_get_id.return_value = 999
+                    mock_get_id.side_effect = [999, 1001]  # celebration, celebration_gif
                     mock_fetch.return_value = None
 
                     await remove_celebration_message(channel, 100)
 
-                    # ID moet gewist worden
-                    mock_clear.assert_called_once_with(100, "celebration")
+                    # BEIDE IDs moeten gewist worden
+                    self.assertEqual(mock_clear.call_count, 2)
+                    mock_clear.assert_any_call(100, "celebration")
+                    mock_clear.assert_any_call(100, "celebration_gif")
 
     async def test_handles_exception_gracefully(self):
         """Test dat uitzonderingen netjes worden afgehandeld."""

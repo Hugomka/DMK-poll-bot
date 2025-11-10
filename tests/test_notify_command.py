@@ -353,7 +353,7 @@ class TestNotifyFallbackCommand(BaseTestCase):
             assert "ping: none" in msg.lower()
 
     async def test_notify_with_celebration(self):
-        """Test dat felicitatie notification embed + GIF bericht verstuurt."""
+        """Test dat felicitatie notification embed + GIF bericht verstuurt en IDs opslaat."""
         interaction, _channel, patcher = _mk_inter()
 
         test_tenor_url = "https://tenor.com/view/test-gif-12345"
@@ -362,8 +362,19 @@ class TestNotifyFallbackCommand(BaseTestCase):
             "apps.utils.discord_client.safe_call", new_callable=AsyncMock
         ) as mock_safe_call, patch(
             "apps.commands.poll_status.get_celebration_gif_url"
-        ) as mock_get_url:
+        ) as mock_get_url, patch(
+            "apps.utils.poll_message.get_message_id"
+        ) as mock_get_id, patch(
+            "apps.utils.poll_message.save_message_id"
+        ) as mock_save_id, patch(
+            "apps.utils.poll_message.clear_message_id"
+        ), patch(
+            "apps.utils.discord_client.fetch_message_or_none", new_callable=AsyncMock
+        ):
             mock_get_url.return_value = test_tenor_url
+            mock_get_id.return_value = None  # Geen oude celebration berichten
+            # Mock successful message sends with IDs
+            mock_safe_call.side_effect = [MagicMock(id=999), MagicMock(id=1001)]
 
             cog = poll_status.PollStatus(MagicMock())
             await _invoke(
@@ -387,12 +398,16 @@ class TestNotifyFallbackCommand(BaseTestCase):
             content = second_call_kwargs.get("content")
             assert content == test_tenor_url
 
+            # Verify both message IDs were saved
+            assert mock_save_id.call_count == 2
+            # Note: We can't use assert_any_call here because cid is dynamic
+
             # Confirmation should mention felicitatie
             msg = interaction.followup.last_text or ""
             assert "felicitatie" in msg.lower()
 
     async def test_notify_celebration_with_tenor_fallback(self):
-        """Test dat lokale afbeelding wordt gestuurd als Tenor URL faalt."""
+        """Test dat lokale afbeelding wordt gestuurd als Tenor URL faalt en GIF message ID wordt opgeslagen."""
         interaction, _channel, patcher = _mk_inter()
 
         test_tenor_url = "https://tenor.com/view/test-gif-12345"
@@ -417,7 +432,15 @@ class TestNotifyFallbackCommand(BaseTestCase):
             "apps.commands.poll_status.open", return_value=mock_file
         ), patch(
             "apps.commands.poll_status.discord.File"
-        ) as mock_discord_file:
+        ) as mock_discord_file, patch(
+            "apps.utils.poll_message.get_message_id"
+        ) as mock_get_id, patch(
+            "apps.utils.poll_message.save_message_id"
+        ) as mock_save_id, patch(
+            "apps.utils.poll_message.clear_message_id"
+        ), patch(
+            "apps.utils.discord_client.fetch_message_or_none", new_callable=AsyncMock
+        ):
             # Eerste call: embed succesvol
             # Tweede call: Tenor URL faalt (return None)
             # Derde call: lokale afbeelding succesvol
@@ -428,6 +451,7 @@ class TestNotifyFallbackCommand(BaseTestCase):
             ]
             mock_get_url.return_value = test_tenor_url
             mock_exists.return_value = True
+            mock_get_id.return_value = None  # Geen oude celebration berichten
 
             # Create a mock discord.File - return a simple MagicMock
             mock_file_obj = MagicMock()
@@ -457,6 +481,9 @@ class TestNotifyFallbackCommand(BaseTestCase):
             assert "file" in third_call_kwargs
             # Verify it's the mocked discord.File
             assert third_call_kwargs["file"] == mock_file_obj
+
+            # Verify both message IDs were saved (embed + fallback GIF)
+            assert mock_save_id.call_count == 2
 
     async def test_notify_with_custom_text_and_ping_here(self):
         """Test dat eigen tekst + ping=here correct werkt."""

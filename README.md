@@ -279,7 +279,7 @@ DMK-poll-bot/
 | `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
 | `opening_message.txt`     | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
 | `tenor-links.json`        | Celebration GIF URLs met gewogen selectie (Nintendo 3x vaker dan non-Nintendo). |
-| `resources/`              | Lokale afbeeldingen voor fallback (puppies-bedankt.jpg).                        |
+| `resources/`              | Lokale afbeeldingen voor fallback (bedankt-puppies-kitties.jpg).                        |
 | `.scheduler_state.json`   | State van de scheduler (laatste uitvoering van jobs).                            |
 | `.scheduler.lock`         | File lock voor scheduler state om race conditions te voorkomen.                  |
 
@@ -586,7 +586,7 @@ cat .scheduler_state.json
 - Gewogen ratio: Nintendo URLs worden **3x vaker** gebruikt dan non-Nintendo URLs
 - Eerlijke distributie: Selecteert URL met laagste `count` binnen de gekozen groep
 - Automatische count incrementatie voor natuurlijke variatie per week
-- Fallback naar lokale afbeelding (`resources/puppies-bedankt.jpg`) als Tenor faalt
+- Fallback naar lokale afbeelding (`resources/bedankt-puppies-kitties.jpg`) als Tenor faalt
 
 **Hoe het werkt:**
 1. Bereken gemiddelde counts voor Nintendo en non-Nintendo groepen
@@ -597,7 +597,7 @@ cat .scheduler_state.json
 
 **Bestanden:**
 - `tenor-links.json`: 27 GIF URLs (16 Nintendo, 11 non-Nintendo) met count tracking
-- `resources/puppies-bedankt.jpg`: Lokale fallback afbeelding
+- `resources/bedankt-puppies-kitties.jpg`: Lokale fallback afbeelding
 - `apps/utils/celebration_gif.py`: Gewogen selectie algoritme
 - `tests/test_celebration_gif.py`: 8 tests voor algoritme en edge cases
 

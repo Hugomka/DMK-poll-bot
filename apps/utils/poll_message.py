@@ -22,7 +22,7 @@ from apps.utils.poll_storage import (
 
 POLL_MESSAGE_FILE = os.getenv("POLL_MESSAGE_FILE", "poll_message.json")
 # Lokale fallback afbeelding als Tenor niet werkt
-LOCAL_CELEBRATION_IMAGE = "resources/puppies-bedankt.jpg"
+LOCAL_CELEBRATION_IMAGE = "resources/bedankt-puppies-kitties.jpg"
 
 # Interne locks & pending-taken om dubbele updates te voorkomen
 _update_locks: dict[tuple[int, str], asyncio.Lock] = {}
@@ -315,6 +315,7 @@ async def check_all_voted_celebration(
                 break
 
         celebration_id = get_message_id(channel_id, "celebration")
+        celebration_gif_id = get_message_id(channel_id, "celebration_gif")
 
         if all_voted:
             # Iedereen heeft gestemd! Stuur celebration als die nog niet bestaat
@@ -336,31 +337,53 @@ async def check_all_voted_celebration(
                     if tenor_url:
                         gif_msg = await safe_call(send, content=tenor_url)
 
-                    # Als Tenor niet werkt (bericht niet gestuurd), stuur lokale afbeelding
-                    if not gif_msg and os.path.exists(LOCAL_CELEBRATION_IMAGE):
+                    # Sla GIF message ID op (Tenor of fallback)
+                    if gif_msg:
+                        save_message_id(channel_id, "celebration_gif", gif_msg.id)
+                    elif os.path.exists(LOCAL_CELEBRATION_IMAGE):
+                        # Als Tenor niet werkt, stuur lokale afbeelding
                         with open(LOCAL_CELEBRATION_IMAGE, "rb") as f:
                             file = discord.File(f, filename="bedankt.jpg")
-                            await safe_call(send, file=file)
+                            fallback_msg = await safe_call(send, file=file)
+                            if fallback_msg:
+                                save_message_id(
+                                    channel_id, "celebration_gif", fallback_msg.id
+                                )
         else:
-            # Niet iedereen heeft gestemd, verwijder celebration als die bestaat
+            # Niet iedereen heeft gestemd, verwijder BEIDE celebration messages
             if celebration_id:
                 msg = await fetch_message_or_none(channel, celebration_id)
                 if msg:
                     await safe_call(msg.delete)
                 clear_message_id(channel_id, "celebration")
 
+            if celebration_gif_id:
+                gif_msg = await fetch_message_or_none(channel, celebration_gif_id)
+                if gif_msg:
+                    await safe_call(gif_msg.delete)
+                clear_message_id(channel_id, "celebration_gif")
+
     except Exception as e:  # pragma: no cover
         print(f"❌ Fout bij celebration check: {e}")
 
 
 async def remove_celebration_message(channel: Any, channel_id: int) -> None:
-    """Verwijder celebration message (gebruikt bij reset)."""
+    """Verwijder celebration messages (embed + GIF, gebruikt bij reset)."""
     try:
+        # Verwijder celebration embed
         celebration_id = get_message_id(channel_id, "celebration")
         if celebration_id:
             msg = await fetch_message_or_none(channel, celebration_id)
             if msg:
                 await safe_call(msg.delete)
             clear_message_id(channel_id, "celebration")
+
+        # Verwijder celebration GIF
+        celebration_gif_id = get_message_id(channel_id, "celebration_gif")
+        if celebration_gif_id:
+            gif_msg = await fetch_message_or_none(channel, celebration_gif_id)
+            if gif_msg:
+                await safe_call(gif_msg.delete)
+            clear_message_id(channel_id, "celebration_gif")
     except Exception as e:  # pragma: no cover
         print(f"❌ Fout bij verwijderen celebration: {e}")

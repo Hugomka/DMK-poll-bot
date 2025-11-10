@@ -310,23 +310,27 @@ class PollStatus(commands.Cog):
             # Verstuur notificatie
             # Felicitatie is speciaal: stuurt embed + los GIF bericht
             if notificatie == "Felicitatie (iedereen gestemd)":
-                # Verwijder eerst ALLE oude bot-berichten in het kanaal (laatste 100)
-                # Dit voorkomt dat celebration berichten zich opstapelen
-                from apps.utils.discord_client import safe_call
+                from apps.utils.discord_client import fetch_message_or_none, safe_call
+                from apps.utils.poll_message import (
+                    clear_message_id,
+                    get_message_id,
+                    save_message_id,
+                )
 
-                try:
-                    bot_user_id = getattr(self.bot.user, "id", None)
-                    history_method = getattr(channel, "history", None)
-                    if bot_user_id and history_method:
-                        async for bericht in history_method(limit=100):
-                            # Verwijder alleen berichten van de bot
-                            if getattr(bericht.author, "id", None) == bot_user_id:
-                                try:
-                                    await safe_call(bericht.delete)
-                                except Exception:  # pragma: no cover
-                                    pass
-                except Exception:  # pragma: no cover
-                    pass  # Als cleanup faalt, ga gewoon door met celebration sturen
+                # Verwijder eerst oude celebration berichten (indien aanwezig)
+                celebration_id = get_message_id(cid, "celebration")
+                if celebration_id:
+                    msg = await fetch_message_or_none(channel, celebration_id)
+                    if msg:
+                        await safe_call(msg.delete)
+                    clear_message_id(cid, "celebration")
+
+                celebration_gif_id = get_message_id(cid, "celebration_gif")
+                if celebration_gif_id:
+                    gif_msg = await fetch_message_or_none(channel, celebration_gif_id)
+                    if gif_msg:
+                        await safe_call(gif_msg.delete)
+                    clear_message_id(cid, "celebration_gif")
 
                 # Nu celebration berichten sturen
                 embed = create_celebration_embed()
@@ -334,7 +338,9 @@ class PollStatus(commands.Cog):
                 send = getattr(channel, "send", None)
                 if send:
                     # Stuur eerst embed met tekst
-                    await safe_call(send, embed=embed)
+                    new_msg = await safe_call(send, embed=embed)
+                    if new_msg:
+                        save_message_id(cid, "celebration", new_msg.id)
 
                     # Selecteer random Tenor URL met gewogen selectie
                     tenor_url = get_celebration_gif_url()
@@ -344,11 +350,16 @@ class PollStatus(commands.Cog):
                     if tenor_url:
                         gif_msg = await safe_call(send, content=tenor_url)
 
-                    # Als Tenor niet werkt, stuur lokale afbeelding
-                    if not gif_msg and os.path.exists(LOCAL_CELEBRATION_IMAGE):
+                    # Sla GIF message ID op (Tenor of fallback)
+                    if gif_msg:
+                        save_message_id(cid, "celebration_gif", gif_msg.id)
+                    elif os.path.exists(LOCAL_CELEBRATION_IMAGE):
+                        # Als Tenor niet werkt, stuur lokale afbeelding
                         with open(LOCAL_CELEBRATION_IMAGE, "rb") as f:
                             file = discord.File(f, filename="bedankt.jpg")
-                            await safe_call(send, file=file)
+                            fallback_msg = await safe_call(send, file=file)
+                            if fallback_msg:
+                                save_message_id(cid, "celebration_gif", fallback_msg.id)
             else:
                 # Normale notificatie met tekst
                 from apps.utils.mention_utils import send_temporary_mention
