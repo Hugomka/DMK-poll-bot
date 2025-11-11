@@ -221,6 +221,94 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
         # Controleer dat reset_votes_scoped werd aangeroepen voor het kanaal
         mock_rvs.assert_awaited_once_with(1, 10)
 
+    async def test_reset_polls_skips_disabled_channels(self):
+        """Test dat reset_polls uitgeschakelde kanalen overslaat."""
+
+        class Channel:
+            def __init__(self, id):
+                self.id = id
+
+        class Guild:
+            def __init__(self):
+                self.id = 1
+
+            @property
+            def text_channels(self):
+                return [Channel(10), Channel(20)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild()]
+
+        bot = Bot()
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_is_disabled(cid):
+            return cid == 10  # Kanaal 10 is uitgeschakeld
+
+        with (
+            patch.object(scheduler, "_within_reset_window", return_value=True),
+            patch.object(scheduler, "_read_state", return_value={}),
+            patch.object(scheduler, "_write_state", lambda s: None),
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", side_effect=fake_is_disabled),
+            patch.object(scheduler, "is_paused", return_value=False),
+            patch.object(scheduler, "reset_votes_scoped", new_callable=AsyncMock) as mock_rvs,
+            patch.object(scheduler, "clear_message_id", side_effect=lambda *args: None),
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock),
+        ):
+            result = await scheduler.reset_polls(bot)
+
+        self.assertTrue(result)
+        # Controleer dat reset_votes_scoped alleen voor kanaal 20 werd aangeroepen (10 is disabled)
+        mock_rvs.assert_awaited_once_with(1, 20)
+
+    async def test_reset_polls_skips_paused_channels(self):
+        """Test dat reset_polls gepauzeerde kanalen overslaat."""
+
+        class Channel:
+            def __init__(self, id):
+                self.id = id
+
+        class Guild:
+            def __init__(self):
+                self.id = 1
+
+            @property
+            def text_channels(self):
+                return [Channel(10), Channel(20)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild()]
+
+        bot = Bot()
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_is_paused(cid):
+            return cid == 10  # Kanaal 10 is gepauzeerd
+
+        with (
+            patch.object(scheduler, "_within_reset_window", return_value=True),
+            patch.object(scheduler, "_read_state", return_value={}),
+            patch.object(scheduler, "_write_state", lambda s: None),
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "is_paused", side_effect=fake_is_paused),
+            patch.object(scheduler, "reset_votes_scoped", new_callable=AsyncMock) as mock_rvs,
+            patch.object(scheduler, "clear_message_id", side_effect=lambda *args: None),
+            patch.object(scheduler, "send_temporary_mention", new_callable=AsyncMock),
+        ):
+            result = await scheduler.reset_polls(bot)
+
+        self.assertTrue(result)
+        # Controleer dat reset_votes_scoped alleen voor kanaal 20 werd aangeroepen (10 is paused)
+        mock_rvs.assert_awaited_once_with(1, 20)
+
     async def test_load_poll_config_corrupt_json(self):
         """Test _load_poll_config met corrupt JSON bestand."""
         # Save original values

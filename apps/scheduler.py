@@ -935,8 +935,13 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
             except Exception:  # pragma: no cover
                 continue
 
-            # Skip als kanaal uitgeschakeld is (check al gedaan, maar voor duidelijkheid)
-            # Reset werkt op data-niveau, niet afhankelijk van berichten
+            # Skip als kanaal uitgeschakeld is
+            if is_channel_disabled(cid):
+                continue
+
+            # Skip als kanaal gepauzeerd is
+            if is_paused(cid):
+                continue
 
             # Reset votes voor dit specifieke kanaal
             try:
