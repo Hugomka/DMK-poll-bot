@@ -175,20 +175,34 @@ async def _count_non_voters(
 
 
 def _week_dates_eu(now):
-    """Geef (week, datum_vrijdag, datum_zaterdag, datum_zondag) als YYYY-MM-DD."""
+    """
+    Geef (week, datum_vrijdag, datum_zaterdag, datum_zondag) als YYYY-MM-DD.
+
+    Geeft het meest recente AFGERONDE weekend (vr-za-zo) dat VOOR nu plaatsvond.
+    Dit zorgt ervoor dat we altijd de poll-periode archiveren die net eindigde,
+    ongeacht wanneer de reset is gepland (maandag, dinsdag, woensdag, etc.).
+
+    Belangrijk: Dit geeft altijd het VERLEDEN weekend, nooit het huidige/toekomstige.
+    """
     if now.tzinfo is None:
         now = pytz.timezone("Europe/Amsterdam").localize(now)
 
-    def next_weekday(now_dt, target_weekday):
-        """Bereken aankomende weekdag (of vandaag als het die dag is)."""
-        days_ahead = target_weekday - now_dt.weekday()
-        if days_ahead < 0:  # Doeldag is al geweest deze week
-            days_ahead += 7
-        return (now_dt + timedelta(days=days_ahead)).date()
+    current_weekday = now.weekday()  # Maandag=0, Zondag=6
 
-    vr = next_weekday(now, 4)  # Vrijdag
-    za = next_weekday(now, 5)  # Zaterdag
-    zo = next_weekday(now, 6)  # Zondag
+    # Bereken de meest recente vrijdag die in het verleden ligt
+    # Vrijdag = weekdag 4
+    if current_weekday >= 4:  # Vrijdag (4), Zaterdag (5), Zondag (6)
+        # We zitten in het weekend of het is vrijdag - ga terug naar VORIGE vrijdag
+        days_since_last_friday = current_weekday - 4 + 7  # Ga terug naar vorige week vrijdag
+        vr = (now - timedelta(days=days_since_last_friday)).date()
+    else:  # Maandag (0) t/m Donderdag (3)
+        # Weekend is net afgelopen - gebruik afgelopen vrijdag
+        days_since_last_friday = current_weekday + 3  # Ma:3, Di:4, Wo:5, Do:6
+        vr = (now - timedelta(days=days_since_last_friday)).date()
+
+    # Zaterdag en zondag volgen vrijdag
+    za = vr + timedelta(days=1)
+    zo = vr + timedelta(days=2)
 
     # ISO week format: YYYY-Www (bijvoorbeeld 2025-W45)
     iso_cal = vr.isocalendar()

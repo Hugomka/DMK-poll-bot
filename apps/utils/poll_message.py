@@ -16,7 +16,6 @@ from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import is_paused, should_hide_counts
 from apps.utils.poll_storage import (
     get_non_voters_for_day,
-    load_votes,
     update_non_voters,
 )
 
@@ -304,7 +303,6 @@ async def check_all_voted_celebration(
     """Check of iedereen heeft gestemd en stuur/verwijder celebration message."""
     try:
         # Check alle 3 dagen voor niet-stemmers
-        votes = await load_votes(guild_id, channel_id)
         dagen = ["vrijdag", "zaterdag", "zondag"]
 
         all_voted = True
