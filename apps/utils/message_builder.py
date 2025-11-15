@@ -61,6 +61,7 @@ async def build_poll_message_for_day_async(
     guild_id: int | str,
     channel_id: int | str,
     hide_counts: bool = True,
+    hide_ghosts: bool = False,
     pauze: bool = False,
     guild: discord.Guild | None = None,
     channel: Any = None,
@@ -72,7 +73,8 @@ async def build_poll_message_for_day_async(
     - dag: 'vrijdag' | 'zaterdag' | 'zondag'
     - guild_id: Discord guild ID (server)
     - channel_id: Discord channel ID (tekstkanaal)
-    - hide_counts: verberg aantallen (True/False)
+    - hide_counts: verberg stemaantallen (True/False)
+    - hide_ghosts: verberg niet-gestemd aantallen (True/False)
     - pauze: voeg marker toe in de titel
     - guild: optioneel, voor mentions in andere helpers
     - channel: optioneel, voor niet-stemmers tracking
@@ -111,8 +113,8 @@ async def build_poll_message_for_day_async(
             n = int(counts.get(opt.tijd, 0))
             message += f"{label} ({n} stemmen)\n"
 
-    # Voeg niet-stemmers toe (altijd zichtbaar om leden te motiveren)
-    if guild and channel:
+    # Voeg niet-stemmers toe (tenzij verborgen via hide_ghosts)
+    if guild and channel and not hide_ghosts:
         all_votes = await load_votes(guild_id, channel_id)
         non_voter_count, _ = await get_non_voters_for_day(
             dag, guild, channel, all_votes

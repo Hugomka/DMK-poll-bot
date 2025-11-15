@@ -44,11 +44,13 @@ def get_setting(channel_id: int, dag: str):
 
 
 def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
-    """Zet expliciet 'altijd' of 'deadline' zichtbaarheid met tijd."""
+    """Zet expliciet 'altijd', 'deadline_show_ghosts' of 'deadline' zichtbaarheid met tijd."""
     data = _load_data()
     kanaal = data.setdefault(str(channel_id), {})
     if modus == "altijd":
         instelling = {"modus": "altijd", "tijd": "18:00"}
+    elif modus == "deadline_show_ghosts":
+        instelling = {"modus": "deadline_show_ghosts", "tijd": tijd}
     else:
         instelling = {"modus": "deadline", "tijd": tijd}
     kanaal[dag] = instelling
@@ -57,10 +59,50 @@ def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
 
 
 def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
+    """Bepaalt of stemaantallen verborgen moeten worden."""
     instelling = get_setting(channel_id, dag)
     if instelling["modus"] == "altijd":
         return False
 
+    # Voor 'deadline' en 'deadline_show_ghosts': beide verbergen counts tot deadline
+    # Deadline-uur:minuut
+    tijd_str = instelling.get("tijd", "18:00")
+    try:
+        uur, minuut = map(int, tijd_str.split(":"))
+    except ValueError:  # pragma: no cover
+        uur, minuut = 18, 0
+
+    target_idx = DAYS_INDEX.get(dag)
+    if target_idx is None:
+        return False  # Onbekende dag
+
+    huidige_idx = now.weekday()
+
+    # Vóór de dag → verbergen
+    if huidige_idx < target_idx:
+        return True
+    # Na de dag → tonen
+    if huidige_idx > target_idx:
+        return False
+
+    # Zelfde dag: verbergen tot de deadline-tijd
+    deadline = time(uur, minuut)
+    return now.time() < deadline
+
+
+def should_hide_ghosts(channel_id: int, dag: str, now: datetime) -> bool:
+    """Bepaalt of ghostaantallen (niet gestemd) verborgen moeten worden."""
+    instelling = get_setting(channel_id, dag)
+
+    # 'altijd': alles zichtbaar → ghosts tonen
+    if instelling["modus"] == "altijd":
+        return False
+
+    # 'deadline_show_ghosts': counts verbergen, ghosts tonen → ghosts tonen
+    if instelling["modus"] == "deadline_show_ghosts":
+        return False
+
+    # 'deadline': alles verbergen → ghosts ook verbergen tot deadline
     # Deadline-uur:minuut
     tijd_str = instelling.get("tijd", "18:00")
     try:

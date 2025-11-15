@@ -13,7 +13,7 @@ from apps.logic.decision import build_decision_line
 from apps.utils.celebration_gif import get_celebration_gif_url
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
-from apps.utils.poll_settings import is_paused, should_hide_counts
+from apps.utils.poll_settings import is_paused, should_hide_counts, should_hide_ghosts
 from apps.utils.poll_storage import (
     get_non_voters_for_day,
     update_non_voters,
@@ -251,12 +251,14 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
 
             # Bepaal content (zowel voor edit als create)
             hide = should_hide_counts(cid_val, d, now)
+            hide_ghosts_val = should_hide_ghosts(cid_val, d, now)
             paused = is_paused(cid_val)
             content = await build_poll_message_for_day_async(
                 d,
                 guild_id=gid_val,
                 channel_id=cid_val,
                 hide_counts=hide,
+                hide_ghosts=hide_ghosts_val,
                 pauze=paused,
                 guild=getattr(channel, "guild", None),  # Voor namen
                 channel=channel,  # Voor niet-stemmers tracking

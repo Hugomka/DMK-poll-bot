@@ -74,7 +74,7 @@ class TestPollVotesStemmen(BaseTestCase):
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Zichtbaar maken", "zichtbaar")
+        actie = _mk_choice("Zichtbaar maken", "altijd")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
@@ -86,9 +86,9 @@ class TestPollVotesStemmen(BaseTestCase):
 
         # Moet voor alle 3 dagen zijn aangeroepen
         assert mock_set_visibility.call_count == 3
-        mock_set_visibility.assert_any_call(123, "vrijdag", modus="altijd")
-        mock_set_visibility.assert_any_call(123, "zaterdag", modus="altijd")
-        mock_set_visibility.assert_any_call(123, "zondag", modus="altijd")
+        mock_set_visibility.assert_any_call(123, "vrijdag", modus="altijd", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "zaterdag", modus="altijd", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "zondag", modus="altijd", tijd="18:00")
 
         # Moet berichten hebben ge-update
         assert mock_update.await_count == 3
@@ -104,7 +104,7 @@ class TestPollVotesStemmen(BaseTestCase):
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Zichtbaar maken", "zichtbaar")
+        actie = _mk_choice("Zichtbaar maken", "altijd")
         dag = _mk_choice("Vrijdag", "vrijdag")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
@@ -116,7 +116,9 @@ class TestPollVotesStemmen(BaseTestCase):
             await self._run(self.cog.stemmen, interaction, actie, dag=dag, tijd=None)
 
         # Moet alleen voor vrijdag zijn aangeroepen
-        mock_set_visibility.assert_called_once_with(123, "vrijdag", modus="altijd")
+        mock_set_visibility.assert_called_once_with(
+            123, "vrijdag", modus="altijd", tijd="18:00"
+        )
 
         # Moet bericht hebben ge-update
         mock_update.assert_awaited_once_with(channel, "vrijdag")
@@ -133,7 +135,7 @@ class TestPollVotesStemmen(BaseTestCase):
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Verbergen tot deadline", "verborgen")
+        actie = _mk_choice("Verbergen tot deadline", "deadline")
         dag = _mk_choice("Zaterdag", "zaterdag")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
@@ -162,7 +164,7 @@ class TestPollVotesStemmen(BaseTestCase):
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Verbergen tot deadline", "verborgen")
+        actie = _mk_choice("Verbergen tot deadline", "deadline")
         dag = _mk_choice("Zondag", "zondag")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
@@ -189,7 +191,7 @@ class TestPollVotesStemmen(BaseTestCase):
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Verbergen tot deadline", "verborgen")
+        actie = _mk_choice("Verbergen tot deadline", "deadline")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
@@ -221,7 +223,7 @@ class TestPollVotesStemmen(BaseTestCase):
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Verbergen tot deadline", "verborgen")
+        actie = _mk_choice("Verbergen tot deadline", "deadline")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
@@ -243,12 +245,46 @@ class TestPollVotesStemmen(BaseTestCase):
         assert "alle dagen" in content.lower()
         assert "verborgen tot 18:00" in content.lower()
 
+    async def test_stemmen_deadline_show_ghosts_met_tijd(self):
+        """Test dat deadline_show_ghosts modus werkt met custom tijd"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+        actie = _mk_choice(
+            "Verbergen tot deadline behalve niet gestemd", "deadline_show_ghosts"
+        )
+        dag = _mk_choice("Vrijdag", "vrijdag")
+
+        with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
+            "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
+        ):
+            # Mock return value met custom tijd
+            mock_set_visibility.return_value = {
+                "modus": "deadline_show_ghosts",
+                "tijd": "17:30",
+            }
+
+            await self._run(
+                self.cog.stemmen, interaction, actie, dag=dag, tijd="17:30"
+            )
+
+        # Moet deadline_show_ghosts modus gebruiken met opgegeven tijd
+        mock_set_visibility.assert_called_once_with(
+            123, "vrijdag", modus="deadline_show_ghosts", tijd="17:30"
+        )
+
+        # Moet bevestiging hebben gestuurd met juiste tekst
+        interaction.followup.send.assert_awaited_once()
+        content = self._last_content(interaction.followup.send)
+        assert "vrijdag" in content.lower()
+        assert "verborgen tot 17:30 (behalve niet gestemd)" in content.lower()
+
     async def test_stemmen_with_empty_laatste_dict(self):
         """Test dat lege laatste dict correct wordt afgehandeld"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
-        actie = _mk_choice("Zichtbaar maken", "zichtbaar")
+        actie = _mk_choice("Zichtbaar maken", "altijd")
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()

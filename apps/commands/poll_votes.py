@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
-from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
@@ -27,12 +25,18 @@ class PollVotes(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-stemmen",
-        description=with_default_suffix("Toon of verberg stemmenaantallen tot de deadline"),
+        description=with_default_suffix(
+            "Toon of verberg stemmenaantallen tot de deadline"
+        ),
     )
     @app_commands.choices(
         actie=[
-            app_commands.Choice(name="Zichtbaar maken", value="zichtbaar"),
-            app_commands.Choice(name="Verbergen tot deadline", value="verborgen"),
+            app_commands.Choice(name="Zichtbaar maken", value="altijd"),
+            app_commands.Choice(
+                name="Verbergen tot deadline behalve niet gestemd",
+                value="deadline_show_ghosts",
+            ),
+            app_commands.Choice(name="Verbergen tot deadline", value="deadline"),
         ],
         dag=[
             app_commands.Choice(name="Vrijdag", value="vrijdag"),
@@ -62,20 +66,21 @@ class PollVotes(commands.Cog):
 
             laatste: Optional[dict] = None
             for d in doel_dagen:
-                if actie.value == "zichtbaar":
-                    laatste = set_visibility(channel.id, d, modus="altijd")
-                else:
-                    laatste = set_visibility(
-                        channel.id, d, modus="deadline", tijd=(tijd or "18:00")
-                    )
+                # Gebruik de actie.value direct als modus (altijd, deadline_show_ghosts, deadline)
+                laatste = set_visibility(
+                    channel.id, d, modus=actie.value, tijd=(tijd or "18:00")
+                )
                 await update_poll_message(channel, d)
 
             tijd_txt = (laatste or {}).get("tijd", "18:00")
-            modus_txt = (
-                "altijd zichtbaar"
-                if (laatste or {}).get("modus") == "altijd"
-                else f"verborgen tot {tijd_txt}"
-            )
+            modus = (laatste or {}).get("modus", "deadline")
+
+            if modus == "altijd":
+                modus_txt = "altijd zichtbaar"
+            elif modus == "deadline_show_ghosts":
+                modus_txt = f"verborgen tot {tijd_txt} (behalve niet gestemd)"
+            else:
+                modus_txt = f"verborgen tot {tijd_txt}"
 
             if dag and dag.value:
                 await interaction.followup.send(

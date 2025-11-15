@@ -38,7 +38,7 @@ class TestPollSettings(BaseTestCase):
         try:
             if os.path.exists(self.temp_settings_path):
                 os.unlink(self.temp_settings_path)
-        except:
+        except Exception:  # pragma: no cover
             pass
 
         await super().asyncTearDown()
@@ -104,6 +104,22 @@ class TestGetSettingAndSetVisibility(TestPollSettings):
         """Test that set_visibility with deadline defaults to 18:00"""
         result = poll_settings.set_visibility(1, "vrijdag", "deadline")
         assert result == {"modus": "deadline", "tijd": "18:00"}
+
+    async def test_set_visibility_deadline_show_ghosts_uses_custom_tijd(self):
+        """Test dat set_visibility met deadline_show_ghosts custom tijd gebruikt"""
+        result = poll_settings.set_visibility(
+            1, "vrijdag", "deadline_show_ghosts", tijd="17:30"
+        )
+        assert result == {"modus": "deadline_show_ghosts", "tijd": "17:30"}
+
+        # Verifieer dat het is opgeslagen
+        saved = poll_settings.get_setting(1, "vrijdag")
+        assert saved == {"modus": "deadline_show_ghosts", "tijd": "17:30"}
+
+    async def test_set_visibility_deadline_show_ghosts_default_tijd(self):
+        """Test dat set_visibility met deadline_show_ghosts default naar 18:00"""
+        result = poll_settings.set_visibility(1, "vrijdag", "deadline_show_ghosts")
+        assert result == {"modus": "deadline_show_ghosts", "tijd": "18:00"}
 
     async def test_set_visibility_persists_to_json(self):
         """Test that set_visibility saves to JSON file"""
@@ -245,6 +261,106 @@ class TestShouldHideCounts(TestPollSettings):
         assert poll_settings.should_hide_counts(1, "zaterdag", now) is False
 
 
+class TestShouldHideGhosts(TestPollSettings):
+    """Tests voor should_hide_ghosts functie"""
+
+    async def test_should_hide_ghosts_altijd_always_returns_false(self):
+        """Test dat altijd mode nooit ghosts verbergt"""
+        poll_settings.set_visibility(1, "vrijdag", "altijd")
+
+        # Voor de dag
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"] - 1, 23, 59)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+        # Op de dag, voor deadline
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 10, 0)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+        # Na de dag
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"] + 1, 0, 1)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+    async def test_should_hide_ghosts_deadline_show_ghosts_always_returns_false(self):
+        """Test dat deadline_show_ghosts mode nooit ghosts verbergt"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline_show_ghosts", "18:00")
+
+        # Voor de dag
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"] - 1, 23, 59)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+        # Op de dag, voor deadline
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 10, 0)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+        # Op de dag, na deadline
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 18, 1)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+        # Na de dag
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"] + 1, 0, 1)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+    async def test_should_hide_ghosts_deadline_before_day_returns_true(self):
+        """Test dat deadline mode ghosts verbergt voor target dag"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline", "18:00")
+
+        # Donderdag (dag voor vrijdag)
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"] - 1, 23, 59)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is True
+
+    async def test_should_hide_ghosts_deadline_after_day_returns_false(self):
+        """Test dat deadline mode ghosts toont na target dag"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline", "18:00")
+
+        # Zaterdag (dag na vrijdag)
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"] + 1, 0, 1)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+    async def test_should_hide_ghosts_deadline_same_day_before_time_returns_true(self):
+        """Test dat deadline mode ghosts verbergt voor deadline tijd op zelfde dag"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline", "18:00")
+
+        # Vrijdag om 17:59
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 17, 59)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is True
+
+    async def test_should_hide_ghosts_deadline_same_day_at_time_returns_false(self):
+        """Test dat deadline mode ghosts toont op deadline tijd"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline", "18:00")
+
+        # Vrijdag om 18:00
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 18, 0)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+    async def test_should_hide_ghosts_deadline_same_day_after_time_returns_false(self):
+        """Test dat deadline mode ghosts toont na deadline tijd"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline", "18:00")
+
+        # Vrijdag om 18:01
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 18, 1)
+        assert poll_settings.should_hide_ghosts(1, "vrijdag", now) is False
+
+    async def test_should_hide_ghosts_unknown_day_returns_false(self):
+        """Test dat onbekende dag naam False retourneert"""
+        poll_settings.set_visibility(1, "vrijdag", "deadline", "18:00")
+
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["vrijdag"], 12, 0)
+        result = poll_settings.should_hide_ghosts(1, "onbekendedag", now)
+        assert result is False
+
+    async def test_should_hide_ghosts_custom_deadline_time(self):
+        """Test should_hide_ghosts met custom deadline tijd"""
+        poll_settings.set_visibility(1, "zaterdag", "deadline", "17:30")
+
+        # Zaterdag om 17:29 - verberg
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["zaterdag"], 17, 29)
+        assert poll_settings.should_hide_ghosts(1, "zaterdag", now) is True
+
+        # Zaterdag om 17:30 - toon
+        now = self._dt_for_weekday(poll_settings.DAYS_INDEX["zaterdag"], 17, 30)
+        assert poll_settings.should_hide_ghosts(1, "zaterdag", now) is False
+
+
 class TestPauseFunctions(TestPollSettings):
     """Tests for pause-related functions"""
 
@@ -350,9 +466,7 @@ class TestScheduledActivation(TestPollSettings):
 
     async def test_set_scheduled_activation_persists_to_json(self):
         """Test that scheduled activation persists in JSON"""
-        poll_settings.set_scheduled_activation(
-            123, "wekelijks", "19:00", dag="maandag"
-        )
+        poll_settings.set_scheduled_activation(123, "wekelijks", "19:00", dag="maandag")
 
         # Read JSON directly
         with open(self.temp_settings_path, "r", encoding="utf-8") as f:
@@ -368,7 +482,9 @@ class TestScheduledActivation(TestPollSettings):
     async def test_clear_scheduled_activation(self):
         """Test clear_scheduled_activation removes schedule"""
         # First set a schedule
-        poll_settings.set_scheduled_activation(123, "datum", "18:00", datum="2025-12-31")
+        poll_settings.set_scheduled_activation(
+            123, "datum", "18:00", datum="2025-12-31"
+        )
         assert poll_settings.get_scheduled_activation(123) is not None
 
         # Clear it
@@ -386,7 +502,9 @@ class TestScheduledActivation(TestPollSettings):
     async def test_set_scheduled_activation_overwrites_previous(self):
         """Test that setting activation overwrites previous schedule"""
         # Set datum schedule
-        poll_settings.set_scheduled_activation(123, "datum", "18:00", datum="2025-12-31")
+        poll_settings.set_scheduled_activation(
+            123, "datum", "18:00", datum="2025-12-31"
+        )
 
         # Overwrite with wekelijks
         poll_settings.set_scheduled_activation(123, "wekelijks", "20:00", dag="vrijdag")
@@ -489,7 +607,9 @@ class TestScheduledDeactivation(TestPollSettings):
         )
 
         # Overwrite with wekelijks
-        poll_settings.set_scheduled_deactivation(123, "wekelijks", "23:00", dag="zondag")
+        poll_settings.set_scheduled_deactivation(
+            123, "wekelijks", "23:00", dag="zondag"
+        )
 
         # Should have wekelijks schedule
         stored = poll_settings.get_scheduled_deactivation(123)
@@ -497,7 +617,9 @@ class TestScheduledDeactivation(TestPollSettings):
 
     async def test_scheduled_deactivation_multiple_channels(self):
         """Test scheduled deactivation for multiple channels"""
-        poll_settings.set_scheduled_deactivation(1, "datum", "22:00", datum="2026-01-01")
+        poll_settings.set_scheduled_deactivation(
+            1, "datum", "22:00", datum="2026-01-01"
+        )
         poll_settings.set_scheduled_deactivation(2, "wekelijks", "23:00", dag="zondag")
 
         assert poll_settings.get_scheduled_deactivation(1) == {
@@ -514,7 +636,9 @@ class TestScheduledDeactivation(TestPollSettings):
     async def test_activation_and_deactivation_coexist(self):
         """Test that activation and deactivation schedules can coexist"""
         poll_settings.set_scheduled_activation(123, "wekelijks", "18:00", dag="vrijdag")
-        poll_settings.set_scheduled_deactivation(123, "wekelijks", "22:00", dag="zondag")
+        poll_settings.set_scheduled_deactivation(
+            123, "wekelijks", "22:00", dag="zondag"
+        )
 
         assert poll_settings.get_scheduled_activation(123) == {
             "type": "wekelijks",
