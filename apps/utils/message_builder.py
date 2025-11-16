@@ -86,7 +86,21 @@ async def build_poll_message_for_day_async(
     message = f"{title}\n"
 
     # Filter opties voor deze dag
-    opties = [o for o in get_poll_options() if o.dag == dag]
+    all_opties = [o for o in get_poll_options() if o.dag == dag]
+
+    # Filter opties op basis van poll option settings
+    from apps.utils.poll_settings import get_poll_option_state
+
+    opties = []
+    for opt in all_opties:
+        # Skip tijd-opties die disabled zijn (19:00 of 20:30)
+        if opt.tijd in ["om 19:00 uur", "om 20:30 uur"]:
+            tijd_short = "19:00" if "19:00" in opt.tijd else "20:30"
+            if not get_poll_option_state(int(channel_id), dag, tijd_short):
+                continue  # Skip deze optie
+
+        opties.append(opt)
+
     if not opties:
         message += "_(geen opties gevonden)_"
         return message

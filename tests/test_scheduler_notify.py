@@ -107,6 +107,8 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             ) as mock_mention,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "is_paused", return_value=False),
+            patch.object(scheduler, "is_notification_enabled", return_value=True),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
@@ -473,6 +475,8 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             ) as mock_mention,
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "is_paused", return_value=False),
+            patch.object(scheduler, "is_notification_enabled", return_value=True),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False

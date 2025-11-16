@@ -12,7 +12,7 @@ from discord.ui import Button, View
 from apps.entities.poll_option import get_poll_options, list_days
 from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_message import check_all_voted_celebration, update_poll_message
-from apps.utils.poll_settings import is_paused
+from apps.utils.poll_settings import get_poll_option_state, is_paused
 from apps.utils.poll_storage import get_user_votes, toggle_vote
 
 HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
@@ -169,6 +169,12 @@ class PollButtonView(View):
         for option in get_poll_options():
             if filter_dag and option.dag != filter_dag:
                 continue
+
+            # Check of deze tijd-optie enabled is in settings
+            if option.tijd in ["om 19:00 uur", "om 20:30 uur"]:
+                tijd_short = "19:00" if "19:00" in option.tijd else "20:30"
+                if not get_poll_option_state(channel_id, option.dag, tijd_short):
+                    continue  # Skip disabled opties
 
             if not is_vote_button_visible(channel_id, option.dag, option.tijd, now):
                 continue

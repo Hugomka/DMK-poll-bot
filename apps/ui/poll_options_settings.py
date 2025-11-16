@@ -1,0 +1,294 @@
+# apps/ui/poll_options_settings.py
+#
+# UI voor poll-opties instellingen met toggle buttons
+
+import discord
+
+from apps.utils.discord_client import fetch_message_or_none, safe_call
+from apps.utils.poll_message import (
+    clear_message_id,
+    get_message_id,
+    is_channel_disabled,
+    save_message_id,
+    schedule_poll_update,
+)
+from apps.utils.poll_settings import (
+    get_all_poll_options_state,
+    is_day_completely_disabled,
+    toggle_poll_option,
+)
+
+
+class PollOptionsSettingsView(discord.ui.View):
+    """View met 6 toggle buttons voor poll-opties."""
+
+    def __init__(self, channel_id: int, channel: discord.TextChannel):
+        super().__init__(timeout=None)  # Persistent view
+        self.channel_id = channel_id
+        self.channel = channel
+
+        # Haal huidige status op
+        states = get_all_poll_options_state(channel_id)
+
+        # Voeg buttons toe in logische volgorde
+        self.add_item(PollOptionButton("vrijdag", "19:00", states.get("vrijdag_19:00", True)))
+        self.add_item(PollOptionButton("vrijdag", "20:30", states.get("vrijdag_20:30", True)))
+        self.add_item(PollOptionButton("zaterdag", "19:00", states.get("zaterdag_19:00", True)))
+        self.add_item(PollOptionButton("zaterdag", "20:30", states.get("zaterdag_20:30", True)))
+        self.add_item(PollOptionButton("zondag", "19:00", states.get("zondag_19:00", True)))
+        self.add_item(PollOptionButton("zondag", "20:30", states.get("zondag_20:30", True)))
+
+
+class PollOptionButton(discord.ui.Button):
+    """Toggle button voor een specifieke poll optie."""
+
+    def __init__(self, dag: str, tijd: str, enabled: bool):
+        self.dag = dag
+        self.tijd = tijd
+        self.enabled = enabled
+
+        # Label en emoji
+        dag_emoji = {"vrijdag": "🔴", "zaterdag": "🟡", "zondag": "🟢"}
+        emoji = dag_emoji.get(dag, "⚪")
+        label = f"{dag.capitalize()} {tijd}"
+
+        # Style: groen als enabled, grijs als disabled
+        style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary
+
+        super().__init__(
+            style=style,
+            label=label,
+            emoji=emoji,
+            custom_id=f"poll_option_{dag}_{tijd}",
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        """Toggle de poll optie en refresh de poll messages."""
+        channel_id = interaction.channel_id
+        if not channel_id:
+            await interaction.response.send_message(
+                "❌ Kan channel ID niet bepalen.", ephemeral=True
+            )
+            return
+
+        try:
+            # Toggle de optie
+            nieuwe_status = toggle_poll_option(channel_id, self.dag, self.tijd)
+
+            # Update button style
+            self.enabled = nieuwe_status
+            self.style = discord.ButtonStyle.success if nieuwe_status else discord.ButtonStyle.secondary
+
+            # Update de settings message met nieuwe button states (EERST, voor response)
+            await interaction.response.edit_message(view=self.view)
+
+            # Check of bot actief is
+            bot_actief = not is_channel_disabled(channel_id)
+
+            if bot_actief:
+                # Refresh poll messages (silent - geen followup message!)
+                await self._refresh_poll_messages(interaction.channel)
+            else:
+                # Bot is niet actief - toon waarschuwing
+                await interaction.followup.send(
+                    f"⚠️ De poll is momenteel niet actief. "
+                    f"Wijzigingen worden toegepast bij de volgende activatie.",
+                    ephemeral=True,
+                )
+
+        except discord.NotFound:
+            # Message bestaat niet meer, negeer
+            pass
+        except Exception as e:
+            # Alleen errors tonen
+            await interaction.followup.send(
+                f"❌ Fout bij togglen poll-optie: {e}", ephemeral=True
+            )
+
+    async def _refresh_poll_messages(self, channel):
+        """
+        Refresh poll messages na toggle.
+
+        Logic (efficiënt):
+        - Als dag volledig disabled → verwijder message
+        - Als dag message bestaat → edit de message (voeg/verwijder tijd-regel)
+        - Als dag nieuw enabled (was volledig disabled) → hermaak alles voor juiste volgorde
+        """
+        # Guard: check of view bestaat
+        if not self.view or not isinstance(self.view, PollOptionsSettingsView):
+            return
+
+        import asyncio
+
+        # Check huidige status van alle dagen
+        vrijdag_disabled = is_day_completely_disabled(self.view.channel_id, "vrijdag")
+        zaterdag_disabled = is_day_completely_disabled(self.view.channel_id, "zaterdag")
+        zondag_disabled = is_day_completely_disabled(self.view.channel_id, "zondag")
+
+        # Check of messages bestaan
+        vrijdag_exists = get_message_id(self.view.channel_id, "vrijdag") is not None
+        zaterdag_exists = get_message_id(self.view.channel_id, "zaterdag") is not None
+        zondag_exists = get_message_id(self.view.channel_id, "zondag") is not None
+
+        # Detecteer of een dag nieuw enabled wordt (was disabled, nu enabled, maar message bestaat nog niet)
+        nieuwe_dag_aanmaken = (
+            (not vrijdag_disabled and not vrijdag_exists)
+            or (not zaterdag_disabled and not zaterdag_exists)
+            or (not zondag_disabled and not zondag_exists)
+        )
+
+        if nieuwe_dag_aanmaken:
+            # Een nieuwe dag moet aangemaakt worden → verwijder alles en hermaak in juiste volgorde
+            await self._recreate_all_poll_messages(channel)
+        else:
+            # Geen nieuwe dag → efficiënt updaten/verwijderen
+            update_tasks = []
+
+            # Voor elke dag: verwijder als volledig disabled, anders edit
+            if vrijdag_disabled and vrijdag_exists:
+                update_tasks.append(self._delete_day_message(channel, "vrijdag"))
+            elif not vrijdag_disabled and vrijdag_exists:
+                # Edit bestaande message (tijd toegevoegd/verwijderd)
+                update_tasks.append(schedule_poll_update(channel, "vrijdag", delay=0))
+
+            if zaterdag_disabled and zaterdag_exists:
+                update_tasks.append(self._delete_day_message(channel, "zaterdag"))
+            elif not zaterdag_disabled and zaterdag_exists:
+                # Edit bestaande message (tijd toegevoegd/verwijderd)
+                update_tasks.append(schedule_poll_update(channel, "zaterdag", delay=0))
+
+            if zondag_disabled and zondag_exists:
+                update_tasks.append(self._delete_day_message(channel, "zondag"))
+            elif not zondag_disabled and zondag_exists:
+                # Edit bestaande message (tijd toegevoegd/verwijderd)
+                update_tasks.append(schedule_poll_update(channel, "zondag", delay=0))
+
+            if update_tasks:
+                await asyncio.gather(*update_tasks, return_exceptions=True)
+
+    async def _recreate_all_poll_messages(self, channel):
+        """
+        Verwijder en hermaak alle poll messages in de juiste volgorde.
+        Wordt alleen gebruikt als een nieuwe dag enabled wordt.
+        """
+        # Guard: check of view bestaat
+        if not self.view or not isinstance(self.view, PollOptionsSettingsView):
+            return
+
+        import asyncio
+
+        # Stap 1: Verwijder ALLE bestaande poll messages
+        all_days = ["vrijdag", "zaterdag", "zondag"]
+        delete_tasks = [self._delete_day_message(channel, dag) for dag in all_days]
+        await asyncio.gather(*delete_tasks, return_exceptions=True)
+
+        # Stap 2: Check welke dagen enabled zijn
+        vrijdag_disabled = is_day_completely_disabled(self.view.channel_id, "vrijdag")
+        zaterdag_disabled = is_day_completely_disabled(self.view.channel_id, "zaterdag")
+        zondag_disabled = is_day_completely_disabled(self.view.channel_id, "zondag")
+
+        # Stap 3: Hermaak poll messages in de juiste volgorde (alleen enabled dagen)
+        update_tasks = []
+        if not vrijdag_disabled:
+            update_tasks.append(schedule_poll_update(channel, "vrijdag", delay=0.1))
+        if not zaterdag_disabled:
+            update_tasks.append(schedule_poll_update(channel, "zaterdag", delay=0.2))
+        if not zondag_disabled:
+            update_tasks.append(schedule_poll_update(channel, "zondag", delay=0.3))
+
+        if update_tasks:
+            await asyncio.gather(*update_tasks, return_exceptions=True)
+
+        # Stap 4: Hermaak buttons en notificatie messages
+        await self._recreate_ui_messages(channel)
+
+    async def _recreate_ui_messages(self, channel):
+        """
+        Verwijder en hermaak buttons en notificatie messages om volgorde te garanderen.
+
+        Volgorde moet zijn:
+        1. Poll messages (vrijdag, zaterdag, zondag)
+        2. Buttons message (🗳️ Stemmen)
+        3. Notificatie message (als die er is)
+        """
+        # Guard: check of view bestaat
+        if not self.view or not isinstance(self.view, PollOptionsSettingsView):
+            return
+
+        from apps.ui.poll_buttons import OneStemButtonView
+        from apps.utils.poll_settings import is_paused
+
+        # 1. Verwijder oude stemmen button message
+        buttons_id = get_message_id(self.view.channel_id, "stemmen")
+        if buttons_id:
+            msg = await fetch_message_or_none(channel, buttons_id)
+            if msg:
+                await safe_call(msg.delete)
+            clear_message_id(self.view.channel_id, "stemmen")
+
+        # 2. Verwijder oude notificatie message
+        notif_id = get_message_id(self.view.channel_id, "notification_persistent")
+        if notif_id:
+            msg = await fetch_message_or_none(channel, notif_id)
+            if msg:
+                await safe_call(msg.delete)
+            clear_message_id(self.view.channel_id, "notification_persistent")
+
+        # 3. Hermaak stemmen button message
+        paused = is_paused(self.view.channel_id)
+        view = OneStemButtonView(paused=paused)
+        tekst = (
+            "⏸️ Stemmen is tijdelijk gepauzeerd."
+            if paused
+            else "Klik op **🗳️ Stemmen** om je keuzes te maken."
+        )
+        new_buttons = await safe_call(channel.send, content=tekst, view=view)
+        if new_buttons:
+            save_message_id(self.view.channel_id, "stemmen", new_buttons.id)
+
+        # 4. Hermaak notificatie message (als die er was)
+        if notif_id:
+            content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+            new_notif = await safe_call(channel.send, content=content, view=None)
+            if new_notif:
+                save_message_id(self.view.channel_id, "notification_persistent", new_notif.id)
+
+    async def _delete_day_message(self, channel, dag: str):
+        """Verwijder poll message voor een specifieke dag."""
+        # Guard: check of view bestaat
+        if not self.view or not isinstance(self.view, PollOptionsSettingsView):
+            return
+
+        try:
+            message_id = get_message_id(self.view.channel_id, dag)
+            if not message_id:
+                return
+
+            msg = await fetch_message_or_none(channel, message_id)
+            if msg:
+                await safe_call(msg.delete)
+
+            # Clear de message ID
+            clear_message_id(self.view.channel_id, dag)
+        except Exception:
+            # Negeer errors (message bestaat niet meer, etc.)
+            pass
+
+
+def create_poll_options_settings_embed() -> discord.Embed:
+    """Maak embed voor poll-opties settings."""
+    embed = discord.Embed(
+        title="⚙️ Instellingen Poll-opties",
+        description=(
+            "Activeer of deactiveer de poll-optie voor de huidige poll. "
+            "Het heeft een direct effect op de huidige kanaal met de poll.\n\n"
+            "**Status:**\n"
+            "🟢 Groen = Actief\n"
+            "⚪ Grijs = Uitgeschakeld"
+        ),
+        color=discord.Color.blue(),
+    )
+
+    embed.set_footer(text="Klik op een knop om de status te togglen")
+
+    return embed
