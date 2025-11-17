@@ -44,6 +44,13 @@ async def on_ready():
 
 async def main():
     from apps.scheduler import setup_scheduler
+    from apps.utils.tenor_sync import sync_tenor_links
+
+    # Sync tenor links bij startup (creëert tenor-links.json als niet bestaat)
+    try:
+        sync_tenor_links()
+    except Exception as e:
+        print(f"⚠️ Waarschuwing: Tenor sync bij startup mislukt: {e}")
 
     setup_scheduler(bot)  # start de APScheduler jobs
 

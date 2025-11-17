@@ -34,6 +34,7 @@ poll_message.json
 poll_settings.json
 votes.json
 archive/
+tenor-links.json
 
 # Coverage
 .coverage

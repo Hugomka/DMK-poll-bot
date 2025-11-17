@@ -36,6 +36,7 @@ from apps.utils.poll_storage import (
     reset_votes,
     reset_votes_scoped,
 )
+from apps.utils.tenor_sync import needs_sync, sync_tenor_links
 
 # NL-tijdzone
 TZ = pytz.timezone("Europe/Amsterdam")
@@ -347,6 +348,30 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
                     pass
 
 
+async def sync_tenor_links_weekly(bot=None) -> None:  # pragma: no cover
+    """
+    Sync tenor GIF lijst wekelijks (maandag 00:00).
+    Controleert eerst of sync nodig is (nieuwe/verwijderde GIFs).
+    Voert alleen sync uit als er daadwerkelijk verschillen zijn (niet alleen counts).
+    """
+    log_job("tenor_sync", status="checking")
+
+    # Check of sync nodig is (nieuwe/verwijderde GIFs, niet alleen count wijzigingen)
+    if not needs_sync():
+        log_job("tenor_sync", status="skipped_no_changes")
+        return
+
+    # Voer sync uit
+    try:
+        sync_tenor_links()
+        log_job("tenor_sync", status="executed")
+    except Exception as e:  # pragma: no cover
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Fout bij tenor sync: {e}")
+        log_job("tenor_sync", status="failed")
+
+
 def _read_state() -> dict:
     try:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
@@ -469,6 +494,23 @@ async def _run_catch_up(bot) -> None:  # pragma: no cover
         state["reminder_thursday"] = now.isoformat()
         missed.append("reminder_thursday")
 
+    # Wekelijkse tenor GIF sync (maandag 00:00)
+    last_tenor_sync = state.get("tenor_sync")
+    days_since_mon = (now.weekday() - 0) % 7  # 0 = maandag
+    last_date_mon = (now - timedelta(days=days_since_mon)).date()
+    last_occurrence_mon = TZ.localize(
+        datetime.combine(last_date_mon, dt_time(0, 0))
+    )
+    if now < last_occurrence_mon:
+        last_occurrence_mon -= timedelta(days=7)
+    if should_run(last_tenor_sync, last_occurrence_mon):
+        await sync_tenor_links_weekly(bot)
+        state["tenor_sync"] = now.isoformat()
+        missed.append("tenor_sync")
+        log_job("tenor_sync", status="executed")
+    else:
+        log_job("tenor_sync", status="skipped")
+
     # Altijd state schrijven en loggen, ongeacht of Thursday reminder runde
     _write_state(state)
     log_startup(missed)
@@ -506,6 +548,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
     - Herinnering niet-stemmers op vr/za/zo om 17:00.
     - Notificatie dat een avond doorgaat op vr/za/zo om 18:05.
     - Reset op dinsdag om 20:00.
+    - Tenor GIF sync op maandag om 00:00.
     """
     # Dagelijkse pollupdates
     scheduler.add_job(
@@ -520,6 +563,13 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(day_of_week="tue", hour=RESET_HOUR, minute=0),
         args=[bot],
         name="Wekelijkse reset dinsdag 20:00",
+    )
+    # Wekelijkse tenor GIF sync (maandag 00:00)
+    scheduler.add_job(
+        sync_tenor_links_weekly,
+        CronTrigger(day_of_week="mon", hour=0, minute=0),
+        args=[bot],
+        name="Wekelijkse tenor sync maandag 00:00",
     )
     # Herinneringen (vrijdag, zaterdag, zondag)
     scheduler.add_job(

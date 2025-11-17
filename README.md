@@ -212,6 +212,57 @@ journalctl -u dmk-bot -f
 
 ---
 
+## 🚀 Deployment
+
+### Eerste deployment (nieuwe server)
+
+De bot maakt automatisch alle runtime bestanden aan bij de eerste start:
+
+```bash
+# Clone repository
+git clone https://github.com/Hugomka/DMK-poll-bot.git
+cd DMK-poll-bot
+
+# Setup (zie installatie-instructies hierboven)
+python -m venv .venv
+source .venv/bin/activate  # of .\.venv\Scripts\Activate.ps1 op Windows
+pip install -r requirements.txt
+
+# Maak .env met DISCORD_TOKEN
+echo "DISCORD_TOKEN=je_token_hier" > .env
+
+# Start de bot (creëert automatisch tenor-links.json en andere runtime bestanden)
+python main.py
+```
+
+### Update deployment (bestaande server)
+
+Bij updates worden runtime bestanden **niet** overschreven:
+
+```bash
+# Pull updates
+git pull origin main
+
+# Restart de bot
+# (runtime bestanden blijven behouden met hun huidige data)
+```
+
+### Automatische Tenor GIF Sync
+
+De bot synchroniseert automatisch `tenor-links.template.json` naar `tenor-links.json`:
+- **Wanneer**: Elke maandag om 00:00 (poll sluitingstijd)
+- **Wat**: Nieuwe GIFs worden toegevoegd met count: 0, verwijderde GIFs worden verwijderd
+- **Behoud**: Bestaande GIF counts blijven behouden
+- **Efficiëntie**: Sync wordt alleen uitgevoerd als er daadwerkelijk nieuwe of verwijderde GIFs zijn (niet bij alleen count wijzigingen)
+
+**GIF lijst bijwerken:**
+1. Bewerk `tenor-links.template.json` op je development machine
+2. Commit en push de wijzigingen
+3. Deploy naar productie met `git pull`
+4. De bot zal automatisch synchroniseren op maandag 00:00 (of bij herstart via catch-up mechanisme)
+
+---
+
 ## 🔧 Technische details
 
 ### Map-structuur
@@ -277,18 +328,21 @@ DMK-poll-bot/
 
 ### Belangrijke data-bestanden
 
-| Bestand/map               | Doel                                                                             |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `poll_options.json`       | Config van opties (tijden/emoji's) per dag.                                      |
-| `votes.json`              | Alle stemmen (per user/gast per dag). Async lock voor veilige I/O.               |
-| `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen, scheduling (activatie/deactivatie tijden), poll-opties (welke dagen/tijden enabled), notificatie preferences (8 toggles per kanaal). |
-| `poll_message.json`       | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
-| `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
-| `opening_message.txt`     | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
-| `tenor-links.json`        | Celebration GIF URLs met gewogen selectie (Nintendo 3x vaker dan non-Nintendo). |
-| `resources/`              | Lokale afbeeldingen voor fallback (bedankt-puppies-kitties.jpg).                        |
-| `.scheduler_state.json`   | State van de scheduler (laatste uitvoering van jobs).                            |
-| `.scheduler.lock`         | File lock voor scheduler state om race conditions te voorkomen.                  |
+| Bestand/map               | Runtime Data | Doel                                                                             |
+| ------------------------- | :----------: | -------------------------------------------------------------------------------- |
+| `poll_options.json`       | ❌ | Config van opties (tijden/emoji's) per dag.                                      |
+| `votes.json`              | ✅ | Alle stemmen (per user/gast per dag). Async lock voor veilige I/O.               |
+| `poll_settings.json`      | ✅ | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen, scheduling (activatie/deactivatie tijden), poll-opties (welke dagen/tijden enabled), notificatie preferences (8 toggles per kanaal). |
+| `poll_message.json`       | ✅ | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
+| `archive/dmk_archive.csv` | ✅ | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
+| `opening_message.txt`     | ❌ | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
+| `tenor-links.json`        | ✅ | Celebration GIF URLs met gebruikscounts (wordt automatisch gesynchroniseerd).   |
+| `tenor-links.template.json` | ❌ | Template voor GIF lijst (bron van waarheid, wordt WEL gecommit).              |
+| `resources/`              | ❌ | Lokale afbeeldingen voor fallback (bedankt-puppies-kitties.jpg).                |
+| `.scheduler_state.json`   | ✅ | State van de scheduler (laatste uitvoering van jobs).                            |
+| `.scheduler.lock`         | ✅ | File lock voor scheduler state om race conditions te voorkomen.                  |
+
+**Runtime data bestanden** (✅) worden automatisch aangemaakt en bijgewerkt door de bot. Deze staan in `.gitignore` en worden **niet** gecommit naar git.
 
 ### Archief
 
@@ -341,6 +395,7 @@ De bot gebruikt APScheduler voor automatische taken:
 
 | Tijdstip | Dag | Taak | Beschrijving |
 |---|---|---|---|
+| **00:00** | Maandag | Tenor GIF sync | Sync tenor-links.template.json naar tenor-links.json (alleen bij wijzigingen) |
 | **20:00** | Dinsdag | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
 | **16:00** | Vrijdag, Zaterdag, Zondag | Herinnering niet-stemmers | Mention sturen naar leden die nog niet gestemd hebben voor die dag (tijdelijk, 5 sec) |
 | **17:00** | Vrijdag, Zaterdag, Zondag | Misschien-bevestiging | "Stem Nu" knop sturen naar Misschien-stemmers met leidende tijd |
