@@ -358,7 +358,7 @@ def set_default_deactivation(value: dict | None) -> None:
     _save_data(data)
 
 
-def _seed_defaults_if_missing() -> None:
+def _seed_defaults_if_missing() -> None:  # pragma: no cover
     """
     Seed standaard schedules als ze nog niet bestaan.
     Alleen uitgevoerd wanneer SEED_DEFAULT_SCHEDULES=true.
@@ -427,73 +427,6 @@ def get_effective_deactivation(channel_id: int) -> tuple[dict | None, bool]:
 # ========================================================================
 # Notification Settings (per channel)
 # ========================================================================
-
-
-def get_notification_settings(channel_id: int) -> dict:
-    """
-    Haal notificatie-instellingen op voor een kanaal.
-
-    Returns:
-        Dict met notification flags, defaults:
-        {
-            'reminders_enabled': False,           # Dagelijkse reminders (vr/za/zo 16:00)
-            'thursday_reminder_enabled': False,   # Donderdag reminder (do 20:00)
-            'misschien_enabled': False            # Misschien notifications (17:00)
-        }
-    """
-    data = _load_data()
-    return data.get(str(channel_id), {}).get("__notifications__", {
-        "reminders_enabled": False,
-        "thursday_reminder_enabled": False,
-        "misschien_enabled": False
-    })
-
-
-def set_notification_settings(channel_id: int, settings: dict) -> dict:
-    """
-    Stel notificatie-instellingen in voor een kanaal.
-
-    Args:
-        channel_id: Het kanaal ID
-        settings: Dict met notification flags (zie get_notification_settings)
-
-    Returns:
-        De opgeslagen notification settings
-    """
-    data = _load_data()
-    ch = data.setdefault(str(channel_id), {})
-
-    # Merge met defaults
-    current = get_notification_settings(channel_id)
-    current.update(settings)
-
-    ch["__notifications__"] = current
-    _save_data(data)
-    return current
-
-
-def toggle_notification_type(channel_id: int, notification_type: str) -> bool:
-    """
-    Toggle een specifiek notificatie-type aan/uit.
-
-    Args:
-        channel_id: Het kanaal ID
-        notification_type: 'reminders' | 'thursday_reminder' | 'misschien'
-
-    Returns:
-        Nieuwe status (True = enabled, False = disabled)
-    """
-    settings = get_notification_settings(channel_id)
-    key = f"{notification_type}_enabled"
-
-    if key not in settings:
-        raise ValueError(f"Onbekend notificatie-type: {notification_type}")
-
-    # Toggle
-    settings[key] = not settings[key]
-    set_notification_settings(channel_id, settings)
-
-    return settings[key]
 
 
 def get_all_notification_states(channel_id: int) -> dict[str, bool]:
@@ -602,10 +535,20 @@ def set_enabled_days(channel_id: int, dagen: list[str]) -> list[str]:
         De opgeslagen enabled days
     """
     # Validatie: alleen geldige weekdagen
-    geldige_dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+    geldige_dagen = [
+        "maandag",
+        "dinsdag",
+        "woensdag",
+        "donderdag",
+        "vrijdag",
+        "zaterdag",
+        "zondag",
+    ]
     for dag in dagen:
         if dag.lower() not in geldige_dagen:
-            raise ValueError(f"Ongeldige dag: {dag}. Gebruik: {', '.join(geldige_dagen)}")
+            raise ValueError(
+                f"Ongeldige dag: {dag}. Gebruik: {', '.join(geldige_dagen)}"
+            )
 
     data = _load_data()
     ch = data.setdefault(str(channel_id), {})
