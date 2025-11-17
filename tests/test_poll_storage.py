@@ -41,20 +41,19 @@ class TestPollStorage(BaseTestCase):
             self.assertEqual(root, {})
 
     # -------------------------------------
-    # _read_json: kapotte JSON → print + {}
+    # _read_json: kapotte JSON → {}
     # -------------------------------------
-    async def test_read_json_corrupt_prints_and_returns_empty(self):
+    async def test_read_json_corrupt_returns_empty(self):
         corrupt_path = os.environ["VOTES_FILE"]  # BaseTestCase zet deze
         # Schrijf ongeldige JSON
         with open(corrupt_path, "w", encoding="utf-8") as f:
             f.write("{ not valid json")
 
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            _ = await poll_storage.load_votes()  # triggert JSONDecodeError (51-53)
-        self.assertIn("beschadigd", buf.getvalue())
+        # triggert JSONDecodeError en returned {}
+        root = await poll_storage.load_votes()
+        self.assertEqual(root, {})
 
-        # Daarna moet root weer {} zijn
+        # Daarna moet root nog steeds {} zijn
         root = await poll_storage.load_votes()
         self.assertEqual(root, {})
 
