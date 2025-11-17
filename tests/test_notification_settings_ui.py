@@ -47,6 +47,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         poll_settings.SETTINGS_FILE = self.original_settings_file
 
         import os
+
         try:
             if os.path.exists(self.temp_settings_path):
                 os.unlink(self.temp_settings_path)
@@ -61,9 +62,12 @@ class TestNotificationSettingsUI(BaseTestCase):
 
         self.assertIsInstance(embed, discord.Embed)
         self.assertEqual(embed.title, "🔔 Instellingen Notificaties")
-        self.assertIn("Schakel automatische notificaties in of uit", embed.description)
-        self.assertIn("🟢 Groen = Actief", embed.description)
-        self.assertIn("⚪ Grijs = Uitgeschakeld", embed.description)
+        self.assertIsNotNone(embed.description)
+        self.assertIn(
+            "Schakel automatische notificaties in of uit", embed.description or ""
+        )
+        self.assertIn("🟢 Groen = Actief", embed.description or "")
+        self.assertIn("⚪ Grijs = Uitgeschakeld", embed.description or "")
 
     async def test_notification_settings_view_construction(self):
         """Test dat NotificationSettingsView correct wordt aangemaakt met 8 buttons."""
@@ -86,6 +90,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         # Check volgorde matches NOTIFICATION_TYPES
         for i, notif_type in enumerate(NOTIFICATION_TYPES):
             button = view.children[i]
+            assert isinstance(button, NotificationButton)
             self.assertEqual(button.key, notif_type["key"])
 
     async def test_notification_button_style_enabled(self):
@@ -95,7 +100,7 @@ class TestNotificationSettingsUI(BaseTestCase):
             label="Poll geopend",
             tijd="di 20:00",
             emoji="📂",
-            enabled=True
+            enabled=True,
         )
 
         self.assertEqual(button.style, discord.ButtonStyle.success)
@@ -110,7 +115,7 @@ class TestNotificationSettingsUI(BaseTestCase):
             label="Herinnering stemmen",
             tijd="vr/za/zo 16:00",
             emoji="⏰",
-            enabled=False
+            enabled=False,
         )
 
         self.assertEqual(button.style, discord.ButtonStyle.secondary)
@@ -125,7 +130,7 @@ class TestNotificationSettingsUI(BaseTestCase):
             label="Felicitatie",
             tijd="automaat",
             emoji="🎉",
-            enabled=True
+            enabled=True,
         )
 
         self.assertEqual(button.custom_id, "notification_celebration")
@@ -135,6 +140,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         channel_id = 123
         view = NotificationSettingsView(channel_id)
         button = view.children[0]  # poll_opened
+        assert isinstance(button, NotificationButton)
 
         # Mock interaction
         interaction = MagicMock()
@@ -165,6 +171,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         channel_id = 123
         view = NotificationSettingsView(channel_id)
         button = view.children[3]  # reminders (default disabled)
+        assert isinstance(button, NotificationButton)
 
         # Mock interaction
         interaction = MagicMock()
@@ -183,9 +190,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         self.assertEqual(button.style, discord.ButtonStyle.success)
 
         # Check dat state opgeslagen is
-        self.assertTrue(
-            poll_settings.is_notification_enabled(channel_id, "reminders")
-        )
+        self.assertTrue(poll_settings.is_notification_enabled(channel_id, "reminders"))
 
     async def test_notification_button_callback_no_channel_id(self):
         """Test dat error getoond wordt als geen channel ID."""
@@ -235,17 +240,28 @@ class TestNotificationSettingsUI(BaseTestCase):
         view = NotificationSettingsView(channel_id)
 
         # Check dat defaults correct zijn
-        enabled_defaults = ["poll_opened", "poll_reset", "poll_closed", "doorgaan", "celebration"]
+        enabled_defaults = [
+            "poll_opened",
+            "poll_reset",
+            "poll_closed",
+            "doorgaan",
+            "celebration",
+        ]
         disabled_defaults = ["reminders", "thursday_reminder", "misschien"]
 
         for i, notif_type in enumerate(NOTIFICATION_TYPES):
             button = view.children[i]
+            assert isinstance(button, NotificationButton)
 
             if notif_type["key"] in enabled_defaults:
-                self.assertTrue(button.enabled, f"{notif_type['key']} should be enabled by default")
+                self.assertTrue(
+                    button.enabled, f"{notif_type['key']} should be enabled by default"
+                )
                 self.assertEqual(button.style, discord.ButtonStyle.success)
             elif notif_type["key"] in disabled_defaults:
-                self.assertFalse(button.enabled, f"{notif_type['key']} should be disabled by default")
+                self.assertFalse(
+                    button.enabled, f"{notif_type['key']} should be disabled by default"
+                )
                 self.assertEqual(button.style, discord.ButtonStyle.secondary)
 
     async def test_notification_types_constant_has_8_entries(self):
@@ -265,6 +281,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         embed = create_notification_settings_embed()
 
         # Check dat alle labels in description staan
+        self.assertIsNotNone(embed.description)
         for notif_type in NOTIFICATION_TYPES:
-            self.assertIn(notif_type["label"], embed.description)
-            self.assertIn(notif_type["emoji"], embed.description)
+            self.assertIn(notif_type["label"], embed.description or "")
+            self.assertIn(notif_type["emoji"], embed.description or "")

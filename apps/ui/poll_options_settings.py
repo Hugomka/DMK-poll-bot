@@ -31,12 +31,24 @@ class PollOptionsSettingsView(discord.ui.View):
         states = get_all_poll_options_state(channel_id)
 
         # Voeg buttons toe in logische volgorde
-        self.add_item(PollOptionButton("vrijdag", "19:00", states.get("vrijdag_19:00", True)))
-        self.add_item(PollOptionButton("vrijdag", "20:30", states.get("vrijdag_20:30", True)))
-        self.add_item(PollOptionButton("zaterdag", "19:00", states.get("zaterdag_19:00", True)))
-        self.add_item(PollOptionButton("zaterdag", "20:30", states.get("zaterdag_20:30", True)))
-        self.add_item(PollOptionButton("zondag", "19:00", states.get("zondag_19:00", True)))
-        self.add_item(PollOptionButton("zondag", "20:30", states.get("zondag_20:30", True)))
+        self.add_item(
+            PollOptionButton("vrijdag", "19:00", states.get("vrijdag_19:00", True))
+        )
+        self.add_item(
+            PollOptionButton("vrijdag", "20:30", states.get("vrijdag_20:30", True))
+        )
+        self.add_item(
+            PollOptionButton("zaterdag", "19:00", states.get("zaterdag_19:00", True))
+        )
+        self.add_item(
+            PollOptionButton("zaterdag", "20:30", states.get("zaterdag_20:30", True))
+        )
+        self.add_item(
+            PollOptionButton("zondag", "19:00", states.get("zondag_19:00", True))
+        )
+        self.add_item(
+            PollOptionButton("zondag", "20:30", states.get("zondag_20:30", True))
+        )
 
 
 class PollOptionButton(discord.ui.Button):
@@ -47,13 +59,22 @@ class PollOptionButton(discord.ui.Button):
         self.tijd = tijd
         self.enabled = enabled
 
-        # Label en emoji
-        dag_emoji = {"vrijdag": "🔴", "zaterdag": "🟡", "zondag": "🟢"}
-        emoji = dag_emoji.get(dag, "⚪")
+        # Label en emoji - consistent met poll_options.json
+        emoji_map = {
+            "vrijdag_19:00": "🔴",
+            "vrijdag_20:30": "🟠",
+            "zaterdag_19:00": "🟡",
+            "zaterdag_20:30": "⚪",
+            "zondag_19:00": "🟢",
+            "zondag_20:30": "🔵",
+        }
+        emoji = emoji_map.get(f"{dag}_{tijd}", "⚪")
         label = f"{dag.capitalize()} {tijd}"
 
         # Style: groen als enabled, grijs als disabled
-        style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary
+        style = (
+            discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary
+        )
 
         super().__init__(
             style=style,
@@ -77,7 +98,11 @@ class PollOptionButton(discord.ui.Button):
 
             # Update button style
             self.enabled = nieuwe_status
-            self.style = discord.ButtonStyle.success if nieuwe_status else discord.ButtonStyle.secondary
+            self.style = (
+                discord.ButtonStyle.success
+                if nieuwe_status
+                else discord.ButtonStyle.secondary
+            )
 
             # Update de settings message met nieuwe button states (EERST, voor response)
             await interaction.response.edit_message(view=self.view)
@@ -91,8 +116,8 @@ class PollOptionButton(discord.ui.Button):
             else:
                 # Bot is niet actief - toon waarschuwing
                 await interaction.followup.send(
-                    f"⚠️ De poll is momenteel niet actief. "
-                    f"Wijzigingen worden toegepast bij de volgende activatie.",
+                    "⚠️ De poll is momenteel niet actief. "
+                    "Wijzigingen worden toegepast bij de volgende activatie.",
                     ephemeral=True,
                 )
 
@@ -116,6 +141,17 @@ class PollOptionButton(discord.ui.Button):
         """
         # Guard: check of view bestaat
         if not self.view or not isinstance(self.view, PollOptionsSettingsView):
+            return
+
+        # BELANGRIJK: Check of poll-berichten aanwezig zijn
+        # Als er geen poll-berichten zijn, betekent dit dat de poll gesloten is (sluitingsbericht actief)
+        # Dan NIETS doen - geen poll-berichten aanmaken tijdens sluitingsperiode
+        vrijdag_msg = get_message_id(self.view.channel_id, "vrijdag")
+        zaterdag_msg = get_message_id(self.view.channel_id, "zaterdag")
+        zondag_msg = get_message_id(self.view.channel_id, "zondag")
+
+        # Als er geen enkele poll-message is, dan is de poll gesloten
+        if vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None:
             return
 
         import asyncio
@@ -173,6 +209,17 @@ class PollOptionButton(discord.ui.Button):
         """
         # Guard: check of view bestaat
         if not self.view or not isinstance(self.view, PollOptionsSettingsView):
+            return
+
+        # BELANGRIJK: Check of poll-berichten aanwezig zijn
+        # Als er geen poll-berichten zijn, betekent dit dat de poll gesloten is (sluitingsbericht actief)
+        # Dan NIETS doen - geen poll-berichten aanmaken tijdens sluitingsperiode
+        vrijdag_msg = get_message_id(self.view.channel_id, "vrijdag")
+        zaterdag_msg = get_message_id(self.view.channel_id, "zaterdag")
+        zondag_msg = get_message_id(self.view.channel_id, "zondag")
+
+        # Als er geen enkele poll-message is, dan is de poll gesloten
+        if vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None:
             return
 
         import asyncio
@@ -251,7 +298,9 @@ class PollOptionButton(discord.ui.Button):
             content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
             new_notif = await safe_call(channel.send, content=content, view=None)
             if new_notif:
-                save_message_id(self.view.channel_id, "notification_persistent", new_notif.id)
+                save_message_id(
+                    self.view.channel_id, "notification_persistent", new_notif.id
+                )
 
     async def _delete_day_message(self, channel, dag: str):
         """Verwijder poll message voor een specifieke dag."""

@@ -98,14 +98,18 @@ class NotificationSettingsView(discord.ui.View):
 class NotificationButton(discord.ui.Button):
     """Toggle button voor een specifieke notificatie."""
 
-    def __init__(self, key: str, label: str, tijd: str, emoji: str, enabled: bool):
+    def __init__(
+        self, key: str, label: str, tijd: str, emoji: str, enabled: bool | None
+    ):
         self.key = key
         self.label_text = label
         self.tijd = tijd
-        self.enabled = enabled
+        self.enabled = enabled if enabled is not None else True
 
         # Style: groen als enabled, grijs als disabled
-        style = discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary
+        style = (
+            discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary
+        )
 
         # Label met tijd info
         button_label = f"{label}"
@@ -150,24 +154,24 @@ class NotificationButton(discord.ui.Button):
 
 def create_notification_settings_embed() -> discord.Embed:
     """Maak embed voor notificatie instellingen."""
-    embed = discord.Embed(
-        title="🔔 Instellingen Notificaties",
-        description=(
-            "Schakel automatische notificaties in of uit. "
-            "Deze instellingen bepalen welke notificaties de bot automatisch verstuurt.\n\n"
-            "**Legenda:**\n"
-        ),
-        color=discord.Color.blue(),
-    )
-
     # Voeg legenda toe voor elke notificatie
     legend_lines = []
     for notif in NOTIFICATION_TYPES:
         legend_lines.append(f"{notif['emoji']} **{notif['label']}**: {notif['tijd']}")
 
-    embed.description += "\n".join(legend_lines)
+    description = (
+        "Schakel automatische notificaties in of uit. "
+        "Deze instellingen bepalen welke notificaties de bot automatisch verstuurt.\n\n"
+        "**Legenda:**\n"
+        + "\n".join(legend_lines)
+        + "\n\n**Status:**\n🟢 Groen = Actief\n⚪ Grijs = Uitgeschakeld"
+    )
 
-    embed.description += "\n\n**Status:**\n🟢 Groen = Actief\n⚪ Grijs = Uitgeschakeld"
+    embed = discord.Embed(
+        title="🔔 Instellingen Notificaties",
+        description=description,
+        color=discord.Color.blue(),
+    )
 
     embed.set_footer(text="Klik op een knop om de status te togglen")
 

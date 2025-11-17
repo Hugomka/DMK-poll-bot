@@ -48,6 +48,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         poll_settings.SETTINGS_FILE = self.original_settings_file
 
         import os
+
         try:
             if os.path.exists(self.temp_settings_path):
                 os.unlink(self.temp_settings_path)
@@ -62,9 +63,10 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         self.assertIsInstance(embed, discord.Embed)
         self.assertEqual(embed.title, "⚙️ Instellingen Poll-opties")
-        self.assertIn("Activeer of deactiveer", embed.description)
-        self.assertIn("🟢 Groen = Actief", embed.description)
-        self.assertIn("⚪ Grijs = Uitgeschakeld", embed.description)
+        self.assertIsNotNone(embed.description)
+        self.assertIn("Activeer of deactiveer", embed.description or "")
+        self.assertIn("🟢 Groen = Actief", embed.description or "")
+        self.assertIn("⚪ Grijs = Uitgeschakeld", embed.description or "")
 
     async def test_poll_options_settings_view_construction(self):
         """Test dat PollOptionsSettingsView correct wordt aangemaakt met 6 buttons."""
@@ -81,18 +83,35 @@ class TestPollOptionsSettingsUI(BaseTestCase):
             self.assertIsInstance(child, PollOptionButton)
 
         # Check volgorde: vrijdag 19:00, vrijdag 20:30, zaterdag 19:00, etc.
-        self.assertEqual(view.children[0].dag, "vrijdag")
-        self.assertEqual(view.children[0].tijd, "19:00")
-        self.assertEqual(view.children[1].dag, "vrijdag")
-        self.assertEqual(view.children[1].tijd, "20:30")
-        self.assertEqual(view.children[2].dag, "zaterdag")
-        self.assertEqual(view.children[2].tijd, "19:00")
-        self.assertEqual(view.children[3].dag, "zaterdag")
-        self.assertEqual(view.children[3].tijd, "20:30")
-        self.assertEqual(view.children[4].dag, "zondag")
-        self.assertEqual(view.children[4].tijd, "19:00")
-        self.assertEqual(view.children[5].dag, "zondag")
-        self.assertEqual(view.children[5].tijd, "20:30")
+        button0 = view.children[0]
+        assert isinstance(button0, PollOptionButton)
+        self.assertEqual(button0.dag, "vrijdag")
+        self.assertEqual(button0.tijd, "19:00")
+
+        button1 = view.children[1]
+        assert isinstance(button1, PollOptionButton)
+        self.assertEqual(button1.dag, "vrijdag")
+        self.assertEqual(button1.tijd, "20:30")
+
+        button2 = view.children[2]
+        assert isinstance(button2, PollOptionButton)
+        self.assertEqual(button2.dag, "zaterdag")
+        self.assertEqual(button2.tijd, "19:00")
+
+        button3 = view.children[3]
+        assert isinstance(button3, PollOptionButton)
+        self.assertEqual(button3.dag, "zaterdag")
+        self.assertEqual(button3.tijd, "20:30")
+
+        button4 = view.children[4]
+        assert isinstance(button4, PollOptionButton)
+        self.assertEqual(button4.dag, "zondag")
+        self.assertEqual(button4.tijd, "19:00")
+
+        button5 = view.children[5]
+        assert isinstance(button5, PollOptionButton)
+        self.assertEqual(button5.dag, "zondag")
+        self.assertEqual(button5.tijd, "20:30")
 
     async def test_poll_option_button_style_enabled(self):
         """Test dat enabled button groen (success) is."""
@@ -109,18 +128,28 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         self.assertEqual(button.style, discord.ButtonStyle.secondary)
         self.assertEqual(button.label, "Zaterdag 20:30")
-        self.assertEqual(str(button.emoji), "🟡")
+        self.assertEqual(str(button.emoji), "⚪")  # white_circle voor zaterdag 20:30
         self.assertFalse(button.enabled)
 
     async def test_poll_option_button_emoji_colors(self):
-        """Test dat elke dag de juiste emoji kleur heeft."""
-        vrijdag_btn = PollOptionButton("vrijdag", "19:00", enabled=True)
-        zaterdag_btn = PollOptionButton("zaterdag", "19:00", enabled=True)
-        zondag_btn = PollOptionButton("zondag", "19:00", enabled=True)
+        """Test dat elke dag/tijd combinatie de juiste emoji kleur heeft (consistent met poll_options.json)."""
+        # Vrijdag
+        vrijdag_19 = PollOptionButton("vrijdag", "19:00", enabled=True)
+        vrijdag_20 = PollOptionButton("vrijdag", "20:30", enabled=True)
+        self.assertEqual(str(vrijdag_19.emoji), "🔴")  # red_circle
+        self.assertEqual(str(vrijdag_20.emoji), "🟠")  # orange_circle
 
-        self.assertEqual(str(vrijdag_btn.emoji), "🔴")  # Rood
-        self.assertEqual(str(zaterdag_btn.emoji), "🟡")  # Geel
-        self.assertEqual(str(zondag_btn.emoji), "🟢")  # Groen
+        # Zaterdag
+        zaterdag_19 = PollOptionButton("zaterdag", "19:00", enabled=True)
+        zaterdag_20 = PollOptionButton("zaterdag", "20:30", enabled=True)
+        self.assertEqual(str(zaterdag_19.emoji), "🟡")  # yellow_circle
+        self.assertEqual(str(zaterdag_20.emoji), "⚪")  # white_circle
+
+        # Zondag
+        zondag_19 = PollOptionButton("zondag", "19:00", enabled=True)
+        zondag_20 = PollOptionButton("zondag", "20:30", enabled=True)
+        self.assertEqual(str(zondag_19.emoji), "🟢")  # green_circle
+        self.assertEqual(str(zondag_20.emoji), "🔵")  # blue_circle
 
     async def test_poll_option_button_custom_id(self):
         """Test dat custom_id correct wordt gegenereerd."""
@@ -139,6 +168,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         view = PollOptionsSettingsView(channel_id, channel)
         button = view.children[0]  # Vrijdag 19:00
+        assert isinstance(button, PollOptionButton)
 
         # Mock interaction
         interaction = MagicMock()
@@ -181,6 +211,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         view = PollOptionsSettingsView(channel_id, channel)
         button = view.children[3]  # Zaterdag 20:30
+        assert isinstance(button, PollOptionButton)
 
         # Mock interaction
         interaction = MagicMock()
@@ -256,6 +287,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         view = PollOptionsSettingsView(channel_id, channel)
         button = view.children[0]  # Vrijdag 19:00
+        assert isinstance(button, PollOptionButton)
         # button.view is al gezet door add_item in PollOptionsSettingsView
 
         # Toggle vrijdag 19:00 uit
@@ -309,6 +341,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         view = PollOptionsSettingsView(channel_id, channel)
         button = view.children[4]  # Zondag 19:00
+        assert isinstance(button, PollOptionButton)
         # button.view is al gezet door add_item
 
         # Mock _recreate_all_poll_messages
@@ -327,6 +360,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         view = PollOptionsSettingsView(channel_id, channel)
         button = view.children[0]
+        assert isinstance(button, PollOptionButton)
         # button.view is al gezet door add_item
 
         # Mock message
@@ -356,13 +390,12 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
         view = PollOptionsSettingsView(channel_id, channel)
         button = view.children[0]
+        assert isinstance(button, PollOptionButton)
         # button.view is al gezet door add_item
 
         with patch(
             "apps.ui.poll_options_settings.get_message_id", return_value=None
-        ), patch(
-            "apps.ui.poll_options_settings.fetch_message_or_none"
-        ) as mock_fetch:
+        ), patch("apps.ui.poll_options_settings.fetch_message_or_none") as mock_fetch:
             await button._delete_day_message(channel, "zaterdag")
 
             # fetch_message_or_none niet called (geen message ID)

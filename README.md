@@ -39,7 +39,8 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **📢 Slimme notificaties** | Herinneringen voor niet-stemmers (16:00), vroege herinnering donderdag (20:00), Misschien-bevestiging (17:00), en mentions bij doorgaan-berichten. |
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
-| **💬 Slash commando's** | `/dmk-poll-on/reset/pauze/verwijderen/stemmen/status/notify`, archief downloaden/verwijderen, en gast-commando's. |
+| **💬 Slash commando's** | `/dmk-poll-on/reset/pauze/verwijderen/instelling/stemmen/status/notify`, archief downloaden/verwijderen, en gast-commando's. |
+| **⚙️ Configureerbare instellingen** | Via `/dmk-poll-instelling`: toggle poll-opties (welke dagen/tijden zichtbaar) en notificaties (8 types aan/uit per kanaal). |
 | **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen, optioneel namen, en scheduling informatie. |
 | **🔄 Misschien-conversie** | Wie om 17:00 "misschien" heeft gestemd krijgt een bevestigingsknop; om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen". |
 | **🔔 Privacy-vriendelijke mentions** | Tijdelijke mentions (5 sec zichtbaar voor herinneringen), persistente mentions (5 uur zichtbaar voor "gaat door"-berichten). |
@@ -56,6 +57,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-reset`** *(default: admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. |
 | **`/dmk-poll-pauze`** *(default: admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
 | **`/dmk-poll-verwijderen`** *(default: admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
+| **`/dmk-poll-instelling`** *(default: admin/mod)* | Open instellingen voor de poll. Kies tussen **Poll-opties** (toggle zichtbaarheid van dag/tijd opties: vrijdag/zaterdag/zondag 19:00/20:30) of **Notificaties** (toggle 8 automatische notificaties: poll geopend/gereset/gesloten, herinneringen, doorgaan, felicitatie). Interactieve UI met groene/grijze knoppen per kanaal. |
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-archief`** *(default: admin/mod)* | Bekijk en beheer het CSV-archief: kies CSV-formaat (🇺🇸 Comma / 🇳🇱 Semicolon), download direct, of verwijder archief. |
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
@@ -221,6 +223,7 @@ DMK-poll-bot/
 │   │   ├── __init__.py             # Command utilities en helpers
 │   │   ├── dmk_poll.py             # Main entry point voor alle commando's
 │   │   ├── poll_lifecycle.py       # Lifecycle commando's (on/reset/pauze/verwijderen)
+│   │   ├── poll_config.py          # Poll configuratie commando (instelling)
 │   │   ├── poll_votes.py           # Stemzichtbaarheid commando's
 │   │   ├── poll_guests.py          # Gast-commando's (add/remove)
 │   │   ├── poll_archive.py         # Archief commando's (download/verwijderen)
@@ -228,6 +231,8 @@ DMK-poll-bot/
 │   ├── ui/                 # Discord UI componenten
 │   │   ├── poll_buttons.py           # Poll stemknoppen en views
 │   │   ├── stem_nu_button.py         # "Stem Nu" knop voor Misschien-bevestiging
+│   │   ├── poll_options_settings.py  # Poll-opties settings view (dag/tijd toggles)
+│   │   ├── notification_settings.py  # Notificatie settings view (8 notificatie toggles)
 │   │   ├── archive_view.py           # Archief download view met verwijder-knop
 │   │   └── cleanup_confirmation.py   # Cleanup confirmation view voor oude berichten
 │   ├── utils/              # Hulpfuncties
@@ -255,6 +260,8 @@ DMK-poll-bot/
 │   ├── test_poll_votes.py          # Tests voor stemzichtbaarheid
 │   ├── test_poll_message.py        # Tests voor bericht-opslag
 │   ├── test_poll_settings*.py      # Tests voor poll settings en scheduling
+│   ├── test_poll_options_settings_*.py  # Tests voor poll-opties settings (logic + UI)
+│   ├── test_notification_settings_*.py  # Tests voor notificatie settings (logic + UI)
 │   ├── test_status*.py             # Tests voor status commando
 │   ├── test_cleanup_confirmation.py # Tests voor cleanup UI
 │   ├── test_mention_utils.py       # Tests voor mention utilities
@@ -274,7 +281,7 @@ DMK-poll-bot/
 | ------------------------- | -------------------------------------------------------------------------------- |
 | `poll_options.json`       | Config van opties (tijden/emoji's) per dag.                                      |
 | `votes.json`              | Alle stemmen (per user/gast per dag). Async lock voor veilige I/O.               |
-| `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen, scheduling (activatie/deactivatie tijden). |
+| `poll_settings.json`      | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen, scheduling (activatie/deactivatie tijden), poll-opties (welke dagen/tijden enabled), notificatie preferences (8 toggles per kanaal). |
 | `poll_message.json`       | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
 | `archive/dmk_archive.csv` | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
 | `opening_message.txt`     | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
@@ -417,13 +424,15 @@ De tests dekken onder andere:
 - **Poll lifecycle** (on/reset/pauze/verwijderen commando's)
 - **Poll-opslag** (stemmen toevoegen/verwijderen/resetten, exception handling)
 - **Poll-settings** (pauze, zichtbaarheid, namen tonen, scheduling)
+- **Poll-opties settings** (logic + UI voor dag/tijd toggles, per-channel state)
+- **Notificatie settings** (logic + UI voor 8 notificatie toggles, defaults, persistence)
 - **Scheduling** (activatie/deactivatie op tijden, scheduler state, catch-up)
 - **Gast-commando's** (toevoegen, verwijderen, groepering, validatie)
 - **Archief** (download, verwijderen, per guild/channel)
 - **Message builder** (bericht-constructie met verborgen aantallen)
 - **Beslissingslogica** (winnaar bepalen, gelijkstand, minimum stemmen)
-- **Scheduler** (catch-up, reset venster, gemiste jobs, deadline mode, Misschien-flow)
-- **UI components** (poll buttons, Stem Nu button, archief view, cleanup confirmation)
+- **Scheduler** (catch-up, reset venster, gemiste jobs, deadline mode, Misschien-flow, notificatie filtering)
+- **UI components** (poll buttons, Stem Nu button, poll-opties view, notificatie view, archief view, cleanup confirmation)
 - **Notificaties** (tijdelijk, persistent, Misschien-flow, cleanup)
 - **Mention utilities** (tijdelijke/persistente mentions, auto-delete, display names)
 - **Discord client** (safe API calls met exception handling)
@@ -439,6 +448,42 @@ De testdekking is recent significant verbeterd door:
 - Tests voor cleanup confirmation en mention utilities
 - Tests voor gemodulariseerde command structuur
 - Tests voor permissions en default command settings
+
+---
+
+## ⚙️ Poll Instellingen
+
+De bot heeft een unified settings systeem toegankelijk via `/dmk-poll-instelling` met twee configuratiepanelen:
+
+### Poll-opties
+
+Toggle welke dag/tijd combinaties zichtbaar zijn in de poll:
+- **Vrijdag** 19:00 / 20:30 (🔴🟠)
+- **Zaterdag** 19:00 / 20:30 (🟡⚪)
+- **Zondag** 19:00 / 20:30 (🟢🔵)
+
+**Gebruik:** Handig om bepaalde dagen/tijden tijdelijk uit te schakelen zonder de hele poll te verwijderen. Bijvoorbeeld: alleen vrijdag beschikbaar maken, of alleen 19:00 tijden tonen.
+
+**Interactieve UI:** Groene knoppen (✅ actief) en grijze knoppen (⚪ uitgeschakeld). Klik om te togglen.
+
+### Notificaties
+
+Toggle 8 automatische notificaties per kanaal:
+
+| Notificatie | Tijdstip | Default | Beschrijving |
+|-------------|----------|---------|--------------|
+| 📂 **Poll geopend** | di 20:00 | ✅ Aan | Wanneer nieuwe poll wordt geplaatst |
+| 🔄 **Poll gereset** | di 20:00 | ✅ Aan | Wanneer poll wordt gereset voor nieuwe week |
+| 🔒 **Poll gesloten** | ma 00:00 | ✅ Aan | Wanneer poll wordt gesloten |
+| ⏰ **Herinnering stemmen** | vr/za/zo 16:00 | ❌ Uit | Herinnering voor niet-stemmers (per dag) |
+| 🕐 **Herinnering donderdag** | do 20:00 | ❌ Uit | Vroege herinnering voor wie helemaal niet gestemd heeft |
+| ❓ **Herinnering misschien** | 17:00 | ❌ Uit | Bevestiging voor misschien-stemmers met "Stem Nu" knop |
+| ✅ **Doorgaan** | 18:00 | ✅ Aan | "Gaat door" bericht met mentions van deelnemers |
+| 🎉 **Felicitatie** | automaat | ✅ Aan | Wanneer iedereen heeft gestemd (celebration GIF) |
+
+**Per-channel configuratie:** Elke poll-kanaal kan eigen notificatie voorkeuren hebben. Defaults zijn ingesteld voor typisch gebruik, maar kunnen aangepast worden per kanaal.
+
+**Interactieve UI:** Groene knoppen (🟢 actief) en grijze knoppen (⚪ uitgeschakeld). Klik om te togglen.
 
 ---
 
