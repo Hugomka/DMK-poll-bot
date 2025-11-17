@@ -13,7 +13,7 @@ coverage:
     # Patch coverage - new/changed code
     patch:
       default:
-        target: 50%          # Lower threshold for patches (was 58% failing)
+        target: 80%          
         threshold: 10%       # Allow 10% drop for refactoring work
         if_ci_failed: error
 
