@@ -53,7 +53,7 @@ async def _read_json(path: Optional[str] = None) -> Dict[str, Any]:
 
         return await asyncio.to_thread(_read)
     except json.JSONDecodeError:  # pragma: no cover
-        print("⚠️ votes.json is beschadigd. Ik zet 'm terug naar leeg {}.")
+        print("[WARN] votes.json is beschadigd. Ik zet 'm terug naar leeg {}.")
         return {}
 
 

@@ -127,7 +127,7 @@ class PollButton(Button):
                 )
 
         except Exception as e:  # pragma: no cover
-            print(f"⚠️ Fout bij verwerken stemknop: {e}")
+            print(f"[WARN] Fout bij verwerken stemknop: {e}")
             # Probeer alsnog knoppen te herstellen in hetzelfde bericht
             try:
                 user_id = str(interaction.user.id)
