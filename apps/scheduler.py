@@ -25,7 +25,11 @@ from apps.utils.poll_message import (
     schedule_poll_update,
     set_channel_disabled,
 )
-from apps.utils.poll_settings import get_setting, is_paused
+from apps.utils.poll_settings import (
+    get_setting,
+    is_notification_enabled,
+    is_paused,
+)
 from apps.utils.poll_storage import (
     calculate_leading_time,
     load_votes,
@@ -308,6 +312,10 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
 
             # Skip if channel is paused
             if is_paused(cid):
+                continue
+
+            # Check notification settings: skip als thursday_reminder disabled is
+            if not is_notification_enabled(cid, "thursday_reminder"):
                 continue
 
             # Skip als GEEN van de dagen in 'deadline' modus staat
@@ -723,6 +731,11 @@ async def notify_non_voters(  # pragma: no cover
         for ch in channels_for_guild(guild):
             cid = getattr(ch, "id", "0") or "0"
 
+            # Check notification settings: skip als reminders disabled zijn (alleen voor scheduler)
+            if not channel:  # Scheduler-modus
+                if not is_notification_enabled(int(cid) if cid != "0" else 0, "reminders"):
+                    continue
+
             # Skip kanalen die niet in 'deadline' modus staan (alleen voor scheduler, niet voor commando)
             if not channel and dag:  # Scheduler-modus met specifieke dag
                 if not _is_deadline_mode(int(cid) if cid != "0" else 0, dag):
@@ -1098,6 +1111,10 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
 
             # Skip if channel is paused
             if is_paused(cid):
+                continue
+
+            # Check notification settings: skip als misschien notifications disabled zijn
+            if not is_notification_enabled(cid, "misschien"):
                 continue
 
             # Skip kanalen die niet in 'deadline' modus staan

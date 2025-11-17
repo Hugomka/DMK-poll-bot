@@ -64,9 +64,11 @@ async def setup(bot: commands.Bot) -> None:
     from apps.commands.poll_archive import setup as setup_archive
     from apps.commands.poll_guests import setup as setup_guests
     from apps.commands.poll_votes import setup as setup_votes
+    from apps.commands.poll_config import setup as setup_config
 
     await setup_lifecycle(bot)
     await setup_status(bot)
     await setup_archive(bot)
     await setup_guests(bot)
     await setup_votes(bot)
+    await setup_config(bot)

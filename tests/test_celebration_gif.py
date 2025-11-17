@@ -153,8 +153,9 @@ class TestCelebrationGifExceptionHandling(BaseTestCase):
 
         from apps.utils import celebration_gif
 
+        # Patch open at module level to avoid interfering with coverage.py
         with patch("apps.utils.celebration_gif.os.path.exists", return_value=True), \
-             patch("builtins.open", mock_open(read_data="invalid json")):
+             patch("apps.utils.celebration_gif.open", mock_open(read_data="invalid json")):
 
             result = celebration_gif._load_tenor_links()
 
@@ -166,8 +167,9 @@ class TestCelebrationGifExceptionHandling(BaseTestCase):
 
         from apps.utils import celebration_gif
 
+        # Patch open at module level to avoid interfering with coverage.py
         with patch("apps.utils.celebration_gif.os.path.exists", return_value=True), \
-             patch("builtins.open", side_effect=IOError("File read error")):
+             patch("apps.utils.celebration_gif.open", side_effect=OSError("File read error")):
 
             result = celebration_gif._load_tenor_links()
 
@@ -181,6 +183,7 @@ class TestCelebrationGifExceptionHandling(BaseTestCase):
 
         links = [{"url": "https://tenor.com/view/test", "count": 0}]
 
-        with patch("builtins.open", side_effect=IOError("File write error")):
+        # Patch open at module level to avoid interfering with coverage.py
+        with patch("apps.utils.celebration_gif.open", side_effect=OSError("File write error")):
             # Moet geen exception gooien
             celebration_gif._save_tenor_links(links)

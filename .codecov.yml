@@ -1,0 +1,40 @@
+# Codecov configuration for DMK Poll Bot
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    # Project coverage - overall codebase
+    project:
+      default:
+        target: 90%          # Maintain high overall coverage (already exceeding 90%)
+        threshold: 2%        # Allow 2% drop from previous commit
+        if_ci_failed: error  # Fail if CI fails
+
+    # Patch coverage - new/changed code
+    patch:
+      default:
+        target: 80%          
+        threshold: 10%       # Allow 10% drop for refactoring work
+        if_ci_failed: error
+
+  # Precision settings
+  precision: 2
+  round: down
+
+  # Per-file coverage rules
+  range: 80..100  # Green if 80-100%, yellow if below 80%
+
+# Comment settings on pull requests
+comment:
+  layout: "reach,diff,flags,tree,reach"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+# Ignore patterns
+ignore:
+  - "tests/*"              # Don't require tests to have tests
+  - "**/__init__.py"       # Ignore init files
+  - "**/*_test.py"         # Ignore test files
+  - "**/test_*.py"         # Ignore test files

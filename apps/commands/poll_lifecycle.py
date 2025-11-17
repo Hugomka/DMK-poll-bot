@@ -385,12 +385,16 @@ class PollLifecycle(commands.Cog):
         """
         Plaats of update de poll-berichten in het kanaal.
         """
-        dagen = ["vrijdag", "zaterdag", "zondag"]
+        # Gebruik enabled dagen op basis van poll-opties settings
+        from apps.utils.poll_settings import get_enabled_poll_days
+
+        channel_id = getattr(channel, "id", 0)
+        dagen = get_enabled_poll_days(channel_id)
 
         try:
             # Kanaal opnieuw activeren voor de scheduler
             try:
-                set_channel_disabled(getattr(channel, "id", 0), False)
+                set_channel_disabled(channel_id, False)
             except Exception:  # pragma: no cover
                 # Niet hard falen als togglen mislukt; we gaan verder met plaatsen
                 pass
@@ -399,7 +403,7 @@ class PollLifecycle(commands.Cog):
             try:
                 from apps.utils.poll_settings import set_paused
 
-                set_paused(getattr(channel, "id", 0), False)
+                set_paused(channel_id, False)
             except Exception:  # pragma: no cover
                 pass
 
