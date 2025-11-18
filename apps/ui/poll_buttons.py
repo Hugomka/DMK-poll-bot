@@ -9,10 +9,14 @@ from zoneinfo import ZoneInfo
 from discord import ButtonStyle, Interaction
 from discord.ui import Button, View
 
-from apps.entities.poll_option import get_poll_options, list_days
+from apps.entities.poll_option import get_poll_options
 from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_message import check_all_voted_celebration, update_poll_message
-from apps.utils.poll_settings import get_poll_option_state, is_paused
+from apps.utils.poll_settings import (
+    get_enabled_poll_days,
+    get_poll_option_state,
+    is_paused,
+)
 from apps.utils.poll_storage import get_user_votes, toggle_vote
 
 HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
@@ -123,10 +127,12 @@ class PollButton(Button):
                 asyncio.create_task(update_poll_message(interaction.channel, self.dag))
                 # Check celebration (iedereen gestemd?)
                 asyncio.create_task(
-                    check_all_voted_celebration(interaction.channel, guild_id, channel_id)
+                    check_all_voted_celebration(
+                        interaction.channel, guild_id, channel_id
+                    )
                 )
 
-        except Exception as e:  # pragma: no cover
+        except Exception:  # pragma: no cover
             # Probeer alsnog knoppen te herstellen in hetzelfde bericht
             try:
                 user_id = str(interaction.user.id)
@@ -199,7 +205,7 @@ async def create_poll_button_views_per_day(
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     views: list[tuple[str, str, PollButtonView]] = []
 
-    for dag in list_days():
+    for dag in get_enabled_poll_days(channel_id):
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
         if view.children:  # Alleen tonen als er knoppen zijn
             header = HEADER_TMPL.format(dag=dag.capitalize())

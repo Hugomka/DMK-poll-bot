@@ -108,7 +108,7 @@ class TestPollButtonViewConstruction(BaseTestCase):
         votes = {"vrijdag": [], "zaterdag": []}
 
         with patch(f"{MODULE}.get_poll_options", return_value=opties), patch(
-            f"{MODULE}.list_days", return_value=["vrijdag", "zaterdag"]
+            f"{MODULE}.get_enabled_poll_days", return_value=["vrijdag", "zaterdag"]
         ), patch(f"{MODULE}.is_vote_button_visible", return_value=True), patch(
             f"{MODULE}.get_user_votes", new_callable=AsyncMock, return_value=votes
         ):
