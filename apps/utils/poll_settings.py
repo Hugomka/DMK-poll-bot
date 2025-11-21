@@ -582,7 +582,7 @@ def get_poll_option_state(channel_id: int, dag: str, tijd: str) -> bool:
 
     Args:
         channel_id: Het kanaal ID
-        dag: 'vrijdag' | 'zaterdag' | 'zondag'
+        dag: 'maandag' t/m 'zondag'
         tijd: '19:00' | '20:30'
 
     Returns:
@@ -595,8 +595,9 @@ def get_poll_option_state(channel_id: int, dag: str, tijd: str) -> bool:
     # Key format: "vrijdag_19:00" of "zaterdag_20:30"
     key = f"{dag.lower()}_{tijd}"
 
-    # Default: alle opties zijn enabled
-    return options.get(key, True)
+    # Default: alleen vrijdag, zaterdag, zondag enabled
+    default_enabled = dag.lower() in ["vrijdag", "zaterdag", "zondag"]
+    return options.get(key, default_enabled)
 
 
 def set_poll_option_state(channel_id: int, dag: str, tijd: str, enabled: bool) -> bool:
@@ -650,12 +651,14 @@ def get_all_poll_options_state(channel_id: int) -> dict:
     ch_data = data.get(str(channel_id), {})
     options = ch_data.get("__poll_options__", {})
 
-    # Return all 6 options met defaults
+    # Return all 14 options met defaults (alleen weekend dagen enabled)
     result = {}
     for dag in WEEK_DAYS:
         for tijd in ["19:00", "20:30"]:
             key = f"{dag}_{tijd}"
-            result[key] = options.get(key, True)  # Default: enabled
+            # Default: alleen vrijdag, zaterdag, zondag enabled
+            default_enabled = dag in ["vrijdag", "zaterdag", "zondag"]
+            result[key] = options.get(key, default_enabled)
 
     return result
 
