@@ -13,7 +13,7 @@ from apps.utils.poll_message import (
     schedule_poll_update,
 )
 from apps.utils.poll_settings import (
-    WEEKEND_DAYS,
+    WEEK_DAYS,
     get_all_poll_options_state,
     is_day_completely_disabled,
     toggle_poll_option,
@@ -21,7 +21,7 @@ from apps.utils.poll_settings import (
 
 
 class PollOptionsSettingsView(discord.ui.View):
-    """View met 6 toggle buttons voor poll-opties."""
+    """View met 14 toggle buttons voor poll-opties (7 dagen × 2 tijden)."""
 
     def __init__(self, channel_id: int, channel: discord.TextChannel):
         super().__init__(timeout=None)  # Persistent view
@@ -31,25 +31,11 @@ class PollOptionsSettingsView(discord.ui.View):
         # Haal huidige status op
         states = get_all_poll_options_state(channel_id)
 
-        # Voeg buttons toe in logische volgorde
-        self.add_item(
-            PollOptionButton("vrijdag", "19:00", states.get("vrijdag_19:00", True))
-        )
-        self.add_item(
-            PollOptionButton("vrijdag", "20:30", states.get("vrijdag_20:30", True))
-        )
-        self.add_item(
-            PollOptionButton("zaterdag", "19:00", states.get("zaterdag_19:00", True))
-        )
-        self.add_item(
-            PollOptionButton("zaterdag", "20:30", states.get("zaterdag_20:30", True))
-        )
-        self.add_item(
-            PollOptionButton("zondag", "19:00", states.get("zondag_19:00", True))
-        )
-        self.add_item(
-            PollOptionButton("zondag", "20:30", states.get("zondag_20:30", True))
-        )
+        # Voeg buttons toe in logische volgorde (alle weekdagen)
+        for dag in WEEK_DAYS:
+            for tijd in ["19:00", "20:30"]:
+                key = f"{dag}_{tijd}"
+                self.add_item(PollOptionButton(dag, tijd, states.get(key, True)))
 
 
 class PollOptionButton(discord.ui.Button):
@@ -62,6 +48,14 @@ class PollOptionButton(discord.ui.Button):
 
         # Label en emoji - consistent met poll_options.json
         emoji_map = {
+            "maandag_19:00": "🟥",
+            "maandag_20:30": "🟧",
+            "dinsdag_19:00": "🟨",
+            "dinsdag_20:30": "⬜",
+            "woensdag_19:00": "🟩",
+            "woensdag_20:30": "🟦",
+            "donderdag_19:00": "🟪",
+            "donderdag_20:30": "🟫",
             "vrijdag_19:00": "🔴",
             "vrijdag_20:30": "🟠",
             "zaterdag_19:00": "🟡",
@@ -141,7 +135,9 @@ class PollOptionButton(discord.ui.Button):
         - Als dag nieuw enabled (was volledig disabled) → hermaak alles voor juiste volgorde
         """
         # Guard: check of view bestaat
-        if not self.view or not isinstance(self.view, PollOptionsSettingsView):  # pragma: no cover
+        if not self.view or not isinstance(
+            self.view, PollOptionsSettingsView
+        ):  # pragma: no cover
             return
 
         # BELANGRIJK: Check of poll-berichten aanwezig zijn
@@ -152,7 +148,9 @@ class PollOptionButton(discord.ui.Button):
         zondag_msg = get_message_id(self.view.channel_id, "zondag")
 
         # Als er geen enkele poll-message is, dan is de poll gesloten
-        if vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None:  # pragma: no cover
+        if (
+            vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None
+        ):  # pragma: no cover
             return
 
         import asyncio
@@ -209,7 +207,9 @@ class PollOptionButton(discord.ui.Button):
         Wordt alleen gebruikt als een nieuwe dag enabled wordt.
         """
         # Guard: check of view bestaat
-        if not self.view or not isinstance(self.view, PollOptionsSettingsView):  # pragma: no cover
+        if not self.view or not isinstance(
+            self.view, PollOptionsSettingsView
+        ):  # pragma: no cover
             return
 
         # BELANGRIJK: Check of poll-berichten aanwezig zijn
@@ -220,20 +220,28 @@ class PollOptionButton(discord.ui.Button):
         zondag_msg = get_message_id(self.view.channel_id, "zondag")
 
         # Als er geen enkele poll-message is, dan is de poll gesloten
-        if vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None:  # pragma: no cover
+        if (
+            vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None
+        ):  # pragma: no cover
             return
 
         import asyncio
 
         # Stap 1: Verwijder ALLE bestaande poll messages
-        all_days = WEEKEND_DAYS
+        all_days = WEEK_DAYS
         delete_tasks = [self._delete_day_message(channel, dag) for dag in all_days]
         await asyncio.gather(*delete_tasks, return_exceptions=True)
 
         # Stap 2: Check welke dagen enabled zijn
-        vrijdag_disabled = is_day_completely_disabled(self.view.channel_id, "vrijdag")  # pragma: no cover
-        zaterdag_disabled = is_day_completely_disabled(self.view.channel_id, "zaterdag")  # pragma: no cover
-        zondag_disabled = is_day_completely_disabled(self.view.channel_id, "zondag")  # pragma: no cover
+        vrijdag_disabled = is_day_completely_disabled(
+            self.view.channel_id, "vrijdag"
+        )  # pragma: no cover
+        zaterdag_disabled = is_day_completely_disabled(
+            self.view.channel_id, "zaterdag"
+        )  # pragma: no cover
+        zondag_disabled = is_day_completely_disabled(
+            self.view.channel_id, "zondag"
+        )  # pragma: no cover
 
         # Stap 3: Hermaak poll messages in de juiste volgorde (alleen enabled dagen)
         update_tasks = []  # pragma: no cover
@@ -260,7 +268,9 @@ class PollOptionButton(discord.ui.Button):
         3. Notificatie message (als die er is)
         """
         # Guard: check of view bestaat
-        if not self.view or not isinstance(self.view, PollOptionsSettingsView):  # pragma: no cover
+        if not self.view or not isinstance(
+            self.view, PollOptionsSettingsView
+        ):  # pragma: no cover
             return
 
         from apps.ui.poll_buttons import OneStemButtonView  # pragma: no cover
@@ -275,7 +285,9 @@ class PollOptionButton(discord.ui.Button):
             clear_message_id(self.view.channel_id, "stemmen")
 
         # 2. Verwijder oude notificatie message
-        notif_id = get_message_id(self.view.channel_id, "notification_persistent")  # pragma: no cover
+        notif_id = get_message_id(
+            self.view.channel_id, "notification_persistent"
+        )  # pragma: no cover
         if notif_id:  # pragma: no cover
             msg = await fetch_message_or_none(channel, notif_id)
             if msg:  # pragma: no cover
@@ -290,7 +302,9 @@ class PollOptionButton(discord.ui.Button):
             if paused
             else "Klik op **🗳️ Stemmen** om je keuzes te maken."
         )
-        new_buttons = await safe_call(channel.send, content=tekst, view=view)  # pragma: no cover
+        new_buttons = await safe_call(
+            channel.send, content=tekst, view=view
+        )  # pragma: no cover
         if new_buttons:  # pragma: no cover
             save_message_id(self.view.channel_id, "stemmen", new_buttons.id)
 
@@ -306,7 +320,9 @@ class PollOptionButton(discord.ui.Button):
     async def _delete_day_message(self, channel, dag: str):
         """Verwijder poll message voor een specifieke dag."""
         # Guard: check of view bestaat
-        if not self.view or not isinstance(self.view, PollOptionsSettingsView):  # pragma: no cover
+        if not self.view or not isinstance(
+            self.view, PollOptionsSettingsView
+        ):  # pragma: no cover
             return
 
         try:

@@ -69,49 +69,50 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         self.assertIn("⚪ Grijs = Uitgeschakeld", embed.description or "")
 
     async def test_poll_options_settings_view_construction(self):
-        """Test dat PollOptionsSettingsView correct wordt aangemaakt met 6 buttons."""
+        """Test dat PollOptionsSettingsView correct wordt aangemaakt met 14 buttons (7 dagen × 2 tijden)."""
         channel_id = 123
         channel = MagicMock()
 
         view = PollOptionsSettingsView(channel_id, channel)
 
-        # View heeft 6 buttons
-        self.assertEqual(len(view.children), 6)
+        # View heeft 14 buttons (7 dagen × 2 tijden)
+        self.assertEqual(len(view.children), 14)
 
         # Check dat alle buttons PollOptionButton zijn
         for child in view.children:
             self.assertIsInstance(child, PollOptionButton)
 
-        # Check volgorde: vrijdag 19:00, vrijdag 20:30, zaterdag 19:00, etc.
+        # Check volgorde: maandag 19:00, maandag 20:30, dinsdag 19:00, etc.
         button0 = view.children[0]
         assert isinstance(button0, PollOptionButton)
-        self.assertEqual(button0.dag, "vrijdag")
+        self.assertEqual(button0.dag, "maandag")
         self.assertEqual(button0.tijd, "19:00")
 
         button1 = view.children[1]
         assert isinstance(button1, PollOptionButton)
-        self.assertEqual(button1.dag, "vrijdag")
+        self.assertEqual(button1.dag, "maandag")
         self.assertEqual(button1.tijd, "20:30")
 
         button2 = view.children[2]
         assert isinstance(button2, PollOptionButton)
-        self.assertEqual(button2.dag, "zaterdag")
+        self.assertEqual(button2.dag, "dinsdag")
         self.assertEqual(button2.tijd, "19:00")
 
         button3 = view.children[3]
         assert isinstance(button3, PollOptionButton)
-        self.assertEqual(button3.dag, "zaterdag")
+        self.assertEqual(button3.dag, "dinsdag")
         self.assertEqual(button3.tijd, "20:30")
 
-        button4 = view.children[4]
-        assert isinstance(button4, PollOptionButton)
-        self.assertEqual(button4.dag, "zondag")
-        self.assertEqual(button4.tijd, "19:00")
+        # Check vrijdag buttons (index 8 en 9)
+        button8 = view.children[8]
+        assert isinstance(button8, PollOptionButton)
+        self.assertEqual(button8.dag, "vrijdag")
+        self.assertEqual(button8.tijd, "19:00")
 
-        button5 = view.children[5]
-        assert isinstance(button5, PollOptionButton)
-        self.assertEqual(button5.dag, "zondag")
-        self.assertEqual(button5.tijd, "20:30")
+        button9 = view.children[9]
+        assert isinstance(button9, PollOptionButton)
+        self.assertEqual(button9.dag, "vrijdag")
+        self.assertEqual(button9.tijd, "20:30")
 
     async def test_poll_option_button_style_enabled(self):
         """Test dat enabled button groen (success) is."""
@@ -167,7 +168,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         mock_is_disabled.return_value = False  # Bot is actief
 
         view = PollOptionsSettingsView(channel_id, channel)
-        button = view.children[0]  # Vrijdag 19:00
+        button = view.children[8]  # Vrijdag 19:00 (index 8 in 14-button view)
         assert isinstance(button, PollOptionButton)
 
         # Mock interaction
@@ -210,7 +211,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         poll_settings.set_poll_option_state(channel_id, "zaterdag", "20:30", False)
 
         view = PollOptionsSettingsView(channel_id, channel)
-        button = view.children[3]  # Zaterdag 20:30
+        button = view.children[11]  # Zaterdag 20:30 (index 11 in 14-button view)
         assert isinstance(button, PollOptionButton)
 
         # Mock interaction

@@ -84,14 +84,18 @@ class TestPollVotesStemmen(BaseTestCase):
 
             await self._run(self.cog.stemmen, interaction, actie, dag=None, tijd=None)
 
-        # Moet voor alle 3 dagen zijn aangeroepen
-        assert mock_set_visibility.call_count == 3
+        # Moet voor alle 7 dagen zijn aangeroepen
+        assert mock_set_visibility.call_count == 7
+        mock_set_visibility.assert_any_call(123, "maandag", modus="altijd", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "dinsdag", modus="altijd", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "woensdag", modus="altijd", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "donderdag", modus="altijd", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "vrijdag", modus="altijd", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "zaterdag", modus="altijd", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "zondag", modus="altijd", tijd="18:00")
 
         # Moet berichten hebben ge-update
-        assert mock_update.await_count == 3
+        assert mock_update.await_count == 7
 
         # Moet bevestiging hebben gestuurd met "alle dagen"
         interaction.followup.send.assert_awaited_once()
@@ -203,14 +207,18 @@ class TestPollVotesStemmen(BaseTestCase):
                 self.cog.stemmen, interaction, actie, dag=None, tijd="20:00"
             )
 
-        # Moet voor alle 3 dagen zijn aangeroepen met custom tijd
-        assert mock_set_visibility.call_count == 3
+        # Moet voor alle 7 dagen zijn aangeroepen met custom tijd
+        assert mock_set_visibility.call_count == 7
+        mock_set_visibility.assert_any_call(123, "maandag", modus="deadline", tijd="20:00")
+        mock_set_visibility.assert_any_call(123, "dinsdag", modus="deadline", tijd="20:00")
+        mock_set_visibility.assert_any_call(123, "woensdag", modus="deadline", tijd="20:00")
+        mock_set_visibility.assert_any_call(123, "donderdag", modus="deadline", tijd="20:00")
         mock_set_visibility.assert_any_call(123, "vrijdag", modus="deadline", tijd="20:00")
         mock_set_visibility.assert_any_call(123, "zaterdag", modus="deadline", tijd="20:00")
         mock_set_visibility.assert_any_call(123, "zondag", modus="deadline", tijd="20:00")
 
         # Moet berichten hebben ge-update
-        assert mock_update.await_count == 3
+        assert mock_update.await_count == 7
 
         # Moet bevestiging hebben gestuurd met "alle dagen"
         interaction.followup.send.assert_awaited_once()
@@ -233,8 +241,12 @@ class TestPollVotesStemmen(BaseTestCase):
 
             await self._run(self.cog.stemmen, interaction, actie, dag=None, tijd=None)
 
-        # Moet voor alle 3 dagen zijn aangeroepen met default tijd
-        assert mock_set_visibility.call_count == 3
+        # Moet voor alle 7 dagen zijn aangeroepen met default tijd
+        assert mock_set_visibility.call_count == 7
+        mock_set_visibility.assert_any_call(123, "maandag", modus="deadline", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "dinsdag", modus="deadline", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "woensdag", modus="deadline", tijd="18:00")
+        mock_set_visibility.assert_any_call(123, "donderdag", modus="deadline", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "vrijdag", modus="deadline", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "zaterdag", modus="deadline", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "zondag", modus="deadline", tijd="18:00")

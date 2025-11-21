@@ -187,11 +187,11 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await scheduler.update_all_polls(bot)
 
-        # Assert: schedule_poll_update aangeroepen voor vr/za/zo (3x)
-        self.assertEqual(mock_schedule.call_count, 3)
-        # Assert: gather is aangeroepen met 3 tasks
+        # Assert: schedule_poll_update aangeroepen voor alle 7 dagen
+        self.assertEqual(mock_schedule.call_count, 7)
+        # Assert: gather is aangeroepen met 7 tasks
         self.assertEqual(len(gather_calls), 1)
-        self.assertEqual(gather_calls[0], 3)
+        self.assertEqual(gather_calls[0], 7)
 
     async def test_update_all_polls_schedules_when_allow_false(self):
         """Test dat updates worden gepland als ALLOW_FROM_PER_CHANNEL_ONLY=false."""
@@ -249,11 +249,11 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             await scheduler.update_all_polls(bot)
 
-        # Assert: schedule_poll_update aangeroepen voor vr/za/zo (3x)
-        self.assertEqual(mock_schedule.call_count, 3)
-        # Assert: gather is aangeroepen met 3 tasks
+        # Assert: schedule_poll_update aangeroepen voor alle 7 dagen
+        self.assertEqual(mock_schedule.call_count, 7)
+        # Assert: gather is aangeroepen met 7 tasks
         self.assertEqual(len(gather_calls), 1)
-        self.assertEqual(gather_calls[0], 3)
+        self.assertEqual(gather_calls[0], 7)
 
     async def test_update_all_polls_handles_exception_in_get_message_id(self):
         """Test dat exceptions in get_message_id worden afgehandeld."""

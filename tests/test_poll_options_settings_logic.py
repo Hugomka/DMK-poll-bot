@@ -213,14 +213,24 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         """Test dat alle dagen enabled zijn als default."""
         channel_id = 123
 
+        # Disable maandag t/m donderdag (alleen weekend dagen actief)
+        for dag in ["maandag", "dinsdag", "woensdag", "donderdag"]:
+            poll_settings.set_poll_option_state(channel_id, dag, "19:00", False)
+            poll_settings.set_poll_option_state(channel_id, dag, "20:30", False)
+
         enabled_days = poll_settings.get_enabled_poll_days(channel_id)
 
-        # Alle 3 dagen enabled
+        # Alle 3 weekend dagen enabled
         self.assertEqual(enabled_days, EXPECTED_DAYS)
 
     async def test_get_enabled_poll_days_one_disabled(self):
         """Test get_enabled_poll_days met één volledig disabled dag."""
         channel_id = 123
+
+        # Disable maandag t/m donderdag (alleen weekend dagen actief)
+        for dag in ["maandag", "dinsdag", "woensdag", "donderdag"]:
+            poll_settings.set_poll_option_state(channel_id, dag, "19:00", False)
+            poll_settings.set_poll_option_state(channel_id, dag, "20:30", False)
 
         # Disable vrijdag volledig
         poll_settings.set_poll_option_state(channel_id, "vrijdag", "19:00", False)
@@ -235,11 +245,10 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         """Test get_enabled_poll_days met alleen zondag enabled."""
         channel_id = 123
 
-        # Disable vrijdag en zaterdag volledig
-        poll_settings.set_poll_option_state(channel_id, "vrijdag", "19:00", False)
-        poll_settings.set_poll_option_state(channel_id, "vrijdag", "20:30", False)
-        poll_settings.set_poll_option_state(channel_id, "zaterdag", "19:00", False)
-        poll_settings.set_poll_option_state(channel_id, "zaterdag", "20:30", False)
+        # Disable alle dagen behalve zondag
+        for dag in ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag"]:
+            poll_settings.set_poll_option_state(channel_id, dag, "19:00", False)
+            poll_settings.set_poll_option_state(channel_id, dag, "20:30", False)
 
         enabled_days = poll_settings.get_enabled_poll_days(channel_id)
 
@@ -250,8 +259,8 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         """Test get_enabled_poll_days als alle dagen disabled zijn."""
         channel_id = 123
 
-        # Disable alle dagen volledig
-        for dag in EXPECTED_DAYS:
+        # Disable alle 7 dagen volledig
+        for dag in ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]:
             poll_settings.set_poll_option_state(channel_id, dag, "19:00", False)
             poll_settings.set_poll_option_state(channel_id, dag, "20:30", False)
 

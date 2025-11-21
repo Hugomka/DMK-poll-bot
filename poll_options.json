@@ -1,5 +1,85 @@
 [
     {
+        "dag": "maandag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🟥"
+    },
+    {
+        "dag": "maandag",
+        "tijd": "om 20:30 uur",
+        "emoji": "🟧"
+    },
+    {
+        "dag": "maandag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "maandag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    },
+    {
+        "dag": "dinsdag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🟨"
+    },
+    {
+        "dag": "dinsdag",
+        "tijd": "om 20:30 uur",
+        "emoji": "⬜"
+    },
+    {
+        "dag": "dinsdag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "dinsdag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    },
+    {
+        "dag": "woensdag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🟩"
+    },
+    {
+        "dag": "woensdag",
+        "tijd": "om 20:30 uur",
+        "emoji": "🟦"
+    },
+    {
+        "dag": "woensdag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "woensdag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    },
+    {
+        "dag": "donderdag",
+        "tijd": "om 19:00 uur",
+        "emoji": "🟪"
+    },
+    {
+        "dag": "donderdag",
+        "tijd": "om 20:30 uur",
+        "emoji": "🟫"
+    },
+    {
+        "dag": "donderdag",
+        "tijd": "misschien",
+        "emoji": "Ⓜ️"
+    },
+    {
+        "dag": "donderdag",
+        "tijd": "niet meedoen",
+        "emoji": "❌"
+    },
+    {
         "dag": "vrijdag",
         "tijd": "om 19:00 uur",
         "emoji": "🔴"

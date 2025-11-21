@@ -1,8 +1,6 @@
 # tests/test_celebration_gif.py
 """Tests voor celebration GIF selector."""
 
-import json
-import os
 from unittest.mock import patch
 
 from apps.utils.celebration_gif import get_celebration_gif_url

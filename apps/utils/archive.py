@@ -8,7 +8,7 @@ from typing import Any, Optional, Tuple
 import pytz
 
 from apps.entities.poll_option import get_poll_options
-from apps.utils.poll_settings import WEEKEND_DAYS
+from apps.utils.poll_settings import WEEK_DAYS
 from apps.utils.poll_storage import (
     get_non_voters_for_day,
     get_was_misschien_count,
@@ -18,10 +18,17 @@ from apps.utils.poll_storage import (
 ARCHIVE_DIR = "archive"
 ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
 
-VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "was misschien", "niet meedoen", "niet gestemd"]
+VOLGORDE = [
+    "om 19:00 uur",
+    "om 20:30 uur",
+    "misschien",
+    "was misschien",
+    "niet meedoen",
+    "niet gestemd",
+]
 DAGEN = []
 for o in get_poll_options():
-    if o.dag not in DAGEN and o.dag in WEEKEND_DAYS:
+    if o.dag not in DAGEN and o.dag in WEEK_DAYS:
         DAGEN.append(o.dag)
 
 
@@ -93,7 +100,9 @@ async def _build_counts_from_votes(
             telling[dag]["niet gestemd"] = non_voter_count
 
             # Get was_misschien count (from storage)
-            was_misschien_count = await get_was_misschien_count(dag, guild_id, channel_id)
+            was_misschien_count = await get_was_misschien_count(
+                dag, guild_id, channel_id
+            )
             telling[dag]["was misschien"] = was_misschien_count
 
     return telling
@@ -194,7 +203,9 @@ def _week_dates_eu(now):
     # Vrijdag = weekdag 4
     if current_weekday >= 4:  # Vrijdag (4), Zaterdag (5), Zondag (6)
         # We zitten in het weekend of het is vrijdag - ga terug naar VORIGE vrijdag
-        days_since_last_friday = current_weekday - 4 + 7  # Ga terug naar vorige week vrijdag
+        days_since_last_friday = (
+            current_weekday - 4 + 7
+        )  # Ga terug naar vorige week vrijdag
         vr = (now - timedelta(days=days_since_last_friday)).date()
     else:  # Maandag (0) t/m Donderdag (3)
         # Weekend is net afgelopen - gebruik afgelopen vrijdag
@@ -325,26 +336,26 @@ async def append_week_snapshot_scoped(
                         # V2 format with niet_gestemd (19 columns)
                         # Migrate to V3: Add was_misschien columns after each misschien column
                         new_row = [
-                            old_row[0],   # week
-                            old_row[1],   # datum_vrijdag
-                            old_row[2],   # datum_zaterdag
-                            old_row[3],   # datum_zondag
-                            old_row[4],   # vr_19
-                            old_row[5],   # vr_2030
-                            old_row[6],   # vr_misschien
-                            "",           # vr_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[7],   # vr_niet
-                            old_row[8],   # vr_niet_gestemd
-                            old_row[9],   # za_19
+                            old_row[0],  # week
+                            old_row[1],  # datum_vrijdag
+                            old_row[2],  # datum_zaterdag
+                            old_row[3],  # datum_zondag
+                            old_row[4],  # vr_19
+                            old_row[5],  # vr_2030
+                            old_row[6],  # vr_misschien
+                            "",  # vr_was_misschien (V3 - leeg = niet getrackt)
+                            old_row[7],  # vr_niet
+                            old_row[8],  # vr_niet_gestemd
+                            old_row[9],  # za_19
                             old_row[10],  # za_2030
                             old_row[11],  # za_misschien
-                            "",           # za_was_misschien (V3 - leeg = niet getrackt)
+                            "",  # za_was_misschien (V3 - leeg = niet getrackt)
                             old_row[12],  # za_niet
                             old_row[13],  # za_niet_gestemd
                             old_row[14],  # zo_19
                             old_row[15],  # zo_2030
                             old_row[16],  # zo_misschien
-                            "",           # zo_was_misschien (V3 - leeg = niet getrackt)
+                            "",  # zo_was_misschien (V3 - leeg = niet getrackt)
                             old_row[17],  # zo_niet
                             old_row[18],  # zo_niet_gestemd
                         ]
@@ -353,28 +364,28 @@ async def append_week_snapshot_scoped(
                         # V1 format without niet_gestemd (16 columns)
                         # Migrate to V3: Add both niet_gestemd and was_misschien columns
                         new_row = [
-                            old_row[0],   # week
-                            old_row[1],   # datum_vrijdag
-                            old_row[2],   # datum_zaterdag
-                            old_row[3],   # datum_zondag
-                            old_row[4],   # vr_19
-                            old_row[5],   # vr_2030
-                            old_row[6],   # vr_misschien
-                            "",           # vr_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[7],   # vr_niet
-                            "",           # vr_niet_gestemd (V2/V3 - leeg = niet getrackt)
-                            old_row[8],   # za_19
-                            old_row[9],   # za_2030
+                            old_row[0],  # week
+                            old_row[1],  # datum_vrijdag
+                            old_row[2],  # datum_zaterdag
+                            old_row[3],  # datum_zondag
+                            old_row[4],  # vr_19
+                            old_row[5],  # vr_2030
+                            old_row[6],  # vr_misschien
+                            "",  # vr_was_misschien (V3 - leeg = niet getrackt)
+                            old_row[7],  # vr_niet
+                            "",  # vr_niet_gestemd (V2/V3 - leeg = niet getrackt)
+                            old_row[8],  # za_19
+                            old_row[9],  # za_2030
                             old_row[10],  # za_misschien
-                            "",           # za_was_misschien (V3 - leeg = niet getrackt)
+                            "",  # za_was_misschien (V3 - leeg = niet getrackt)
                             old_row[11],  # za_niet
-                            "",           # za_niet_gestemd (V2/V3 - leeg = niet getrackt)
+                            "",  # za_niet_gestemd (V2/V3 - leeg = niet getrackt)
                             old_row[12],  # zo_19
                             old_row[13],  # zo_2030
                             old_row[14],  # zo_misschien
-                            "",           # zo_was_misschien (V3 - leeg = niet getrackt)
+                            "",  # zo_was_misschien (V3 - leeg = niet getrackt)
                             old_row[15],  # zo_niet
-                            "",           # zo_niet_gestemd (V2/V3 - leeg = niet getrackt)
+                            "",  # zo_niet_gestemd (V2/V3 - leeg = niet getrackt)
                         ]
                         rows[i] = new_row
 

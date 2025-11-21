@@ -27,7 +27,7 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.utils.poll_settings import (
-    WEEKEND_DAYS,
+    WEEK_DAYS,
     clear_scheduled_activation,
     is_paused,
     set_scheduled_activation,
@@ -262,7 +262,9 @@ class PollLifecycle(commands.Cog):
             """Verwijder non-bot berichten + bot-berichten en plaats polls."""
             try:
                 # Verwijder alle berichten (bot + non-bot)
-                await self._delete_all_bot_messages(channel, also_delete=non_bot_berichten)
+                await self._delete_all_bot_messages(
+                    channel, also_delete=non_bot_berichten
+                )
 
                 verwijderd_aantal = len(non_bot_berichten)
                 await button_interaction.edit_original_response(
@@ -330,7 +332,9 @@ class PollLifecycle(commands.Cog):
             """Verwijder alle berichten en voer poll-off uit."""
             try:
                 # Verwijder alle berichten (bot + non-bot)
-                await self._delete_all_bot_messages(channel, also_delete=non_bot_berichten)
+                await self._delete_all_bot_messages(
+                    channel, also_delete=non_bot_berichten
+                )
 
                 await button_interaction.edit_original_response(
                     content=f"✅ Alle berichten verwijderd (waaronder {len(non_bot_berichten)} van andere gebruikers/bots). Polls worden uitgezet...",
@@ -552,7 +556,7 @@ class PollLifecycle(commands.Cog):
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
-        dagen = WEEKEND_DAYS
+        dagen = WEEK_DAYS
 
         guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
         gid = int(getattr(guild, "id", 0)) if guild else 0
@@ -875,9 +879,17 @@ class PollLifecycle(commands.Cog):
 
         # 3) Wis alle opgeslagen message IDs voor dit kanaal
         channel_id = getattr(channel, "id", 0)
-        message_keys = ["opening", "vrijdag", "zaterdag", "zondag", "stemmen",
-                      "notification_temp", "notification_persistent", "notification",
-                      "celebration"]
+        message_keys = [
+            "opening",
+            "vrijdag",
+            "zaterdag",
+            "zondag",
+            "stemmen",
+            "notification_temp",
+            "notification_persistent",
+            "notification",
+            "celebration",
+        ]
         for key in message_keys:
             try:
                 clear_message_id(channel_id, key)
@@ -971,7 +983,9 @@ class PollLifecycle(commands.Cog):
             """Verwijder alle berichten en plaats sluitingsbericht."""
             try:
                 # Verwijder alle berichten (bot + non-bot)
-                await self._delete_all_bot_messages(channel, also_delete=non_bot_berichten)
+                await self._delete_all_bot_messages(
+                    channel, also_delete=non_bot_berichten
+                )
 
                 await button_interaction.edit_original_response(
                     content=f"✅ Alle berichten verwijderd (waaronder {len(non_bot_berichten)} van andere gebruikers/bots). Sluitingsbericht wordt geplaatst...",

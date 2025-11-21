@@ -11,10 +11,9 @@ Tests for utility functions in apps/scheduler.py:
 
 import json
 import os
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import datetime
+from unittest.mock import patch
 
-import pytz
 
 from apps import scheduler
 from tests.base import BaseTestCase
