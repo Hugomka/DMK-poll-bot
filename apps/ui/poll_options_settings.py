@@ -348,6 +348,9 @@ def create_poll_options_settings_embed() -> discord.Embed:
         description=(
             "Activeer of deactiveer de poll-optie voor de huidige poll. "
             "Het heeft een direct effect op de huidige kanaal met de poll.\n\n"
+            "⚠️ **Let op:** Bij activeren van maandag en dinsdag kunnen problemen "
+            "ontstaan met de gesloten periode (default: maandag 00:00 t/m dinsdag 20:00). "
+            "Pas deze periode aan via `/dmk-poll-on` zodat leden kunnen stemmen.\n\n"
             "**Status:**\n"
             "🟢 Groen = Actief\n"
             "⚪ Grijs = Uitgeschakeld"

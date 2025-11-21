@@ -19,13 +19,11 @@ from apps.ui.poll_options_settings import (
     name="dmk-poll-instelling",
     description="⚙️ Open instellingen voor de poll (admin/moderator)",
 )
-@app_commands.describe(
-    instelling="Welke instelling wil je aanpassen?"
-)
+@app_commands.describe(instelling="Welke instelling wil je aanpassen?")
 @app_commands.choices(
     instelling=[
-        app_commands.Choice(name="📊 Poll-opties (vrijdag/zaterdag/zondag 19:00/20:30)", value="poll-opties"),
-        app_commands.Choice(name="🔔 Notificaties (reminders/donderdag/misschien)", value="notificaties"),
+        app_commands.Choice(name="📊 Poll-opties", value="poll-opties"),
+        app_commands.Choice(name="🔔 Notificaties", value="notificaties"),
     ]
 )
 @app_commands.default_permissions(moderate_members=True)
@@ -37,7 +35,7 @@ async def poll_instelling(
     Open instellingen paneel voor de poll.
 
     Opties:
-    - Poll-opties: Toggle vrijdag/zaterdag/zondag 19:00/20:30 aan/uit
+    - Poll-opties: Toggle maandag t/m zondag 19:00/20:30 aan/uit
     - Notificaties: Toggle reminders/donderdag/misschien aan/uit
     """
     await interaction.response.defer(ephemeral=True)
@@ -62,22 +60,14 @@ async def poll_instelling(
             embed = create_poll_options_settings_embed()
             view = PollOptionsSettingsView(channel_id, channel)
 
-            await interaction.followup.send(
-                embed=embed,
-                view=view,
-                ephemeral=True
-            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         elif instelling.value == "notificaties":
             # Open notificatie instellingen UI
             embed = create_notification_settings_embed()
             view = NotificationSettingsView(channel_id)
 
-            await interaction.followup.send(
-                embed=embed,
-                view=view,
-                ephemeral=True
-            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         else:
             await interaction.followup.send(
