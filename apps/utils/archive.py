@@ -26,6 +26,11 @@ VOLGORDE = [
     "niet meedoen",
     "niet gestemd",
 ]
+
+# Weekday en weekend constanten voor dual archive systeem
+WEEKEND_DAYS = ["vrijdag", "zaterdag", "zondag"]
+WEEKDAY_DAYS = ["maandag", "dinsdag", "woensdag", "donderdag"]
+
 DAGEN = []
 for o in get_poll_options():
     if o.dag not in DAGEN and o.dag in WEEK_DAYS:
@@ -44,18 +49,22 @@ def _sanitize_id(value: int | str) -> str:
 
 
 def get_archive_path_scoped(
-    guild_id: Optional[int | str] = None, channel_id: Optional[int | str] = None
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+    weekday: bool = False,
 ) -> str:
     """
     Pad naar CSV-archief.
     - Zonder guild/channel → legacy pad: ARCHIVE_CSV
-    - Met beide IDs → per-kanaal pad: archive/dmk_archive_<guild>_<channel>.csv
+    - Met beide IDs + weekday=False → weekend archief: archive/dmk_archive_<guild>_<channel>.csv
+    - Met beide IDs + weekday=True → weekday archief: archive/dmk_archive_<guild>_<channel>_weekdays.csv
     """
     if guild_id is None or channel_id is None:
         return ARCHIVE_CSV
     gid = _sanitize_id(guild_id)
     cid = _sanitize_id(channel_id)
-    return os.path.join(ARCHIVE_DIR, f"dmk_archive_{gid}_{cid}.csv")
+    suffix = "_weekdays" if weekday else ""
+    return os.path.join(ARCHIVE_DIR, f"dmk_archive_{gid}_{cid}{suffix}.csv")
 
 
 def _empty_counts():
@@ -222,38 +231,55 @@ def _week_dates_eu(now):
     return (week, vr.isoformat(), za.isoformat(), zo.isoformat())
 
 
+def _week_dates_weekdays(now):
+    """
+    Geef (week, datum_maandag, datum_dinsdag, datum_woensdag, datum_donderdag) als YYYY-MM-DD.
+
+    Geeft de meest recente AFGERONDE weekdagen (ma-di-wo-do) die VOOR nu plaatsvonden.
+    Dit zorgt ervoor dat we altijd de week archiveren die net eindigde.
+
+    Belangrijk: Dit geeft altijd VERLEDEN weekdagen, nooit huidige/toekomstige.
+    """
+    if now.tzinfo is None:
+        now = pytz.timezone("Europe/Amsterdam").localize(now)
+
+    current_weekday = now.weekday()  # Maandag=0, Zondag=6
+
+    # Bereken de meest recente maandag die in het verleden ligt
+    # Maandag = weekdag 0
+    if current_weekday == 0:
+        # Het is maandag - ga terug naar VORIGE maandag
+        days_since_last_monday = 7
+    else:
+        # Anders: gebruik de meest recente maandag
+        days_since_last_monday = current_weekday
+
+    ma = (now - timedelta(days=days_since_last_monday)).date()
+
+    # Dinsdag, woensdag, donderdag volgen maandag
+    di = ma + timedelta(days=1)
+    wo = ma + timedelta(days=2)
+    do = ma + timedelta(days=3)
+
+    # ISO week format: YYYY-Www (gebruik maandag voor week nummer)
+    iso_cal = ma.isocalendar()
+    week = f"{iso_cal.year}-W{iso_cal.week:02d}"
+    return (week, ma.isoformat(), di.isoformat(), wo.isoformat(), do.isoformat())
+
+
 # === SCOPED ARCHIVE FUNCTIONS (PER GUILD+CHANNEL) met backward compat ===
 
 
-async def append_week_snapshot_scoped(
-    guild_id: Optional[int | str] = None,
-    channel_id: Optional[int | str] = None,
-    now: Optional[datetime] = None,
-    channel: Any = None,
+async def _archive_weekend(
+    telling: dict,
+    guild_id: Optional[int | str],
+    channel_id: Optional[int | str],
+    now: datetime,
 ) -> None:
     """
-    Schrijf 1 rij naar CSV met week+datums+tellingen+niet-stemmers.
-    Backward compat:
-      - Zonder guild/channel → gebruik globale ARCHIVE_CSV (legacy tests).
-      - Sommige oude tests roepen append_week_snapshot_scoped(<now>) aan:
-        detecteer dat en verschuif argumenten.
+    Archiveer weekend data (vrijdag, zaterdag, zondag) naar weekend CSV.
+    Dit is het standaard archief dat altijd wordt gebruikt (backward compatible).
     """
-    # Back-compat: eerste arg kan 'now' zijn
-    if isinstance(guild_id, datetime) and channel_id is None and now is None:
-        now = guild_id
-        guild_id = None
-        channel_id = None
-    _ensure_dir()
-    if now is None:
-        now = datetime.now(pytz.timezone("Europe/Amsterdam"))
-
-    # Zonder IDs: legacy pad + lege telling is prima voor tests
-    votes = (
-        await load_votes(guild_id, channel_id)
-        if (guild_id is not None and channel_id is not None)
-        else {}
-    )
-    telling = await _build_counts_from_votes(votes, channel, guild_id, channel_id)
     week, vr, za, zo = _week_dates_eu(now)
 
     header = [
@@ -305,9 +331,100 @@ async def append_week_snapshot_scoped(
         telling["zondag"]["niet gestemd"],
     ]
 
-    csv_path = get_archive_path_scoped(guild_id, channel_id)
+    csv_path = get_archive_path_scoped(guild_id, channel_id, weekday=False)
+    await _write_archive_csv(csv_path, header, row, week)
 
-    # Check if we need to migrate/update the header
+
+async def _archive_weekdays(
+    telling: dict,
+    guild_id: Optional[int | str],
+    channel_id: Optional[int | str],
+    now: datetime,
+) -> None:
+    """
+    Archiveer weekday data (maandag, dinsdag, woensdag, donderdag) naar weekday CSV.
+    Dit archief wordt alleen gebruikt als er weekday polls zijn ingeschakeld.
+    """
+    week, ma, di, wo, do = _week_dates_weekdays(now)
+
+    header = [
+        "week",
+        "datum_maandag",
+        "datum_dinsdag",
+        "datum_woensdag",
+        "datum_donderdag",
+        "ma_19",
+        "ma_2030",
+        "ma_misschien",
+        "ma_was_misschien",
+        "ma_niet",
+        "ma_niet_gestemd",
+        "di_19",
+        "di_2030",
+        "di_misschien",
+        "di_was_misschien",
+        "di_niet",
+        "di_niet_gestemd",
+        "wo_19",
+        "wo_2030",
+        "wo_misschien",
+        "wo_was_misschien",
+        "wo_niet",
+        "wo_niet_gestemd",
+        "do_19",
+        "do_2030",
+        "do_misschien",
+        "do_was_misschien",
+        "do_niet",
+        "do_niet_gestemd",
+    ]
+    row = [
+        week,
+        ma,
+        di,
+        wo,
+        do,
+        telling["maandag"]["om 19:00 uur"],
+        telling["maandag"]["om 20:30 uur"],
+        telling["maandag"]["misschien"],
+        telling["maandag"]["was misschien"],
+        telling["maandag"]["niet meedoen"],
+        telling["maandag"]["niet gestemd"],
+        telling["dinsdag"]["om 19:00 uur"],
+        telling["dinsdag"]["om 20:30 uur"],
+        telling["dinsdag"]["misschien"],
+        telling["dinsdag"]["was misschien"],
+        telling["dinsdag"]["niet meedoen"],
+        telling["dinsdag"]["niet gestemd"],
+        telling["woensdag"]["om 19:00 uur"],
+        telling["woensdag"]["om 20:30 uur"],
+        telling["woensdag"]["misschien"],
+        telling["woensdag"]["was misschien"],
+        telling["woensdag"]["niet meedoen"],
+        telling["woensdag"]["niet gestemd"],
+        telling["donderdag"]["om 19:00 uur"],
+        telling["donderdag"]["om 20:30 uur"],
+        telling["donderdag"]["misschien"],
+        telling["donderdag"]["was misschien"],
+        telling["donderdag"]["niet meedoen"],
+        telling["donderdag"]["niet gestemd"],
+    ]
+
+    csv_path = get_archive_path_scoped(guild_id, channel_id, weekday=True)
+    await _write_archive_csv(csv_path, header, row, week)
+
+
+async def _write_archive_csv(
+    csv_path: str, header: list, row: list, week: str
+) -> None:
+    """
+    Helper functie om CSV archief te schrijven met header en data rij.
+    Gebruikt voor zowel weekend als weekday archieven.
+    Ondersteunt update van bestaande week of append van nieuwe week.
+
+    Voor weekend archief: migreert automatisch van V1/V2 → V3 formaat.
+    Voor weekday archief: altijd V1 formaat (nieuw).
+    """
     if os.path.exists(csv_path):
         # Lees bestaande CSV
         with open(csv_path, "r", newline="", encoding="utf-8") as f:
@@ -316,107 +433,157 @@ async def append_week_snapshot_scoped(
 
         if rows:
             existing_header = rows[0]
-            # Check of nieuwe kolommen ontbreken
-            if "vr_was_misschien" not in existing_header:
+
+            # Migratie logica voor weekend archief (V1/V2 → V3)
+            # Check: weekend archief heeft "vr_" kolommen, weekday heeft "ma_"
+            is_weekend_archive = any("vr_" in col for col in existing_header)
+
+            if is_weekend_archive and "vr_was_misschien" not in existing_header:
                 # Migreer oude data naar nieuwe structuur
-                # Supported CSV versions:
                 # V1 (16 columns): no niet_gestemd, no was_misschien
                 # V2 (19 columns): has niet_gestemd, no was_misschien
                 # V3 (22 columns): has niet_gestemd and was_misschien (current)
 
-                # Update header
-                rows[0] = header
+                rows[0] = header  # Update header
 
-                # Voor elke data rij, voeg ontbrekende kolommen toe met lege waarde
-                # Lege waarde = data niet beschikbaar (niet getrackt in die week)
+                # Migreer data rijen
                 for i in range(1, len(rows)):
                     old_row = rows[i]
 
                     if len(old_row) >= 19:
-                        # V2 format with niet_gestemd (19 columns)
-                        # Migrate to V3: Add was_misschien columns after each misschien column
+                        # V2 → V3: Add was_misschien columns
                         new_row = [
-                            old_row[0],  # week
-                            old_row[1],  # datum_vrijdag
-                            old_row[2],  # datum_zaterdag
-                            old_row[3],  # datum_zondag
-                            old_row[4],  # vr_19
-                            old_row[5],  # vr_2030
-                            old_row[6],  # vr_misschien
-                            "",  # vr_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[7],  # vr_niet
-                            old_row[8],  # vr_niet_gestemd
-                            old_row[9],  # za_19
-                            old_row[10],  # za_2030
-                            old_row[11],  # za_misschien
-                            "",  # za_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[12],  # za_niet
-                            old_row[13],  # za_niet_gestemd
-                            old_row[14],  # zo_19
-                            old_row[15],  # zo_2030
-                            old_row[16],  # zo_misschien
-                            "",  # zo_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[17],  # zo_niet
-                            old_row[18],  # zo_niet_gestemd
+                            old_row[0],
+                            old_row[1],
+                            old_row[2],
+                            old_row[3],
+                            old_row[4],
+                            old_row[5],
+                            old_row[6],
+                            "",  # vr_was_misschien
+                            old_row[7],
+                            old_row[8],
+                            old_row[9],
+                            old_row[10],
+                            old_row[11],
+                            "",  # za_was_misschien
+                            old_row[12],
+                            old_row[13],
+                            old_row[14],
+                            old_row[15],
+                            old_row[16],
+                            "",  # zo_was_misschien
+                            old_row[17],
+                            old_row[18],
                         ]
                         rows[i] = new_row
                     elif len(old_row) >= 16:
-                        # V1 format without niet_gestemd (16 columns)
-                        # Migrate to V3: Add both niet_gestemd and was_misschien columns
+                        # V1 → V3: Add beide niet_gestemd en was_misschien
                         new_row = [
-                            old_row[0],  # week
-                            old_row[1],  # datum_vrijdag
-                            old_row[2],  # datum_zaterdag
-                            old_row[3],  # datum_zondag
-                            old_row[4],  # vr_19
-                            old_row[5],  # vr_2030
-                            old_row[6],  # vr_misschien
-                            "",  # vr_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[7],  # vr_niet
-                            "",  # vr_niet_gestemd (V2/V3 - leeg = niet getrackt)
-                            old_row[8],  # za_19
-                            old_row[9],  # za_2030
-                            old_row[10],  # za_misschien
-                            "",  # za_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[11],  # za_niet
-                            "",  # za_niet_gestemd (V2/V3 - leeg = niet getrackt)
-                            old_row[12],  # zo_19
-                            old_row[13],  # zo_2030
-                            old_row[14],  # zo_misschien
-                            "",  # zo_was_misschien (V3 - leeg = niet getrackt)
-                            old_row[15],  # zo_niet
-                            "",  # zo_niet_gestemd (V2/V3 - leeg = niet getrackt)
+                            old_row[0],
+                            old_row[1],
+                            old_row[2],
+                            old_row[3],
+                            old_row[4],
+                            old_row[5],
+                            old_row[6],
+                            "",  # vr_was_misschien
+                            old_row[7],
+                            "",  # vr_niet_gestemd
+                            old_row[8],
+                            old_row[9],
+                            old_row[10],
+                            "",  # za_was_misschien
+                            old_row[11],
+                            "",  # za_niet_gestemd
+                            old_row[12],
+                            old_row[13],
+                            old_row[14],
+                            "",  # zo_was_misschien
+                            old_row[15],
+                            "",  # zo_niet_gestemd
                         ]
                         rows[i] = new_row
 
-                # Herschrijf bestand met nieuwe header + gemigreerde data
-                with open(csv_path, "w", newline="", encoding="utf-8") as f:
-                    w = csv.writer(f)
-                    w.writerows(rows)
+            # Check of deze week al bestaat, zo ja: update die rij, anders: append
+            week_exists = False
+            for i in range(1, len(rows)):
+                if rows[i] and rows[i][0] == week:
+                    # Update bestaande rij voor deze week
+                    rows[i] = row
+                    week_exists = True
+                    break
 
-        # Check of deze week al bestaat, zo ja: update die rij, anders: append
-        week_exists = False
-        for i in range(1, len(rows)):
-            if rows[i] and rows[i][0] == week:
-                # Update bestaande rij voor deze week
-                rows[i] = row
-                week_exists = True
-                break
+            if not week_exists:
+                # Week bestaat nog niet, append nieuwe rij
+                rows.append(row)
 
-        if not week_exists:
-            # Week bestaat nog niet, append nieuwe rij
-            rows.append(row)
-
-        # Herschrijf het hele bestand
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerows(rows)
+            # Herschrijf het hele bestand
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerows(rows)
+        else:
+            # Leeg bestand (geen header): schrijf header + eerste rij
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(header)
+                w.writerow(row)
     else:
         # Nieuw bestand: schrijf header + eerste rij
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(header)
             w.writerow(row)
+
+
+async def append_week_snapshot_scoped(
+    guild_id: Optional[int | str] = None,
+    channel_id: Optional[int | str] = None,
+    now: Optional[datetime] = None,
+    channel: Any = None,
+) -> None:
+    """
+    Schrijf 1 rij naar CSV met week+datums+tellingen+niet-stemmers.
+
+    Gebruikt dual archive systeem:
+    - Weekend archief (vrijdag/zaterdag/zondag): altijd actief (backward compatible)
+    - Weekday archief (maandag/dinsdag/woensdag/donderdag): alleen actief als weekday polls enabled zijn
+
+    Backward compat:
+      - Zonder guild/channel → gebruik globale ARCHIVE_CSV (legacy tests).
+      - Sommige oude tests roepen append_week_snapshot_scoped(<now>) aan:
+        detecteer dat en verschuif argumenten.
+    """
+    # Back-compat: eerste arg kan 'now' zijn
+    if isinstance(guild_id, datetime) and channel_id is None and now is None:
+        now = guild_id
+        guild_id = None
+        channel_id = None
+    _ensure_dir()
+    if now is None:
+        now = datetime.now(pytz.timezone("Europe/Amsterdam"))
+
+    # Zonder IDs: legacy pad + lege telling is prima voor tests
+    votes = (
+        await load_votes(guild_id, channel_id)
+        if (guild_id is not None and channel_id is not None)
+        else {}
+    )
+    telling = await _build_counts_from_votes(votes, channel, guild_id, channel_id)
+
+    # Altijd weekend archief schrijven (backward compatible)
+    await _archive_weekend(telling, guild_id, channel_id, now)
+
+    # Alleen weekday archief schrijven als er weekday polls ingeschakeld zijn
+    if guild_id is not None and channel_id is not None:
+        # Import hier om circulaire import te voorkomen
+        from apps.utils.poll_settings import get_enabled_poll_days
+
+        enabled_days = get_enabled_poll_days(int(channel_id))
+        weekday_enabled = any(day in enabled_days for day in WEEKDAY_DAYS)
+
+        if weekday_enabled:
+            await _archive_weekdays(telling, guild_id, channel_id, now)
 
 
 def archive_exists_scoped(
