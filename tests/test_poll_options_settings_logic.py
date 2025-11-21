@@ -18,6 +18,8 @@ import tempfile
 from apps.utils import poll_settings
 from tests.base import BaseTestCase
 
+EXPECTED_DAYS = ["vrijdag", "zaterdag", "zondag"]
+
 
 class TestPollOptionsSettingsLogic(BaseTestCase):
     """Tests voor poll-opties instellingen logic."""
@@ -53,15 +55,9 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
     async def test_get_poll_option_state_default_enabled(self):
         """Test dat poll opties standaard enabled zijn."""
         # Default: alle opties enabled
-        self.assertTrue(
-            poll_settings.get_poll_option_state(123, "vrijdag", "19:00")
-        )
-        self.assertTrue(
-            poll_settings.get_poll_option_state(123, "zaterdag", "20:30")
-        )
-        self.assertTrue(
-            poll_settings.get_poll_option_state(123, "zondag", "19:00")
-        )
+        self.assertTrue(poll_settings.get_poll_option_state(123, "vrijdag", "19:00"))
+        self.assertTrue(poll_settings.get_poll_option_state(123, "zaterdag", "20:30"))
+        self.assertTrue(poll_settings.get_poll_option_state(123, "zondag", "19:00"))
 
     async def test_set_poll_option_state_disabled(self):
         """Test dat poll optie disabled kan worden."""
@@ -180,9 +176,7 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         self.assertFalse(
             poll_settings.is_day_completely_disabled(channel_id, "zaterdag")
         )
-        self.assertFalse(
-            poll_settings.is_day_completely_disabled(channel_id, "zondag")
-        )
+        self.assertFalse(poll_settings.is_day_completely_disabled(channel_id, "zondag"))
 
     async def test_is_day_completely_disabled_one_time_disabled(self):
         """Test dat dag niet volledig disabled is als één tijd disabled is."""
@@ -213,9 +207,7 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         self.assertFalse(
             poll_settings.is_day_completely_disabled(channel_id, "vrijdag")
         )
-        self.assertFalse(
-            poll_settings.is_day_completely_disabled(channel_id, "zondag")
-        )
+        self.assertFalse(poll_settings.is_day_completely_disabled(channel_id, "zondag"))
 
     async def test_get_enabled_poll_days_all_enabled(self):
         """Test dat alle dagen enabled zijn als default."""
@@ -224,7 +216,7 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         enabled_days = poll_settings.get_enabled_poll_days(channel_id)
 
         # Alle 3 dagen enabled
-        self.assertEqual(enabled_days, ["vrijdag", "zaterdag", "zondag"])
+        self.assertEqual(enabled_days, EXPECTED_DAYS)
 
     async def test_get_enabled_poll_days_one_disabled(self):
         """Test get_enabled_poll_days met één volledig disabled dag."""
@@ -259,7 +251,7 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
         channel_id = 123
 
         # Disable alle dagen volledig
-        for dag in ["vrijdag", "zaterdag", "zondag"]:
+        for dag in EXPECTED_DAYS:
             poll_settings.set_poll_option_state(channel_id, dag, "19:00", False)
             poll_settings.set_poll_option_state(channel_id, dag, "20:30", False)
 

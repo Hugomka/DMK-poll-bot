@@ -22,6 +22,7 @@ from apps.utils.poll_message import (
     is_channel_disabled,
 )
 from apps.utils.poll_settings import (
+    WEEKEND_DAYS,
     get_setting,
     is_paused,
     get_effective_activation,
@@ -150,7 +151,7 @@ class PollStatus(commands.Cog):
             # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
 
-            for dag in ["vrijdag", "zaterdag", "zondag"]:
+            for dag in WEEKEND_DAYS:
                 instelling = get_setting(cid_val, dag)
                 zicht_txt = (
                     "altijd zichtbaar"

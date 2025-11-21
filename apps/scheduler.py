@@ -26,6 +26,7 @@ from apps.utils.poll_message import (
     set_channel_disabled,
 )
 from apps.utils.poll_settings import (
+    get_enabled_poll_days,
     get_setting,
     is_notification_enabled,
     is_paused,
@@ -321,7 +322,7 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
 
             # Skip als GEEN van de dagen in 'deadline' modus staat
             # (donderdag-notificatie is alleen relevant voor deadline-scenario)
-            if not any(_is_deadline_mode(cid, dag) for dag in ["vrijdag", "zaterdag", "zondag"]):
+            if not any(_is_deadline_mode(cid, dag) for dag in get_enabled_poll_days(cid)):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -718,7 +719,7 @@ async def update_all_polls(bot) -> None:  # pragma: no cover
             if allow_from_per_channel_only and not has_poll:
                 continue
 
-            for dag in ["vrijdag", "zaterdag", "zondag"]:
+            for dag in get_enabled_poll_days(cid):
                 tasks.append(schedule_poll_update(channel, dag, delay=0.0))
 
     if tasks:
@@ -1299,7 +1300,7 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
             if should_deactivate:
                 # Deactiveer de polls: kanaal leegmaken + scheduler uitschakelen
                 try:
-                    dagen = ["vrijdag", "zaterdag", "zondag"]
+                    dagen = get_enabled_poll_days(cid)
 
                     # 0) Opening bericht verwijderen
                     opening_mid = get_message_id(cid, "opening")
@@ -1481,7 +1482,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                             save_message_id(cid, "opening", opening_msg.id)
 
                     # Dag-berichten updaten
-                    for dag in ["vrijdag", "zaterdag", "zondag"]:
+                    for dag in get_enabled_poll_days(cid):
                         await update_poll_message(channel, dag)
 
                     # Stemmen-knop bericht

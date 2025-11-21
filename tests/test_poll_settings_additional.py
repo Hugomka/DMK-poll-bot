@@ -16,6 +16,8 @@ import tempfile
 from apps.utils import poll_settings
 from tests.base import BaseTestCase
 
+EXPECTED_DAYS = ["vrijdag", "zaterdag", "zondag"]
+
 
 class TestPollSettingsAdditional(BaseTestCase):
     """Additional tests for poll_settings functions."""
@@ -151,7 +153,7 @@ class TestPollSettingsAdditional(BaseTestCase):
         result = poll_settings.get_enabled_days(789)
 
         # Default: vrijdag, zaterdag, zondag
-        self.assertEqual(result, ["vrijdag", "zaterdag", "zondag"])
+        self.assertEqual(result, EXPECTED_DAYS)
 
     async def test_get_enabled_days_custom(self):
         """Test get_enabled_days returns custom value when set."""
@@ -171,7 +173,7 @@ class TestPollSettingsAdditional(BaseTestCase):
 
         # Should return default
         result = poll_settings.get_enabled_days(789)
-        self.assertEqual(result, ["vrijdag", "zaterdag", "zondag"])
+        self.assertEqual(result, EXPECTED_DAYS)
 
     # ========================================================================
     # Tests for set_enabled_days
@@ -190,21 +192,21 @@ class TestPollSettingsAdditional(BaseTestCase):
 
     async def test_set_enabled_days_valid_multiple_days(self):
         """Test set_enabled_days met meerdere dagen."""
-        result = poll_settings.set_enabled_days(222, ["vrijdag", "zaterdag", "zondag"])
+        result = poll_settings.set_enabled_days(222, EXPECTED_DAYS)
 
         # Check return value
-        self.assertEqual(result, ["vrijdag", "zaterdag", "zondag"])
+        self.assertEqual(result, EXPECTED_DAYS)
 
         # Verify persistence
         saved = poll_settings.get_enabled_days(222)
-        self.assertEqual(saved, ["vrijdag", "zaterdag", "zondag"])
+        self.assertEqual(saved, EXPECTED_DAYS)
 
     async def test_set_enabled_days_case_insensitive(self):
         """Test set_enabled_days normalizes to lowercase."""
         result = poll_settings.set_enabled_days(333, ["Vrijdag", "ZATERDAG", "ZoNdAg"])
 
         # Should be normalized to lowercase
-        self.assertEqual(result, ["vrijdag", "zaterdag", "zondag"])
+        self.assertEqual(result, EXPECTED_DAYS)
 
     async def test_set_enabled_days_invalid_day_raises_error(self):
         """Test set_enabled_days raises ValueError voor ongeldige dag."""

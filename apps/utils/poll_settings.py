@@ -16,6 +16,9 @@ DAYS_INDEX = {
     "zondag": 6,
 }
 
+# Standaard weekenddagen voor DMK polls
+WEEKEND_DAYS = ["vrijdag", "zaterdag", "zondag"]
+
 
 def _load_data():
     if os.path.exists(SETTINGS_FILE):
@@ -518,9 +521,9 @@ def get_enabled_days(channel_id: int) -> list[str]:
 
     # Default: alle weekend dagen
     if enabled is None:
-        return ["vrijdag", "zaterdag", "zondag"]
+        return WEEKEND_DAYS.copy()
 
-    return enabled if isinstance(enabled, list) else ["vrijdag", "zaterdag", "zondag"]
+    return enabled if isinstance(enabled, list) else WEEKEND_DAYS.copy()
 
 
 def set_enabled_days(channel_id: int, dagen: list[str]) -> list[str]:
@@ -639,7 +642,7 @@ def get_all_poll_options_state(channel_id: int) -> dict:
 
     # Return all 6 options met defaults
     result = {}
-    for dag in ["vrijdag", "zaterdag", "zondag"]:
+    for dag in WEEKEND_DAYS:
         for tijd in ["19:00", "20:30"]:
             key = f"{dag}_{tijd}"
             result[key] = options.get(key, True)  # Default: enabled
@@ -696,5 +699,4 @@ def get_enabled_poll_days(channel_id: int) -> list[str]:
     Returns:
         Lijst van enabled dagen (bijv. ['vrijdag', 'zondag'])
     """
-    all_days = ["vrijdag", "zaterdag", "zondag"]
-    return [dag for dag in all_days if not is_day_completely_disabled(channel_id, dag)]
+    return [dag for dag in WEEKEND_DAYS if not is_day_completely_disabled(channel_id, dag)]

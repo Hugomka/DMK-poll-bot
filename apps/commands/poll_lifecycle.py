@@ -27,6 +27,7 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.utils.poll_settings import (
+    WEEKEND_DAYS,
     clear_scheduled_activation,
     is_paused,
     set_scheduled_activation,
@@ -551,7 +552,7 @@ class PollLifecycle(commands.Cog):
         if channel is None:
             await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
             return
-        dagen = ["vrijdag", "zaterdag", "zondag"]
+        dagen = WEEKEND_DAYS
 
         guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
         gid = int(getattr(guild, "id", 0)) if guild else 0

@@ -13,6 +13,7 @@ from apps.utils.poll_message import (
     schedule_poll_update,
 )
 from apps.utils.poll_settings import (
+    WEEKEND_DAYS,
     get_all_poll_options_state,
     is_day_completely_disabled,
     toggle_poll_option,
@@ -225,7 +226,7 @@ class PollOptionButton(discord.ui.Button):
         import asyncio
 
         # Stap 1: Verwijder ALLE bestaande poll messages
-        all_days = ["vrijdag", "zaterdag", "zondag"]
+        all_days = WEEKEND_DAYS
         delete_tasks = [self._delete_day_message(channel, dag) for dag in all_days]
         await asyncio.gather(*delete_tasks, return_exceptions=True)
 

@@ -299,6 +299,78 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
         # Assert: schedule_poll_update NIET aangeroepen (exception → has_poll=False)
         mock_schedule.assert_not_awaited()
 
+    async def test_update_all_polls_respects_enabled_days_setting(self):
+        """Test dat alleen enabled dagen worden ge-update."""
+
+        class Channel:
+            def __init__(self, id):
+                self.id = id
+                self.name = "dmk"
+
+        class Guild:
+            def __init__(self):
+                self.id = 1
+
+            @property
+            def text_channels(self):
+                return [Channel(10)]
+
+        class Bot:
+            def __init__(self):
+                self.guilds = [Guild()]
+
+        bot = Bot()
+
+        def fake_get_channels(guild):
+            return guild.text_channels
+
+        def fake_get_message_id(cid, key):
+            return 999  # Polls bestaan
+
+        def fake_get_enabled_poll_days(_cid):
+            # Alleen zondag is enabled (vrijdag en zaterdag zijn disabled)
+            return ["zondag"]
+
+        # Mock asyncio.gather
+        gather_calls = []
+
+        async def fake_gather(*tasks, **_kwargs):
+            # Await alle tasks zodat coroutines niet unawaited blijven
+            for task in tasks:
+                if hasattr(task, '__await__'):
+                    try:
+                        await task
+                    except:
+                        pass
+            gather_calls.append(len(tasks))
+            return [None] * len(tasks)
+
+        with (
+            patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
+            patch.object(scheduler, "is_channel_disabled", return_value=False),
+            patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.object(
+                scheduler, "get_enabled_poll_days", side_effect=fake_get_enabled_poll_days
+            ),
+            patch.object(
+                scheduler, "schedule_poll_update", new_callable=AsyncMock
+            ) as mock_schedule,
+            patch("asyncio.gather", side_effect=fake_gather),
+            patch.dict(
+                os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
+            ),
+        ):
+            await scheduler.update_all_polls(bot)
+
+        # Assert: schedule_poll_update aangeroepen voor alleen zondag (1x, niet 3x)
+        self.assertEqual(mock_schedule.call_count, 1)
+        # Verifieer dat het zondag was
+        call_args = mock_schedule.call_args_list[0]
+        self.assertEqual(call_args[0][1], "zondag")  # Tweede argument is dag
+        # Assert: gather is aangeroepen met 1 task (alleen zondag)
+        self.assertEqual(len(gather_calls), 1)
+        self.assertEqual(gather_calls[0], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 from tests.base import BaseTestCase
 
+EXPECTED_DAYS = ["vrijdag", "zaterdag", "zondag"]
+
 # Dummy discord module vóór import van poll_option
 # We hebben alleen ButtonStyle.secondary nodig.
 discord_mod = cast(Any, ModuleType("discord"))
@@ -100,7 +102,7 @@ class TestPollOption(BaseTestCase):
         with patch.object(po, "OPTIONS_FILE", str(self.tmpfile)):
             days = po.list_days()
         # Eerste keer dat een dag verschijnt bepaalt de volgorde
-        assert days == ["vrijdag", "zaterdag", "zondag"]
+        assert days == EXPECTED_DAYS
 
     #  is_valid_option: True en False paden -
     def test_is_valid_option_true_and_false(self):

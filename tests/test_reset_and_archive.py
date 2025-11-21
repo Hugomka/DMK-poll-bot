@@ -11,6 +11,8 @@ from apps.utils import archive as ar
 from apps.utils.poll_storage import get_votes_for_option, reset_votes, toggle_vote
 from tests.base import BaseTestCase
 
+EXPECTED_DAYS = ["vrijdag", "zaterdag", "zondag"]
+
 
 class TestResetEnArchiefUitgebreid(BaseTestCase):
     async def asyncSetUp(self):
@@ -107,7 +109,7 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
         - onbekende tijd binnen geldige dag → overslaan
         """
         # Zorg dat DAGEN/VOLGORDE voorspelbaar zijn
-        with patch.object(ar, "DAGEN", ["vrijdag", "zaterdag", "zondag"]), patch.object(
+        with patch.object(ar, "DAGEN", EXPECTED_DAYS), patch.object(
             ar,
             "VOLGORDE",
             ["om 19:00 uur", "om 20:30 uur", "misschien", "niet meedoen"],
@@ -120,7 +122,7 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
             }
             telling = await ar._build_counts_from_votes(votes)
             # Alles 0 gebleven
-            for dag in ["vrijdag", "zaterdag", "zondag"]:
+            for dag in EXPECTED_DAYS:
                 self.assertEqual(telling[dag]["om 19:00 uur"], 0)
                 self.assertEqual(telling[dag]["om 20:30 uur"], 0)
                 self.assertEqual(telling[dag]["misschien"], 0)

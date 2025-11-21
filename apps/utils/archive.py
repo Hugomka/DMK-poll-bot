@@ -8,6 +8,7 @@ from typing import Any, Optional, Tuple
 import pytz
 
 from apps.entities.poll_option import get_poll_options
+from apps.utils.poll_settings import WEEKEND_DAYS
 from apps.utils.poll_storage import (
     get_non_voters_for_day,
     get_was_misschien_count,
@@ -20,7 +21,7 @@ ARCHIVE_CSV = os.path.join(ARCHIVE_DIR, "dmk_archive.csv")
 VOLGORDE = ["om 19:00 uur", "om 20:30 uur", "misschien", "was misschien", "niet meedoen", "niet gestemd"]
 DAGEN = []
 for o in get_poll_options():
-    if o.dag not in DAGEN and o.dag in ["vrijdag", "zaterdag", "zondag"]:
+    if o.dag not in DAGEN and o.dag in WEEKEND_DAYS:
         DAGEN.append(o.dag)
 
 

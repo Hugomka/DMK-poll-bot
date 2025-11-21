@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from apps.commands import with_default_suffix
 from apps.utils.poll_message import update_poll_message
-from apps.utils.poll_settings import set_visibility
+from apps.utils.poll_settings import WEEKEND_DAYS, set_visibility
 
 
 class PollVotes(commands.Cog):
@@ -62,7 +62,7 @@ class PollVotes(commands.Cog):
             if dag and dag.value:
                 doel_dagen = [dag.value]
             else:
-                doel_dagen = ["vrijdag", "zaterdag", "zondag"]
+                doel_dagen = WEEKEND_DAYS
 
             laatste: Optional[dict] = None
             for d in doel_dagen:

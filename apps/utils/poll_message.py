@@ -13,7 +13,12 @@ from apps.logic.decision import build_decision_line
 from apps.utils.celebration_gif import get_celebration_gif_url
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
-from apps.utils.poll_settings import is_paused, should_hide_counts, should_hide_ghosts
+from apps.utils.poll_settings import (
+    get_enabled_poll_days,
+    is_paused,
+    should_hide_counts,
+    should_hide_ghosts,
+)
 from apps.utils.poll_storage import (
     get_non_voters_for_day,
     update_non_voters,
@@ -226,7 +231,12 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
     Als er geen message_id is of het bericht bestaat niet meer,
     wordt het bericht opnieuw aangemaakt en opgeslagen.
     """
-    keys = [dag] if dag else ["vrijdag", "zaterdag", "zondag"]
+    if dag:
+        keys = [dag]
+    else:
+        # Haal channel_id op voor get_enabled_poll_days
+        cid_temp = int(getattr(channel, "id", 0))
+        keys = get_enabled_poll_days(cid_temp)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     guild_obj = getattr(channel, "guild", None)
     gid_val: int | str = int(getattr(guild_obj, "id", 0))
@@ -304,8 +314,8 @@ async def check_all_voted_celebration(
 ) -> None:
     """Check of iedereen heeft gestemd en stuur/verwijder celebration message."""
     try:
-        # Check alle 3 dagen voor niet-stemmers
-        dagen = ["vrijdag", "zaterdag", "zondag"]
+        # Check alleen enabled dagen voor niet-stemmers
+        dagen = get_enabled_poll_days(channel_id)
 
         all_voted = True
         for dag in dagen:
