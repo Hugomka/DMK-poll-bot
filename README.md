@@ -30,8 +30,8 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 
 | Functie | Beschrijving |
 |---|---|
-| **🗳️ Stemmen per dag** | Voor vrijdag, zaterdag en zondag elk een eigen poll met opties. |
-| **✅ Aanpasbare pollopties** | Tijden/opties via `poll_options.json` (standaard 19:00, 20:30, misschien, niet meedoen). |
+| **🗳️ Stemmen per dag** | Voor maandag t/m zondag elk een eigen poll met opties (standaard: alleen weekend actief). |
+| **✅ Aanpasbare pollopties** | Tijden/opties via `poll_options.json` en `/dmk-poll-instelling` (standaard: 19:00, 20:30 voor vrijdag/zaterdag/zondag). |
 | **🔒 Veilige opslag** | Stemmen in `votes.json` met async lock, zodat alles stabiel en snel blijft. |
 | **⏰ Automatische scheduler** | Nieuwe week op dinsdag 20:00, dag-updates om 18:00, herinneringen om 16:00, notificaties bij "gaat door". |
 | **📅 Poll scheduling** | Plan polls om automatisch te activeren/deactiveren op specifieke tijden (per kanaal configureerbaar). |
@@ -40,7 +40,7 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **👁️ Verborgen stemmen** | Tot de deadline (standaard 18:00) blijven aantallen verborgen in de kanaalberichten. |
 | **🎟️ Gaststemmen** | Leden kunnen stemmen **voor gasten** toevoegen/verwijderen. |
 | **💬 Slash commando's** | `/dmk-poll-on/reset/pauze/verwijderen/instelling/stemmen/status/notify`, archief downloaden/verwijderen, en gast-commando's. |
-| **⚙️ Configureerbare instellingen** | Via `/dmk-poll-instelling`: toggle poll-opties (welke dagen/tijden zichtbaar) en notificaties (8 types aan/uit per kanaal). |
+| **⚙️ Configureerbare instellingen** | Via `/dmk-poll-instelling`: toggle poll-opties (14 dag/tijd combinaties: maandag t/m zondag, 19:00 en 20:30) en notificaties (8 types aan/uit per kanaal). |
 | **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen, optioneel namen, en scheduling informatie. |
 | **🔄 Misschien-conversie** | Wie om 17:00 "misschien" heeft gestemd krijgt een bevestigingsknop; om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen". |
 | **🔔 Privacy-vriendelijke mentions** | Tijdelijke mentions (5 sec zichtbaar voor herinneringen), persistente mentions (5 uur zichtbaar voor "gaat door"-berichten). |
@@ -57,7 +57,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-reset`** *(default: admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. |
 | **`/dmk-poll-pauze`** *(default: admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
 | **`/dmk-poll-verwijderen`** *(default: admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
-| **`/dmk-poll-instelling`** *(default: admin/mod)* | Open instellingen voor de poll. Kies tussen **Poll-opties** (toggle zichtbaarheid van dag/tijd opties: vrijdag/zaterdag/zondag 19:00/20:30) of **Notificaties** (toggle 8 automatische notificaties: poll geopend/gereset/gesloten, herinneringen, doorgaan, felicitatie). Interactieve UI met groene/grijze knoppen per kanaal. |
+| **`/dmk-poll-instelling`** *(default: admin/mod)* | Open instellingen voor de poll. Kies tussen **Poll-opties** (toggle 14 dag/tijd combinaties: maandag t/m zondag, elk 19:00 en 20:30; standaard alleen weekend actief) of **Notificaties** (toggle 8 automatische notificaties: poll geopend/gereset/gesloten, herinneringen, doorgaan, felicitatie). Interactieve UI met groene/grijze knoppen per kanaal. ⚠️ Let op: bij activeren van maandag/dinsdag de gesloten periode aanpassen via `/dmk-poll-on`. |
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-archief`** *(default: admin/mod)* | Bekijk en beheer het CSV-archief: kies CSV-formaat (🇺🇸 Comma / 🇳🇱 Semicolon), download direct, of verwijder archief. |
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
@@ -110,20 +110,16 @@ De stemopties staan in **`poll_options.json`**. Standaard:
 
 ```json
 [
+  { "dag": "maandag",  "tijd": "om 19:00 uur", "emoji": "🟥" },
+  { "dag": "maandag",  "tijd": "om 20:30 uur", "emoji": "🟧" },
+  { "dag": "maandag",  "tijd": "misschien",    "emoji": "Ⓜ️" },
+  { "dag": "maandag",  "tijd": "niet meedoen", "emoji": "❌" },
+  // ... dinsdag (🟨⬜), woensdag (🟩🟦), donderdag (🟪🟫) ...
   { "dag": "vrijdag",  "tijd": "om 19:00 uur", "emoji": "🔴" },
   { "dag": "vrijdag",  "tijd": "om 20:30 uur", "emoji": "🟠" },
   { "dag": "vrijdag",  "tijd": "misschien",    "emoji": "Ⓜ️" },
   { "dag": "vrijdag",  "tijd": "niet meedoen", "emoji": "❌" },
-
-  { "dag": "zaterdag", "tijd": "om 19:00 uur", "emoji": "🟡" },
-  { "dag": "zaterdag", "tijd": "om 20:30 uur", "emoji": "⚪" },
-  { "dag": "zaterdag", "tijd": "misschien",    "emoji": "Ⓜ️" },
-  { "dag": "zaterdag", "tijd": "niet meedoen", "emoji": "❌" },
-
-  { "dag": "zondag",   "tijd": "om 19:00 uur", "emoji": "🟢" },
-  { "dag": "zondag",   "tijd": "om 20:30 uur", "emoji": "🔵" },
-  { "dag": "zondag",   "tijd": "misschien",    "emoji": "Ⓜ️" },
-  { "dag": "zondag",   "tijd": "niet meedoen", "emoji": "❌" }
+  // ... zaterdag (🟡⚪), zondag (🟢🔵) ...
 ]
 ```
 
