@@ -2,6 +2,8 @@
 #
 # UI voor poll-opties instellingen met toggle buttons
 
+from datetime import datetime
+
 import discord
 
 from apps.utils.discord_client import fetch_message_or_none, safe_call
@@ -13,20 +15,91 @@ from apps.utils.poll_message import (
     schedule_poll_update,
 )
 from apps.utils.poll_settings import (
+    DAYS_INDEX,
     WEEK_DAYS,
     get_all_poll_options_state,
     is_day_completely_disabled,
     toggle_poll_option,
 )
+from apps.utils.poll_storage import get_votes_for_option
+
+
+async def _heeft_poll_stemmen(
+    channel_id: int, guild_id: int, dag: str, tijd: str
+) -> bool:
+    """
+    Check of een poll-optie al stemmen heeft.
+
+    Args:
+        channel_id: Het kanaal ID
+        guild_id: Het guild ID
+        dag: 'maandag' t/m 'zondag'
+        tijd: '19:00' | '20:30'
+
+    Returns:
+        True als er al stemmen zijn, anders False
+    """
+    # Converteer tijd naar poll_option format
+    tijd_key = "om 19:00 uur" if tijd == "19:00" else "om 20:30 uur"
+
+    try:
+        stemmen = await get_votes_for_option(dag, tijd_key, guild_id, channel_id)
+        return stemmen > 0
+    except Exception:  # pragma: no cover
+        return False
+
+
+def _is_poll_in_verleden(dag: str, tijd: str, now: datetime | None = None) -> bool:
+    """
+    Check of een poll-optie in het verleden ligt.
+
+    Args:
+        dag: 'maandag' t/m 'zondag'
+        tijd: '19:00' | '20:30'
+        now: Huidige datetime (optioneel, voor testing)
+
+    Returns:
+        True als poll in verleden, anders False
+    """
+    if now is None:
+        now = datetime.now()
+
+    target_weekday = DAYS_INDEX.get(dag)
+    if target_weekday is None:
+        return False
+
+    current_weekday = now.weekday()
+
+    # Dag is in het verleden
+    if current_weekday > target_weekday:
+        return True
+
+    # Dag is in de toekomst
+    if current_weekday < target_weekday:
+        return False
+
+    # Zelfde dag - check tijd
+    uur = 19 if tijd == "19:00" else 20
+    minuut = 0 if tijd == "19:00" else 30
+
+    poll_tijd = now.replace(hour=uur, minute=minuut, second=0, microsecond=0)
+    return now >= poll_tijd
 
 
 class PollOptionsSettingsView(discord.ui.View):
     """View met 14 toggle buttons voor poll-opties (7 dagen × 2 tijden)."""
 
-    def __init__(self, channel_id: int, channel: discord.TextChannel):
+    def __init__(
+        self,
+        channel_id: int,
+        channel: discord.TextChannel,
+        guild_id: int,
+        votes_per_option: dict[str, int] | None = None,
+    ):
         super().__init__(timeout=None)  # Persistent view
         self.channel_id = channel_id
         self.channel = channel
+        self.guild_id = guild_id
 
         # Haal huidige status op
         states = get_all_poll_options_state(channel_id)
@@ -35,16 +108,31 @@ class PollOptionsSettingsView(discord.ui.View):
         for dag in WEEK_DAYS:
             for tijd in ["19:00", "20:30"]:
                 key = f"{dag}_{tijd}"
-                self.add_item(PollOptionButton(dag, tijd, states.get(key, True)))
+                enabled = states.get(key, True)
+
+                # Bepaal of deze optie al stemmen heeft (uit cache of default False)
+                heeft_stemmen = False
+                if votes_per_option:
+                    tijd_key = "om 19:00 uur" if tijd == "19:00" else "om 20:30 uur"
+                    optie_key = f"{dag}_{tijd_key}"
+                    heeft_stemmen = votes_per_option.get(optie_key, 0) > 0
+
+                self.add_item(
+                    PollOptionButton(dag, tijd, enabled, heeft_stemmen, guild_id)
+                )
 
 
 class PollOptionButton(discord.ui.Button):
     """Toggle button voor een specifieke poll optie."""
 
-    def __init__(self, dag: str, tijd: str, enabled: bool):
+    def __init__(
+        self, dag: str, tijd: str, enabled: bool, heeft_stemmen: bool, guild_id: int
+    ):
         self.dag = dag
         self.tijd = tijd
         self.enabled = enabled
+        self.heeft_stemmen = heeft_stemmen
+        self.guild_id = guild_id
 
         # Label en emoji - consistent met poll_options.json
         emoji_map = {
@@ -66,10 +154,18 @@ class PollOptionButton(discord.ui.Button):
         emoji = emoji_map.get(f"{dag}_{tijd}", "⚪")
         label = f"{dag.capitalize()} {tijd}"
 
-        # Style: groen als enabled, grijs als disabled
-        style = (
-            discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary
-        )
+        # Bepaal button style op basis van logica:
+        # 1. Disabled (uit) -> grijs
+        # 2. Enabled + (toekomst OF heeft stemmen) -> groen
+        # 3. Enabled + verleden + geen stemmen -> blauw
+        if not enabled:
+            style = discord.ButtonStyle.secondary  # Grijs
+        else:
+            in_verleden = _is_poll_in_verleden(dag, tijd)
+            if in_verleden and not heeft_stemmen:
+                style = discord.ButtonStyle.primary  # Blauw
+            else:
+                style = discord.ButtonStyle.success  # Groen
 
         super().__init__(
             style=style,
@@ -91,13 +187,30 @@ class PollOptionButton(discord.ui.Button):
             # Toggle de optie
             nieuwe_status = toggle_poll_option(channel_id, self.dag, self.tijd)
 
-            # Update button style
+            # Update button status
             self.enabled = nieuwe_status
-            self.style = (
-                discord.ButtonStyle.success
-                if nieuwe_status
-                else discord.ButtonStyle.secondary
-            )
+
+            # Check of deze poll al stemmen heeft (alleen relevant als we aanzetten)
+            if nieuwe_status:
+                self.heeft_stemmen = await _heeft_poll_stemmen(
+                    channel_id, self.guild_id, self.dag, self.tijd
+                )
+            else:
+                # Disabled - stemmen zijn niet relevant
+                self.heeft_stemmen = False
+
+            # Bepaal nieuwe button style op basis van logica:
+            # 1. Disabled (uit) -> grijs
+            # 2. Enabled + (toekomst OF heeft stemmen) -> groen
+            # 3. Enabled + verleden + geen stemmen -> blauw (primary)
+            if not nieuwe_status:
+                self.style = discord.ButtonStyle.secondary  # Grijs
+            else:
+                in_verleden = _is_poll_in_verleden(self.dag, self.tijd)
+                if in_verleden and not self.heeft_stemmen:
+                    self.style = discord.ButtonStyle.primary  # Blauw
+                else:
+                    self.style = discord.ButtonStyle.success  # Groen
 
             # Update de settings message met nieuwe button states (EERST, voor response)
             await interaction.response.edit_message(view=self.view)
@@ -352,7 +465,8 @@ def create_poll_options_settings_embed() -> discord.Embed:
             "ontstaan met de gesloten periode (default: maandag 00:00 t/m dinsdag 20:00). "
             "Pas deze periode aan via `/dmk-poll-on` zodat leden kunnen stemmen.\n\n"
             "**Status:**\n"
-            "🟢 Groen = Actief\n"
+            "🟢 Groen = Actief (poll wordt gegenereerd)\n"
+            "🔵 Blauw = Actief na reset (poll in verleden, geen stemmen)\n"
             "⚪ Grijs = Uitgeschakeld"
         ),
         color=discord.Color.blue(),

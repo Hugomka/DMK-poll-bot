@@ -13,6 +13,8 @@ from apps.ui.poll_options_settings import (
     PollOptionsSettingsView,
     create_poll_options_settings_embed,
 )
+from apps.utils.poll_settings import WEEK_DAYS
+from apps.utils.poll_storage import get_votes_for_option
 
 
 @app_commands.command(
@@ -57,8 +59,31 @@ async def poll_instelling(
                 )
                 return
 
+            # Haal guild_id op
+            guild_id = interaction.guild_id
+            if not guild_id:
+                await interaction.followup.send(
+                    "❌ Kan guild ID niet bepalen.", ephemeral=True
+                )
+                return
+
+            # Verzamel stemmen per optie (voor alle dagen en tijden)
+            votes_per_option: dict[str, int] = {}
+            for dag in WEEK_DAYS:
+                for tijd_key in ["om 19:00 uur", "om 20:30 uur"]:
+                    try:
+                        stemmen = await get_votes_for_option(
+                            dag, tijd_key, guild_id, channel_id
+                        )
+                        optie_key = f"{dag}_{tijd_key}"
+                        votes_per_option[optie_key] = stemmen
+                    except Exception:  # pragma: no cover
+                        votes_per_option[optie_key] = 0
+
             embed = create_poll_options_settings_embed()
-            view = PollOptionsSettingsView(channel_id, channel)
+            view = PollOptionsSettingsView(
+                channel_id, channel, guild_id, votes_per_option
+            )
 
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
