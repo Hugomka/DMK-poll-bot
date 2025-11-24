@@ -687,19 +687,63 @@ def get_enabled_times_for_day(channel_id: int, dag: str) -> list[str]:
 
 def is_day_completely_disabled(channel_id: int, dag: str) -> bool:
     """
-    Check of een dag volledig disabled is (beide tijden uit).
+    Check of een dag volledig disabled is (alle tijden uit).
 
     Args:
         channel_id: Het kanaal ID
-        dag: 'vrijdag' | 'zaterdag' | 'zondag'
+        dag: 'maandag' t/m 'zondag'
 
     Returns:
-        True als beide tijden disabled zijn, anders False
+        True als alle tijdslots voor deze dag disabled zijn, anders False
     """
-    has_19 = get_poll_option_state(channel_id, dag, "19:00")
-    has_2030 = get_poll_option_state(channel_id, dag, "20:30")
+    from apps.entities.poll_option import get_poll_options
 
-    return not has_19 and not has_2030
+    # Haal alle poll opties op voor deze dag
+    day_options = [opt for opt in get_poll_options() if opt.dag == dag]
+
+    # Als er geen opties zijn voor deze dag, check de standaard tijden (backwards compatibility)
+    if not day_options:
+        # Fallback naar hardcoded tijden voor backwards compatibility
+        has_19 = get_poll_option_state(channel_id, dag, "19:00")
+        has_2030 = get_poll_option_state(channel_id, dag, "20:30")
+        return not has_19 and not has_2030
+
+    # Check of er minstens één tijd enabled is voor deze dag
+    # We moeten zowel long form ("om 19:00 uur") als short form ("19:00") checken
+    data = _load_data()
+    ch_data = data.get(str(channel_id), {})
+    options_data = ch_data.get("__poll_options__", {})
+
+    has_enabled = False
+    for opt in day_options:
+        # Skip special options zoals "misschien" en "niet meedoen"
+        if opt.tijd in ["misschien", "niet meedoen"]:
+            continue
+
+        # Extract short form (bijv. "om 19:00 uur" -> "19:00")
+        short_form = opt.tijd.replace("om ", "").replace(" uur", "").strip()
+
+        # Check beide keys
+        key_long = f"{dag.lower()}_{opt.tijd}"
+        key_short = f"{dag.lower()}_{short_form}"
+
+        # Kijk of één van de twee keys een expliciete setting heeft
+        if key_long in options_data:
+            if options_data[key_long]:
+                has_enabled = True
+                break
+        elif key_short in options_data:
+            if options_data[key_short]:
+                has_enabled = True
+                break
+        else:
+            # Geen expliciete setting, gebruik default
+            # Default: alleen vrijdag, zaterdag, zondag enabled
+            if dag.lower() in ["vrijdag", "zaterdag", "zondag"]:
+                has_enabled = True
+                break
+
+    return not has_enabled
 
 
 def get_enabled_poll_days(channel_id: int) -> list[str]:

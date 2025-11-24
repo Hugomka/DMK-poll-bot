@@ -160,7 +160,12 @@ class PollStatus(commands.Cog):
             # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
 
-            for dag in WEEK_DAYS:
+            # Gebruik enabled dagen op basis van poll-opties settings
+            from apps.utils.poll_settings import get_enabled_poll_days
+
+            enabled_days = get_enabled_poll_days(cid_val)
+
+            for dag in enabled_days:
                 instelling = get_setting(cid_val, dag)
                 zicht_txt = (
                     "altijd zichtbaar"
