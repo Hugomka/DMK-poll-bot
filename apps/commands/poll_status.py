@@ -29,7 +29,6 @@ from apps.utils.poll_message import (
     is_channel_disabled,
 )
 from apps.utils.poll_settings import (
-    WEEK_DAYS,
     get_effective_activation,
     get_effective_deactivation,
     get_setting,
