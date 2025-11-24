@@ -359,7 +359,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                 with patch("apps.utils.poll_message.get_message_id") as mock_get_id:
                     with patch(
                         "apps.utils.poll_message.save_message_id"
-                    ) as mock_save_id:
+                    ):
                         with patch(
                             "apps.utils.poll_message.get_celebration_gif_url"
                         ) as mock_get_url:
@@ -391,7 +391,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                 with patch("apps.utils.poll_message.get_message_id") as mock_get_id:
                     with patch(
                         "apps.utils.poll_message.save_message_id"
-                    ) as mock_save_id:
+                    ):
                         with patch(
                             "apps.utils.poll_message.get_celebration_gif_url"
                         ) as mock_get_url:

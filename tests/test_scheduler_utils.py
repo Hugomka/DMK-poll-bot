@@ -97,7 +97,7 @@ class TestLoadPollConfig(BaseTestCase):
             # Clean up temp file
             try:
                 os.unlink(config_file)
-            except:
+            except Exception:
                 pass
             # Restore original values
             scheduler.REMINDER_HOUR = original_reminder_hour
@@ -138,7 +138,7 @@ class TestLoadPollConfig(BaseTestCase):
             # Clean up temp file
             try:
                 os.unlink(config_file)
-            except:
+            except Exception:
                 pass
             # Restore original values
             scheduler.REMINDER_HOUR = original_reminder_hour
@@ -169,7 +169,7 @@ class TestLoadPollConfig(BaseTestCase):
             # Clean up temp file
             try:
                 os.unlink(config_file)
-            except:
+            except Exception:
                 pass
             # Restore original value
             scheduler.REMINDER_HOUR = original_reminder_hour
@@ -442,7 +442,7 @@ class TestReadWriteState(BaseTestCase):
         finally:
             try:
                 os.unlink(state_file)
-            except:
+            except Exception:
                 pass
 
     async def test_write_state_uses_atomic_write(self):
@@ -465,7 +465,7 @@ class TestReadWriteState(BaseTestCase):
         finally:
             try:
                 os.unlink(state_file)
-            except:
+            except Exception:
                 pass
 
     async def test_read_state_returns_written_data(self):
@@ -484,7 +484,7 @@ class TestReadWriteState(BaseTestCase):
         finally:
             try:
                 os.unlink(state_file)
-            except:
+            except Exception:
                 pass
 
     async def test_read_state_no_file_returns_empty_dict(self):
@@ -510,7 +510,7 @@ class TestReadWriteState(BaseTestCase):
         finally:
             try:
                 os.unlink(state_file)
-            except:
+            except Exception:
                 pass
 
     async def test_write_read_state_roundtrip(self):
@@ -537,7 +537,7 @@ class TestReadWriteState(BaseTestCase):
         finally:
             try:
                 os.unlink(state_file)
-            except:
+            except Exception:
                 pass
 
     async def test_write_state_overwrites_existing(self):
@@ -563,7 +563,7 @@ class TestReadWriteState(BaseTestCase):
         finally:
             try:
                 os.unlink(state_file)
-            except:
+            except Exception:
                 pass
 
 

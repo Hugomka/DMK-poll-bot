@@ -127,7 +127,7 @@ class TestGetCelebrationGifUrl(BaseTestCase):
             test_links[1]["count"] = non_nintendo_count
 
             with patch("apps.utils.celebration_gif._load_tenor_links", return_value=test_links):
-                with patch("apps.utils.celebration_gif._save_tenor_links") as mock_save:
+                with patch("apps.utils.celebration_gif._save_tenor_links"):
                     result = get_celebration_gif_url()
 
                     # Update counts based on result
