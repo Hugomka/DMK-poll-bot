@@ -881,6 +881,10 @@ class PollLifecycle(commands.Cog):
         channel_id = getattr(channel, "id", 0)
         message_keys = [
             "opening",
+            "maandag",
+            "dinsdag",
+            "woensdag",
+            "donderdag",
             "vrijdag",
             "zaterdag",
             "zondag",
