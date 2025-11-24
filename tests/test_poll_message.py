@@ -3,7 +3,6 @@
 Extra tests voor poll_message.py om coverage te verbeteren van 83% naar 85%+
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from apps.utils.poll_message import (

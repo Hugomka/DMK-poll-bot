@@ -149,7 +149,6 @@ class TestEffectiveSchedules(unittest.TestCase):
         default_schedule = {"type": "wekelijks", "dag": "dinsdag", "tijd": "20:00"}
         set_default_activation(default_schedule)
 
-        channel_schedule = {"type": "wekelijks", "dag": "woensdag", "tijd": "18:00"}
         set_scheduled_activation(123, "wekelijks", "18:00", dag="woensdag")
 
         schedule, is_default = get_effective_activation(123)

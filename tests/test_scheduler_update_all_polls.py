@@ -168,7 +168,7 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
                 if hasattr(task, '__await__'):
                     try:
                         await task
-                    except:
+                    except Exception:
                         pass
             gather_calls.append(len(tasks))
             return [None] * len(tasks)
@@ -230,7 +230,7 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
                 if hasattr(task, '__await__'):
                     try:
                         await task
-                    except:
+                    except Exception:
                         pass
             gather_calls.append(len(tasks))
             return [None] * len(tasks)
@@ -340,7 +340,7 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
                 if hasattr(task, '__await__'):
                     try:
                         await task
-                    except:
+                    except Exception:
                         pass
             gather_calls.append(len(tasks))
             return [None] * len(tasks)

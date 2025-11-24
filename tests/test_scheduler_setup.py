@@ -45,9 +45,9 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(
                 scheduler.scheduler, "add_job", side_effect=fake_add_job
-            ) as mock_add,
+            ),
             patch.object(scheduler.scheduler, "start") as mock_start,
-            patch("asyncio.create_task", side_effect=fake_create_task) as mock_task,
+            patch("asyncio.create_task", side_effect=fake_create_task),
             patch.object(
                 scheduler, "_run_catch_up_with_lock", new_callable=AsyncMock
             ),

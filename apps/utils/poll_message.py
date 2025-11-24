@@ -373,7 +373,7 @@ async def check_all_voted_celebration(
                     await safe_call(gif_msg.delete)
                 clear_message_id(channel_id, "celebration_gif")
 
-    except Exception as e:  # pragma: no cover
+    except Exception:  # pragma: no cover
         pass
 
 
@@ -395,5 +395,5 @@ async def remove_celebration_message(channel: Any, channel_id: int) -> None:
             if gif_msg:
                 await safe_call(gif_msg.delete)
             clear_message_id(channel_id, "celebration_gif")
-    except Exception as e:  # pragma: no cover
+    except Exception:  # pragma: no cover
         pass
