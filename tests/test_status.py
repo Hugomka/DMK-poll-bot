@@ -376,9 +376,13 @@ class TestStatusCommand(BaseTestCase):
 
     async def test_status_geen_schedules(self):
         """Test dat 'Geen' wordt getoond als er geen schedules zijn"""
+        from apps.utils.poll_settings import set_default_activation, set_default_deactivation
+
         kanaal_id = 654321
 
-        # Geen schedules instellen - gewoon een leeg kanaal
+        # Clear any seeded defaults
+        set_default_activation(None)
+        set_default_deactivation(None)
 
         # Maak nep-interaction
         mock_guild = MagicMock()

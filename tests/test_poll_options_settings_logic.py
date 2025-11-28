@@ -304,3 +304,61 @@ class TestPollOptionsSettingsLogic(BaseTestCase):
             .get("__poll_options__", {})
             .get("zaterdag_20:30", True)
         )
+
+    async def test_initialize_all_options_on_first_touch(self):
+        """Test dat alle 14 opties geïnitialiseerd worden bij eerste klik."""
+        channel_id = 999
+
+        # Verify geen __poll_options__ bestaat voor deze channel
+        data = poll_settings._load_data()
+        self.assertNotIn(str(channel_id), data)
+
+        # Eerste klik: disable vrijdag 19:00
+        poll_settings.set_poll_option_state(channel_id, "vrijdag", "19:00", False)
+
+        # Read van file
+        with open(self.temp_settings_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        options = data.get(str(channel_id), {}).get("__poll_options__", {})
+
+        # Alle 14 opties moeten nu expliciet opgeslagen zijn
+        expected_options = [
+            ("maandag", "19:00"),
+            ("maandag", "20:30"),
+            ("dinsdag", "19:00"),
+            ("dinsdag", "20:30"),
+            ("woensdag", "19:00"),
+            ("woensdag", "20:30"),
+            ("donderdag", "19:00"),
+            ("donderdag", "20:30"),
+            ("vrijdag", "19:00"),
+            ("vrijdag", "20:30"),
+            ("zaterdag", "19:00"),
+            ("zaterdag", "20:30"),
+            ("zondag", "19:00"),
+            ("zondag", "20:30"),
+        ]
+
+        for dag, tijd in expected_options:
+            key = f"{dag}_{tijd}"
+            self.assertIn(key, options, f"Option {key} should be initialized")
+
+        # Verify correct defaults
+        # Vrijdag, zaterdag, zondag should be True (except vrijdag_19:00 we set to False)
+        self.assertFalse(options["vrijdag_19:00"])  # We set this to False
+        self.assertTrue(options["vrijdag_20:30"])
+        self.assertTrue(options["zaterdag_19:00"])
+        self.assertTrue(options["zaterdag_20:30"])
+        self.assertTrue(options["zondag_19:00"])
+        self.assertTrue(options["zondag_20:30"])
+
+        # Maandag t/m donderdag should be False
+        self.assertFalse(options["maandag_19:00"])
+        self.assertFalse(options["maandag_20:30"])
+        self.assertFalse(options["dinsdag_19:00"])
+        self.assertFalse(options["dinsdag_20:30"])
+        self.assertFalse(options["woensdag_19:00"])
+        self.assertFalse(options["woensdag_20:30"])
+        self.assertFalse(options["donderdag_19:00"])
+        self.assertFalse(options["donderdag_20:30"])

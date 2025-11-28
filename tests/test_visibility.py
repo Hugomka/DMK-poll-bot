@@ -9,7 +9,7 @@ from apps.logic.visibility import (
     _has_explicit_setting,
     is_vote_button_visible,
 )
-from apps.utils.poll_settings import reset_settings, set_visibility
+from apps.utils.poll_settings import set_visibility
 from tests.base import BaseTestCase
 
 AMS = ZoneInfo("Europe/Amsterdam")
@@ -149,8 +149,7 @@ class TestVisibilityButtons(BaseTestCase):
     # ---- _has_explicit_setting coverage ----
 
     async def test_has_explicit_setting_true_and_false(self):
-        # False zonder opgeslagen instelling
-        reset_settings()
+        # False zonder opgeslagen instelling (BaseTestCase already uses temp file)
         self.assertFalse(_has_explicit_setting(self.channel_id, self.vrijdag))
 
         # True na set_visibility

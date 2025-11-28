@@ -210,3 +210,47 @@ class TestNotificationSettingsLogic(BaseTestCase):
                 poll_settings.is_notification_enabled(channel_id, notif_type),
                 not initial
             )
+
+    async def test_initialize_all_notifications_on_first_touch(self):
+        """Test dat alle 8 notificaties geïnitialiseerd worden bij eerste toggle."""
+        channel_id = 999
+
+        # Verify geen __notification_states__ bestaat voor deze channel
+        data = poll_settings._load_data()
+        self.assertNotIn(str(channel_id), data)
+
+        # Eerste toggle: disable poll_opened
+        poll_settings.toggle_notification_setting(channel_id, "poll_opened")
+
+        # Read van file
+        with open(self.temp_settings_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        notif_states = data.get(str(channel_id), {}).get("__notification_states__", {})
+
+        # Alle 8 notificaties moeten nu expliciet opgeslagen zijn
+        expected_notifications = [
+            "poll_opened",
+            "poll_reset",
+            "poll_closed",
+            "reminders",
+            "thursday_reminder",
+            "misschien",
+            "doorgaan",
+            "celebration",
+        ]
+
+        for key in expected_notifications:
+            self.assertIn(key, notif_states, f"Notification {key} should be initialized")
+
+        # Verify correct defaults (poll_opened we toggled to False)
+        self.assertFalse(notif_states["poll_opened"])  # We toggled this to False
+        self.assertTrue(notif_states["poll_reset"])
+        self.assertTrue(notif_states["poll_closed"])
+        self.assertTrue(notif_states["doorgaan"])
+        self.assertTrue(notif_states["celebration"])
+
+        # Default disabled
+        self.assertFalse(notif_states["reminders"])
+        self.assertFalse(notif_states["thursday_reminder"])
+        self.assertFalse(notif_states["misschien"])

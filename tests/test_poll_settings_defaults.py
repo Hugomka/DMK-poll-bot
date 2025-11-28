@@ -5,15 +5,16 @@ Tests for global default schedules in poll_settings.
 """
 
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
+from apps.utils import poll_settings
 from apps.utils.poll_settings import (
     get_default_activation,
     get_default_deactivation,
     get_effective_activation,
     get_effective_deactivation,
-    reset_settings,
     set_default_activation,
     set_default_deactivation,
     set_scheduled_activation,
@@ -25,12 +26,39 @@ class TestDefaultSchedules(unittest.TestCase):
     """Test global default schedule getters and setters."""
 
     def setUp(self):
-        """Reset settings before each test."""
-        reset_settings()
+        """Reset settings before each test using temp file."""
+        # Create temp file for this test
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json", encoding="utf-8"
+        )
+        self.temp_file.close()
+        self.temp_settings_path = self.temp_file.name
+
+        # Patch environment variable (for module reloads)
+        self.original_settings_env = os.environ.get("SETTINGS_FILE")
+        os.environ["SETTINGS_FILE"] = self.temp_settings_path
+
+        # Patch SETTINGS_FILE to use temp file
+        self.original_settings_file = poll_settings.SETTINGS_FILE
+        poll_settings.SETTINGS_FILE = self.temp_settings_path
 
     def tearDown(self):
         """Clean up after each test."""
-        reset_settings()
+        # Restore original settings file
+        poll_settings.SETTINGS_FILE = self.original_settings_file
+
+        # Restore environment variable
+        if self.original_settings_env is not None:
+            os.environ["SETTINGS_FILE"] = self.original_settings_env
+        else:
+            os.environ.pop("SETTINGS_FILE", None)
+
+        # Remove temp file
+        try:
+            if os.path.exists(self.temp_settings_path):
+                os.remove(self.temp_settings_path)
+        except Exception:
+            pass
 
     @patch.dict(os.environ, {"SEED_DEFAULT_SCHEDULES": "false"})
     def test_no_defaults_when_seeding_disabled(self):
@@ -101,12 +129,39 @@ class TestEffectiveSchedules(unittest.TestCase):
     """Test effective schedule getters with fallback logic."""
 
     def setUp(self):
-        """Reset settings before each test."""
-        reset_settings()
+        """Reset settings before each test using temp file."""
+        # Create temp file for this test
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json", encoding="utf-8"
+        )
+        self.temp_file.close()
+        self.temp_settings_path = self.temp_file.name
+
+        # Patch environment variable (for module reloads)
+        self.original_settings_env = os.environ.get("SETTINGS_FILE")
+        os.environ["SETTINGS_FILE"] = self.temp_settings_path
+
+        # Patch SETTINGS_FILE to use temp file
+        self.original_settings_file = poll_settings.SETTINGS_FILE
+        poll_settings.SETTINGS_FILE = self.temp_settings_path
 
     def tearDown(self):
         """Clean up after each test."""
-        reset_settings()
+        # Restore original settings file
+        poll_settings.SETTINGS_FILE = self.original_settings_file
+
+        # Restore environment variable
+        if self.original_settings_env is not None:
+            os.environ["SETTINGS_FILE"] = self.original_settings_env
+        else:
+            os.environ.pop("SETTINGS_FILE", None)
+
+        # Remove temp file
+        try:
+            if os.path.exists(self.temp_settings_path):
+                os.remove(self.temp_settings_path)
+        except Exception:
+            pass
 
     def test_effective_activation_with_no_defaults_and_no_channel_override(self):
         """Test that effective activation returns (None, False) when nothing is set."""

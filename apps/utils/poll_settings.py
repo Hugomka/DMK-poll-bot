@@ -471,6 +471,7 @@ def get_all_notification_states(channel_id: int) -> dict[str, bool]:
 def toggle_notification_setting(channel_id: int, key: str) -> bool:
     """
     Toggle een specifieke notificatie instelling.
+    Bij eerste gebruik: initialiseer ALLE notificaties expliciet met defaults.
 
     Args:
         channel_id: Het kanaal ID
@@ -483,6 +484,22 @@ def toggle_notification_setting(channel_id: int, key: str) -> bool:
     data = _load_data()
     ch = data.setdefault(str(channel_id), {})
     notif_states = ch.setdefault("__notification_states__", {})
+
+    # Als __notification_states__ leeg is (eerste keer), initialiseer alles expliciet
+    if not notif_states:
+        # Default states
+        defaults = {
+            "poll_opened": True,
+            "poll_reset": True,
+            "poll_closed": True,
+            "reminders": False,
+            "thursday_reminder": False,
+            "misschien": False,
+            "doorgaan": True,
+            "celebration": True,
+        }
+        # Initialiseer alle notificaties met defaults
+        notif_states.update(defaults)
 
     # Haal huidige status op (met default)
     current = get_all_notification_states(channel_id).get(key, False)
@@ -603,6 +620,7 @@ def get_poll_option_state(channel_id: int, dag: str, tijd: str) -> bool:
 def set_poll_option_state(channel_id: int, dag: str, tijd: str, enabled: bool) -> bool:
     """
     Zet de status van een specifieke poll optie.
+    Bij eerste gebruik: initialiseer ALLE opties expliciet met defaults.
 
     Args:
         channel_id: Het kanaal ID
@@ -617,6 +635,17 @@ def set_poll_option_state(channel_id: int, dag: str, tijd: str, enabled: bool) -
     ch = data.setdefault(str(channel_id), {})
     options = ch.setdefault("__poll_options__", {})
 
+    # Als __poll_options__ leeg is (eerste keer), initialiseer alles expliciet
+    if not options:
+        # Initialiseer alle 14 opties met defaults
+        for day in WEEK_DAYS:
+            for time in ["19:00", "20:30"]:
+                key = f"{day}_{time}"
+                # Default: alleen vrijdag, zaterdag, zondag enabled
+                default_enabled = day in ["vrijdag", "zaterdag", "zondag"]
+                options[key] = default_enabled
+
+    # Nu de aangeklikte optie updaten
     key = f"{dag.lower()}_{tijd}"
     options[key] = enabled
 
