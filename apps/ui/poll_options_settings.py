@@ -327,11 +327,41 @@ class PollOptionButton(discord.ui.Button):
 
 def create_poll_options_settings_embed() -> discord.Embed:
     """Maak embed voor poll-opties settings."""
+    # Import voor Hammertime generatie
+    from apps.utils.time_zone_helper import TimeZoneHelper
+    from apps.utils.message_builder import _get_next_weekday_date_iso
+    from apps.entities.poll_option import get_poll_options
+
+    # Genereer tijdzone legenda voor alle dagen met emoji's uit poll_options.json
+    all_options = get_poll_options()
+    dagen = ["vrijdag", "zaterdag", "zondag"]
+
+    legenda_lines = []
+    for dag in dagen:
+        # Haal emoji's uit poll_options.json (centrale bron)
+        emoji_1900 = next(
+            (opt.emoji for opt in all_options if opt.dag == dag and opt.tijd == "om 19:00 uur"),
+            "🔴"
+        )
+        emoji_2030 = next(
+            (opt.emoji for opt in all_options if opt.dag == dag and opt.tijd == "om 20:30 uur"),
+            "🟠"
+        )
+
+        datum_iso = _get_next_weekday_date_iso(dag)
+        tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
+        tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
+        legenda_lines.append(f"{emoji_1900} 19:00 = {tijd_1900} | {emoji_2030} 20:30 = {tijd_2030}")
+
+    tijden_legenda = "\n".join(legenda_lines)
+
     embed = discord.Embed(
         title="⚙️ Instellingen Poll-opties",
         description=(
             "Activeer of deactiveer de poll-optie voor de huidige poll. "
             "Het heeft een direct effect op de huidige kanaal met de poll.\n\n"
+            "**Tijden (jouw tijdzone):**\n"
+            f"{tijden_legenda}\n\n"
             "**Status:**\n"
             "🟢 Groen = Actief\n"
             "⚪ Grijs = Uitgeschakeld"

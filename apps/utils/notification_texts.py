@@ -6,6 +6,8 @@
 from datetime import datetime
 from typing import NamedTuple
 
+from apps.utils.time_zone_helper import TimeZoneHelper
+
 
 class NotificationText(NamedTuple):
     """Notificatietekst met naam en content."""
@@ -42,8 +44,55 @@ def get_text_herinnering_weekend(non_voters: list[str] | None = None) -> str:
     )
 
 
-def get_text_poll_gesloten(opening_time="dinsdag om 20:00 uur") -> str:
-    """Poll gesloten tekst met opening tijd. Default is dinsdag 20:00 (zie poll_settings defaults)."""
+def _get_next_tuesday_hammertime() -> str:
+    """Bereken volgende dinsdag 20:00 in Hammertime format."""
+    from datetime import timedelta
+    import pytz
+
+    tz = pytz.timezone("Europe/Amsterdam")
+    now = datetime.now(tz)
+
+    # Bereken dagen tot volgende dinsdag (1 = dinsdag)
+    days_until_tuesday = (1 - now.weekday()) % 7
+    if days_until_tuesday == 0 and now.hour >= 20:
+        days_until_tuesday = 7
+
+    next_tuesday = now + timedelta(days=days_until_tuesday)
+    next_tuesday_iso = next_tuesday.strftime("%Y-%m-%d")
+
+    return TimeZoneHelper.nl_tijd_naar_hammertime(next_tuesday_iso, "20:00", style="F")
+
+
+def _get_next_weekday_date(dag: str) -> str:
+    """Bereken datum voor volgende occurrence van een weekdag in YYYY-MM-DD formaat."""
+    from datetime import timedelta
+    import pytz
+
+    dag_mapping = {
+        "maandag": 0, "dinsdag": 1, "woensdag": 2, "donderdag": 3,
+        "vrijdag": 4, "zaterdag": 5, "zondag": 6
+    }
+
+    target_weekday = dag_mapping.get(dag.lower())
+    if target_weekday is None:
+        raise ValueError(f"Ongeldige dag: {dag}")
+
+    tz = pytz.timezone("Europe/Amsterdam")
+    now = datetime.now(tz)
+
+    # Bereken dagen tot volgende occurrence
+    days_ahead = (target_weekday - now.weekday()) % 7
+    if days_ahead == 0:
+        days_ahead = 7  # Volgende week
+
+    target_date = now + timedelta(days=days_ahead)
+    return target_date.strftime("%Y-%m-%d")
+
+
+def get_text_poll_gesloten(opening_time: str | None = None) -> str:
+    """Poll gesloten tekst met opening tijd. Default is volgende dinsdag 20:00 in Hammertime."""
+    if opening_time is None:
+        opening_time = _get_next_tuesday_hammertime()
     return (
         f"Deze poll is gesloten en gaat pas **{opening_time}** weer open. "
         "Dank voor je deelname."
@@ -94,29 +143,38 @@ def get_all_notification_names() -> list[str]:
 
 
 def format_opening_time_from_schedule(schedule: dict | None) -> str:
-    """Formatteer opening tijd vanaf activation schedule. DRY functie - gedefinieerd op 1 plek, overal hergebruikt."""
+    """Formatteer opening tijd vanaf activation schedule met Hammertime. DRY functie - gedefinieerd op 1 plek, overal hergebruikt."""
     if not schedule:
-        return "dinsdag om 20:00 uur"  # Default
-
-    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+        # Default: volgende dinsdag 20:00 in Hammertime
+        return _get_next_tuesday_hammertime()
 
     act_type = schedule.get("type")
     act_tijd = schedule.get("tijd", "20:00")
 
     if act_type == "datum":
         act_datum = schedule.get("datum", "")
-        try:
-            datum_obj = datetime.strptime(act_datum, "%Y-%m-%d")
-            datum_display = datum_obj.strftime("%d-%m-%Y")
-            dag_naam = weekday_names[datum_obj.weekday()]
-            return f"{dag_naam} {datum_display} om {act_tijd}"
-        except Exception:
+        # Converteer specifieke datum naar Hammertime
+        hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+            act_datum, act_tijd, style="F"  # F = volledige datum en tijd
+        )
+        # Als conversie faalt, geeft TimeZoneHelper de tijd terug als fallback
+        # We moeten dit detecteren en de volledige fallback string maken
+        if not hammertime.startswith("<t:"):
             return f"{act_datum} om {act_tijd}"
+        return hammertime
     elif act_type == "wekelijks":
         act_dag = schedule.get("dag", "dinsdag")
-        return f"{act_dag} om {act_tijd}"
+        # Voor wekelijkse schema's: bereken volgende occurrence en gebruik Hammertime
+        try:
+            next_date = _get_next_weekday_date(act_dag)
+            hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+                next_date, act_tijd, style="F"
+            )
+            return hammertime
+        except Exception:
+            return f"{act_dag} om {act_tijd}"
 
-    return "dinsdag om 20:00 uur"  # Fallback
+    return _get_next_tuesday_hammertime()  # Fallback
 
 
 def format_notification_text(text: str, **kwargs) -> str:

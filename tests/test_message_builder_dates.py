@@ -95,8 +95,9 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=100
             )
 
-            # Verwacht "DMK-poll voor Vrijdag (07-11):"
-            self.assertIn("Vrijdag (07-11)", message)
+            # Verwacht "DMK-poll voor Vrijdag (<t:TIMESTAMP:D>):"
+            self.assertIn("Vrijdag (<t:", message)
+            self.assertIn(":D>)", message)
 
     async def test_build_message_shows_correct_date_for_each_day(self):
         """Test dat elke dag de correcte datum toont."""
@@ -115,9 +116,13 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "zondag", guild_id=1, channel_id=100
             )
 
-            self.assertIn("(07-11)", vrijdag_msg)
-            self.assertIn("(08-11)", zaterdag_msg)
-            self.assertIn("(09-11)", zondag_msg)
+            # Check voor Hammertime format in plaats van DD-MM format
+            self.assertIn("(<t:", vrijdag_msg)
+            self.assertIn("(<t:", zaterdag_msg)
+            self.assertIn("(<t:", zondag_msg)
+            self.assertIn(":D>)", vrijdag_msg)
+            self.assertIn(":D>)", zaterdag_msg)
+            self.assertIn(":D>)", zondag_msg)
 
     async def test_build_message_with_pauze_includes_date(self):
         """Test dat gepauzeerd bericht ook datum bevat."""
@@ -130,6 +135,7 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=100, pauze=True
             )
 
-            # Verwacht "DMK-poll voor Vrijdag (07-11): - (Gepauzeerd)"
-            self.assertIn("Vrijdag (07-11)", message)
+            # Verwacht "DMK-poll voor Vrijdag (<t:TIMESTAMP:D>): - (Gepauzeerd)"
+            self.assertIn("Vrijdag (<t:", message)
+            self.assertIn(":D>)", message)
             self.assertIn("Gepauzeerd", message)

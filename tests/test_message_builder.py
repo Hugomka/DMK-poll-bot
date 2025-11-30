@@ -116,8 +116,11 @@ class TestMessageBuilder(BaseTestCase):
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=False
             )
-            assert "🟢 Om 19:00 uur (3 stemmen)" in txt
-            assert "🔵 Om 20:30 uur (5 stemmen)" in txt
+            # Check voor Hammertime timestamps met "Om" en "uur"
+            assert "🟢 Om <t:" in txt  # Hammertime format voor 19:00
+            assert ":t> uur (3 stemmen)" in txt
+            assert "🔵 Om <t:" in txt  # Hammertime format voor 20:30
+            assert ":t> uur (5 stemmen)" in txt
 
     async def test_build_message_hides_misschien_in_deadline_mode_counts_hidden(self):
         """Misschien wordt NIET getoond in deadline-modus wanneer counts verborgen zijn."""
@@ -133,9 +136,10 @@ class TestMessageBuilder(BaseTestCase):
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=True
             )
-            # Normale tijdslots worden wel getoond
-            assert "🟢 Om 19:00 uur (stemmen verborgen)" in txt
-            assert "🔵 Om 20:30 uur (stemmen verborgen)" in txt
+            # Normale tijdslots worden wel getoond met Hammertime
+            assert "🟢 Om <t:" in txt  # Hammertime voor 19:00
+            assert ":t> uur (stemmen verborgen)" in txt
+            assert "🔵 Om <t:" in txt  # Hammertime voor 20:30
             # "Misschien" wordt NIET getoond in deadline-modus
             assert "Ⓜ️ Misschien" not in txt
             # "Niet meedoen" wordt wel getoond
@@ -164,9 +168,11 @@ class TestMessageBuilder(BaseTestCase):
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=False
             )
-            # Normale opties worden getoond
-            assert "🟢 Om 19:00 uur (3 stemmen)" in txt
-            assert "🔵 Om 20:30 uur (5 stemmen)" in txt
+            # Normale opties worden getoond met Hammertime
+            assert "🟢 Om <t:" in txt  # Hammertime voor 19:00
+            assert ":t> uur (3 stemmen)" in txt
+            assert "🔵 Om <t:" in txt  # Hammertime voor 20:30
+            assert ":t> uur (5 stemmen)" in txt
             # "Misschien" wordt NIET getoond in deadline-modus
             assert "Ⓜ️ Misschien" not in txt
             # "Niet meedoen" wordt wel getoond
@@ -196,8 +202,10 @@ class TestMessageBuilder(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=False
             )
             # Alle opties worden getoond inclusief Misschien in zichtbaar-modus
-            assert "🟢 Om 19:00 uur (3 stemmen)" in txt
-            assert "🔵 Om 20:30 uur (5 stemmen)" in txt
+            assert "🟢 Om <t:" in txt  # Hammertime voor 19:00
+            assert ":t> uur (3 stemmen)" in txt
+            assert "🔵 Om <t:" in txt  # Hammertime voor 20:30
+            assert ":t> uur (5 stemmen)" in txt
             assert "Ⓜ️ Misschien (2 stemmen)" in txt
             assert "❌ Niet meedoen (1 stemmen)" in txt
 

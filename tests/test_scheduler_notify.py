@@ -744,9 +744,10 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         # Verify no mentions
         self.assertEqual(mentions, "")
-        # Assert: bericht bevat wel de dag en tijd
+        # Assert: bericht bevat wel de dag en Hammertime
         self.assertIn("vrijdag", text)
-        self.assertIn("20:30", text)
+        self.assertIn("<t:", text)  # Hammertime format
+        self.assertIn(":t>", text)
 
     async def test_notify_voters_send_missing_no_crash(self):
         """Test dat ontbrekend send attribuut niet crasht."""
@@ -1173,7 +1174,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         # Text should include participant count and list
         self.assertIn("Totaal 6 deelnemers:", text_arg)
-        self.assertIn("De DMK-avond van vrijdag om 19:00 gaat door!", text_arg)
+        # Check voor Hammertime in plaats van "om 19:00"
+        self.assertIn("De DMK-avond van vrijdag om <t:", text_arg)
+        self.assertIn(":t> gaat door!", text_arg)
 
     async def test_notify_voters_if_avond_gaat_door_with_guests_only(self):
         """Doorgaan-notificatie: alleen gasten (host afwezig)."""
@@ -1270,7 +1273,9 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Bowser (gast)", text_arg)
         self.assertIn("Wario (gast)", text_arg)
         self.assertIn("Waluigi (gast)", text_arg)
-        self.assertIn("De DMK-avond van vrijdag om 20:30 gaat door!", text_arg)
+        # Check voor Hammertime in plaats van "om 20:30"
+        self.assertIn("De DMK-avond van vrijdag om <t:", text_arg)
+        self.assertIn(":t> gaat door!", text_arg)
 
     async def test_notify_voters_if_avond_gaat_door_with_members_and_guests(self):
         """Doorgaan-notificatie: leden + gasten gemengd."""
@@ -1392,5 +1397,6 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         self.assertIn("GastVanRosalina (gast)", text_arg)
         self.assertIn("GastVanToad (gast)", text_arg)
 
-        # Main message should be present
-        self.assertIn("De DMK-avond van vrijdag om 19:00 gaat door!", text_arg)
+        # Main message should be present with Hammertime
+        self.assertIn("De DMK-avond van vrijdag om <t:", text_arg)
+        self.assertIn(":t> gaat door!", text_arg)

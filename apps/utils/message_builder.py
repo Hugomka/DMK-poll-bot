@@ -15,6 +15,7 @@ from apps.utils.poll_storage import (
 from apps.utils.poll_storage import (
     get_non_voters_for_day as get_non_voters_from_storage,
 )
+from apps.utils.time_zone_helper import TimeZoneHelper
 
 
 def _get_next_weekday_date(dag: str) -> str:
@@ -56,6 +57,42 @@ def _get_next_weekday_date(dag: str) -> str:
     return target_date.strftime("%d-%m")
 
 
+def _get_next_weekday_date_iso(dag: str) -> str:
+    """
+    Bereken datum voor vrijdag/zaterdag/zondag van de huidige poll-periode in YYYY-MM-DD formaat.
+
+    Identiek aan _get_next_weekday_date, maar retourneert ISO formaat voor Hammertime conversie.
+    """
+    tz = pytz.timezone("Europe/Amsterdam")
+    now = datetime.now(tz)
+
+    dag_mapping = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
+    target_weekday = dag_mapping.get(dag.lower())
+    if target_weekday is None:
+        return ""
+
+    # Bereken de laatste dinsdag 20:00 (start van huidige poll-periode)
+    days_since_tuesday = (now.weekday() - 1) % 7  # 1 = dinsdag
+    last_tuesday = (now - timedelta(days=days_since_tuesday)).replace(
+        hour=20, minute=0, second=0, microsecond=0
+    )
+
+    # Als we nog niet voorbij dinsdag 20:00 zijn, gebruik de dinsdag van vorige week
+    if now < last_tuesday:
+        last_tuesday -= timedelta(days=7)
+
+    # Bereken de doeldag vanaf de laatste dinsdag 20:00
+    days_ahead = (target_weekday - last_tuesday.weekday()) % 7
+
+    # Als days_ahead 0 is, betekent dit dinsdag → vrijdag/zaterdag/zondag dezelfde week
+    if days_ahead == 0:
+        days_ahead = 7
+
+    target_date = last_tuesday + timedelta(days=days_ahead)
+
+    return target_date.strftime("%Y-%m-%d")
+
+
 async def build_poll_message_for_day_async(
     dag: str,
     guild_id: int | str,
@@ -79,8 +116,12 @@ async def build_poll_message_for_day_async(
     - guild: optioneel, voor mentions in andere helpers
     - channel: optioneel, voor niet-stemmers tracking
     """
-    datum = _get_next_weekday_date(dag)
-    title = f"**DMK-poll voor {dag.capitalize()} ({datum}):**"
+    # Genereer Hammertime voor de datum (18:00 = deadline tijd)
+    datum_iso = _get_next_weekday_date_iso(dag)
+    datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+        datum_iso, "18:00", style="D"  # D = long date format (bijv. "28 november 2025")
+    )
+    title = f"**DMK-poll voor {dag.capitalize()} ({datum_hammertime}):**"
     if pauze:
         title += " **- _(Gepauzeerd)_**"
     message = f"{title}\n"
@@ -112,6 +153,9 @@ async def build_poll_message_for_day_async(
     setting = get_setting(int(channel_id), dag) or {}
     is_deadline_mode = isinstance(setting, dict) and setting.get("modus") == "deadline"
 
+    # Bereken datum voor Hammertime conversie
+    datum_iso = _get_next_weekday_date_iso(dag)
+
     for opt in opties:
         # Filter "misschien" uit resultaten in deadline-modus:
         # - Bij verborgen counts: toont toch alleen "(stemmen verborgen)", geen meerwaarde
@@ -119,7 +163,20 @@ async def build_poll_message_for_day_async(
         if is_deadline_mode and opt.tijd == "misschien":
             continue
 
-        label = f"{opt.emoji} {opt.tijd.capitalize()}"
+        # Converteer tijd naar Hammertime voor 19:00 en 20:30
+        if opt.tijd == "om 19:00 uur":
+            tijd_display = TimeZoneHelper.nl_tijd_naar_hammertime(
+                datum_iso, "19:00", style="t"
+            )
+            label = f"{opt.emoji} Om {tijd_display} uur"
+        elif opt.tijd == "om 20:30 uur":
+            tijd_display = TimeZoneHelper.nl_tijd_naar_hammertime(
+                datum_iso, "20:30", style="t"
+            )
+            label = f"{opt.emoji} Om {tijd_display} uur"
+        else:
+            # Voor "misschien", "niet meedoen", etc.: geen Hammertime
+            label = f"{opt.emoji} {opt.tijd.capitalize()}"
 
         if hide_counts:
             message += f"{label} (stemmen verborgen)\n"
