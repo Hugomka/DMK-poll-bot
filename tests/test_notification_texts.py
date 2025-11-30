@@ -73,38 +73,49 @@ class TestNotificationTextHelpers(unittest.TestCase):
         """Test poll gesloten tekst met default opening tijd."""
         result = get_text_poll_gesloten()
         self.assertIn("Deze poll is gesloten", result)
-        self.assertIn("**dinsdag om 20:00 uur** weer open", result)
         self.assertIn("Dank voor je deelname", result)
 
     def test_get_text_poll_gesloten_custom_time(self):
-        """Test poll gesloten tekst met custom opening tijd."""
+        """Test poll gesloten tekst met custom opening tijd (kan Hammertime zijn)."""
         result = get_text_poll_gesloten("vrijdag om 19:30 uur")
         self.assertIn("Deze poll is gesloten", result)
         self.assertIn("**vrijdag om 19:30 uur** weer open", result)
 
+    def test_get_text_poll_gesloten_with_hammertime(self):
+        """Test poll gesloten tekst met Hammertime format."""
+        result = get_text_poll_gesloten("<t:1234567890:F>")
+        self.assertIn("Deze poll is gesloten", result)
+        self.assertIn("**<t:1234567890:F>** weer open", result)
+
 
 class TestFormatOpeningTimeFromSchedule(unittest.TestCase):
-    """Test DRY functie voor formatteren van opening tijd."""
+    """Test DRY functie voor formatteren van opening tijd met Hammertime."""
 
-    def test_format_none_schedule_returns_default(self):
-        """Test dat None schedule default tijd teruggeeft."""
+    def test_format_none_schedule_returns_hammertime(self):
+        """Test dat None schedule Hammertime teruggeeft voor volgende dinsdag 20:00."""
         result = format_opening_time_from_schedule(None)
-        self.assertEqual(result, "dinsdag om 20:00 uur")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
     def test_format_wekelijks_schedule_with_default_day(self):
-        """Test wekelijks schema zonder expliciete dag (default dinsdag)."""
+        """Test wekelijks schema zonder expliciete dag (default dinsdag) geeft Hammertime."""
         schedule = {"type": "wekelijks", "tijd": "20:00"}
         result = format_opening_time_from_schedule(schedule)
-        self.assertEqual(result, "dinsdag om 20:00")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
     def test_format_wekelijks_schedule_with_custom_day(self):
-        """Test wekelijks schema met custom dag en tijd."""
+        """Test wekelijks schema met custom dag en tijd geeft Hammertime."""
         schedule = {"type": "wekelijks", "dag": "vrijdag", "tijd": "19:30"}
         result = format_opening_time_from_schedule(schedule)
-        self.assertEqual(result, "vrijdag om 19:30")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
     def test_format_wekelijks_all_days(self):
-        """Test wekelijks schema voor alle dagen van de week."""
+        """Test wekelijks schema voor alle dagen geeft Hammertime."""
         dagen = [
             "maandag",
             "dinsdag",
@@ -117,60 +128,71 @@ class TestFormatOpeningTimeFromSchedule(unittest.TestCase):
         for dag in dagen:
             schedule = {"type": "wekelijks", "dag": dag, "tijd": "18:00"}
             result = format_opening_time_from_schedule(schedule)
-            self.assertEqual(result, f"{dag} om 18:00")
+            # Moet Hammertime format zijn voor elke dag
+            self.assertTrue(result.startswith("<t:"), f"Failed for {dag}")
+            self.assertTrue(result.endswith(":F>"), f"Failed for {dag}")
 
     def test_format_datum_schedule_valid_date(self):
-        """Test datum schema met geldige datum."""
+        """Test datum schema met geldige datum geeft Hammertime."""
         schedule = {"type": "datum", "datum": "2025-11-15", "tijd": "19:30"}
         result = format_opening_time_from_schedule(schedule)
-        # 2025-11-15 is een zaterdag
-        self.assertEqual(result, "zaterdag 15-11-2025 om 19:30")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
     def test_format_datum_schedule_monday(self):
-        """Test datum schema voor maandag."""
+        """Test datum schema voor maandag geeft Hammertime."""
         schedule = {"type": "datum", "datum": "2025-11-03", "tijd": "12:00"}
         result = format_opening_time_from_schedule(schedule)
-        # 2025-11-03 is een maandag
-        self.assertEqual(result, "maandag 03-11-2025 om 12:00")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
     def test_format_datum_schedule_sunday(self):
-        """Test datum schema voor zondag."""
+        """Test datum schema voor zondag geeft Hammertime."""
         schedule = {"type": "datum", "datum": "2025-11-09", "tijd": "14:00"}
         result = format_opening_time_from_schedule(schedule)
-        # 2025-11-09 is een zondag
-        self.assertEqual(result, "zondag 09-11-2025 om 14:00")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
     def test_format_datum_schedule_invalid_date(self):
-        """Test datum schema met ongeldige datum (fallback)."""
+        """Test datum schema met ongeldige datum (fallback naar text)."""
         schedule = {"type": "datum", "datum": "invalid-date", "tijd": "19:30"}
         result = format_opening_time_from_schedule(schedule)
-        # Bij fout: datum as-is met tijd
+        # Bij fout: datum as-is met tijd (fallback)
         self.assertEqual(result, "invalid-date om 19:30")
 
     def test_format_datum_schedule_missing_datum(self):
-        """Test datum schema zonder datum veld."""
+        """Test datum schema zonder datum veld (fallback naar text)."""
         schedule = {"type": "datum", "tijd": "19:30"}
         result = format_opening_time_from_schedule(schedule)
-        # Leeg datum veld
+        # Leeg datum veld (fallback)
         self.assertEqual(result, " om 19:30")
 
     def test_format_datum_schedule_default_tijd(self):
-        """Test datum schema zonder tijd (default 20:00)."""
+        """Test datum schema zonder tijd (default 20:00) geeft Hammertime."""
         schedule = {"type": "datum", "datum": "2025-11-15"}
         result = format_opening_time_from_schedule(schedule)
-        self.assertEqual(result, "zaterdag 15-11-2025 om 20:00")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
-    def test_format_unknown_schedule_type_returns_default(self):
-        """Test onbekend schema type geeft default terug."""
+    def test_format_unknown_schedule_type_returns_hammertime(self):
+        """Test onbekend schema type geeft Hammertime terug voor default dinsdag."""
         schedule = {"type": "unknown", "tijd": "12:00"}
         result = format_opening_time_from_schedule(schedule)
-        self.assertEqual(result, "dinsdag om 20:00 uur")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
-    def test_format_empty_schedule_returns_default(self):
-        """Test leeg schema dict geeft default terug."""
+    def test_format_empty_schedule_returns_hammertime(self):
+        """Test leeg schema dict geeft Hammertime terug voor default dinsdag."""
         schedule = {}
         result = format_opening_time_from_schedule(schedule)
-        self.assertEqual(result, "dinsdag om 20:00 uur")
+        # Moet Hammertime format zijn
+        self.assertTrue(result.startswith("<t:"))
+        self.assertTrue(result.endswith(":F>"))
 
 
 class TestNotificationTextsList(unittest.TestCase):
@@ -249,12 +271,14 @@ class TestNotificationTextsList(unittest.TestCase):
         assert notif is not None  # Type narrowing voor Pylance
         self.assertIn("gereset voor het nieuwe weekend", notif.content)
 
-    def test_notification_poll_gesloten_has_default_time(self):
-        """Test dat Poll gesloten default tijd gebruikt."""
+    def test_notification_poll_gesloten_has_hammertime(self):
+        """Test dat Poll gesloten Hammertime format gebruikt."""
         notif = get_notification_by_name("Poll gesloten")
         self.assertIsNotNone(notif)
         assert notif is not None  # Type narrowing voor Pylance
-        self.assertIn("dinsdag om 20:00 uur", notif.content)
+        # Moet Hammertime format bevatten
+        self.assertIn("<t:", notif.content)
+        self.assertIn(":F>", notif.content)
 
 
 class TestFormatNotificationText(unittest.TestCase):

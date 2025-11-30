@@ -95,6 +95,7 @@ class PollOptionsSettingsView(discord.ui.View):
         channel: discord.TextChannel,
         guild_id: int,
         votes_per_option: dict[str, int] | None = None,
+        now: datetime | None = None,
     ):
         super().__init__(timeout=None)  # Persistent view
         self.channel_id = channel_id
@@ -118,7 +119,7 @@ class PollOptionsSettingsView(discord.ui.View):
                     heeft_stemmen = votes_per_option.get(optie_key, 0) > 0
 
                 self.add_item(
-                    PollOptionButton(dag, tijd, enabled, heeft_stemmen, guild_id)
+                    PollOptionButton(dag, tijd, enabled, heeft_stemmen, guild_id, now=now)
                 )
 
 
@@ -126,13 +127,14 @@ class PollOptionButton(discord.ui.Button):
     """Toggle button voor een specifieke poll optie."""
 
     def __init__(
-        self, dag: str, tijd: str, enabled: bool, heeft_stemmen: bool, guild_id: int
+        self, dag: str, tijd: str, enabled: bool, heeft_stemmen: bool, guild_id: int, now: datetime | None = None
     ):
         self.dag = dag
         self.tijd = tijd
         self.enabled = enabled
         self.heeft_stemmen = heeft_stemmen
         self.guild_id = guild_id
+        self._now = now  # Bewaar voor callback gebruik
 
         # Label en emoji - consistent met poll_options.json
         emoji_map = {
@@ -161,7 +163,7 @@ class PollOptionButton(discord.ui.Button):
         if not enabled:
             style = discord.ButtonStyle.secondary  # Grijs
         else:
-            in_verleden = _is_poll_in_verleden(dag, tijd)
+            in_verleden = _is_poll_in_verleden(dag, tijd, now=self._now)
             if in_verleden and not heeft_stemmen:
                 style = discord.ButtonStyle.primary  # Blauw
             else:
@@ -206,7 +208,7 @@ class PollOptionButton(discord.ui.Button):
             if not nieuwe_status:
                 self.style = discord.ButtonStyle.secondary  # Grijs
             else:
-                in_verleden = _is_poll_in_verleden(self.dag, self.tijd)
+                in_verleden = _is_poll_in_verleden(self.dag, self.tijd, now=self._now)
                 if in_verleden and not self.heeft_stemmen:
                     self.style = discord.ButtonStyle.primary  # Blauw
                 else:
@@ -456,6 +458,34 @@ class PollOptionButton(discord.ui.Button):
 
 def create_poll_options_settings_embed() -> discord.Embed:
     """Maak embed voor poll-opties settings."""
+    # Import voor Hammertime generatie
+    from apps.utils.time_zone_helper import TimeZoneHelper
+    from apps.utils.message_builder import _get_next_weekday_date_iso
+    from apps.entities.poll_option import get_poll_options
+
+    # Genereer tijdzone legenda voor alle dagen met emoji's uit poll_options.json
+    all_options = get_poll_options()
+    dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+
+    legenda_lines = []
+    for dag in dagen:
+        # Haal emoji's uit poll_options.json (centrale bron)
+        emoji_1900 = next(
+            (opt.emoji for opt in all_options if opt.dag == dag and opt.tijd == "om 19:00 uur"),
+            "🔴"
+        )
+        emoji_2030 = next(
+            (opt.emoji for opt in all_options if opt.dag == dag and opt.tijd == "om 20:30 uur"),
+            "🟠"
+        )
+
+        datum_iso = _get_next_weekday_date_iso(dag)
+        tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
+        tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
+        legenda_lines.append(f"{emoji_1900} 19:00 = {tijd_1900} | {emoji_2030} 20:30 = {tijd_2030}")
+
+    tijden_legenda = "\n".join(legenda_lines)
+
     embed = discord.Embed(
         title="⚙️ Instellingen Poll-opties",
         description=(
@@ -464,6 +494,8 @@ def create_poll_options_settings_embed() -> discord.Embed:
             "⚠️ **Let op:** Bij activeren van maandag en dinsdag kunnen problemen "
             "ontstaan met de gesloten periode (default: maandag 00:00 t/m dinsdag 20:00). "
             "Pas deze periode aan via `/dmk-poll-on` zodat leden kunnen stemmen.\n\n"
+            "**Tijden (jouw tijdzone):**\n"
+            f"{tijden_legenda}\n\n"
             "**Status:**\n"
             "🟢 Groen = Actief (poll wordt gegenereerd)\n"
             "🔵 Blauw = Actief na reset (poll in verleden, geen stemmen)\n"

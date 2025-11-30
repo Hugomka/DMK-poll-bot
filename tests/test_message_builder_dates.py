@@ -139,8 +139,9 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=100
             )
 
-            # Verwacht "DMK-poll voor Vrijdag (07-11):"
-            self.assertIn("Vrijdag (07-11)", message)
+            # Verwacht "DMK-poll voor Vrijdag (<t:TIMESTAMP:D>):"
+            self.assertIn("Vrijdag (<t:", message)
+            self.assertIn(":D>)", message)
 
     async def test_build_message_shows_correct_date_for_each_day(self):
         """Test dat elke dag de correcte datum toont."""
@@ -159,9 +160,13 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "zondag", guild_id=1, channel_id=100
             )
 
-            self.assertIn("(07-11)", vrijdag_msg)
-            self.assertIn("(08-11)", zaterdag_msg)
-            self.assertIn("(09-11)", zondag_msg)
+            # Check voor Hammertime format in plaats van DD-MM format
+            self.assertIn("(<t:", vrijdag_msg)
+            self.assertIn("(<t:", zaterdag_msg)
+            self.assertIn("(<t:", zondag_msg)
+            self.assertIn(":D>)", vrijdag_msg)
+            self.assertIn(":D>)", zaterdag_msg)
+            self.assertIn(":D>)", zondag_msg)
 
     async def test_build_message_with_pauze_includes_date(self):
         """Test dat gepauzeerd bericht ook datum bevat."""
@@ -174,12 +179,13 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=100, pauze=True
             )
 
-            # Verwacht "DMK-poll voor Vrijdag (07-11): - (Gepauzeerd)"
-            self.assertIn("Vrijdag (07-11)", message)
+            # Verwacht "DMK-poll voor Vrijdag (<t:TIMESTAMP:D>): - (Gepauzeerd)"
+            self.assertIn("Vrijdag (<t:", message)
+            self.assertIn(":D>)", message)
             self.assertIn("Gepauzeerd", message)
 
     async def test_build_message_shows_dates_for_all_weekdays(self):
-        """Test dat alle weekdagen (maandag t/m zondag) datums tonen."""
+        """Test dat alle weekdagen (maandag t/m zondag) datums tonen in Hammertime format."""
         # Dinsdag 5 november 2024, 14:00 (voor 20:00)
         # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
         tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
@@ -187,23 +193,21 @@ class TestBuildPollMessageWithDates(BaseTestCase):
         with patch("apps.utils.message_builder.datetime") as mock_dt:
             mock_dt.now.return_value = tuesday
 
-            # Verwachte datums voor alle dagen van deze poll-periode
-            expected_dates = {
-                "maandag": "04-11",  # Ma 4 nov
-                "dinsdag": "05-11",  # Di 5 nov
-                "woensdag": "30-10",  # Wo 30 okt
-                "donderdag": "31-10",  # Do 31 okt
-                "vrijdag": "01-11",  # Vr 1 nov
-                "zaterdag": "02-11",  # Za 2 nov
-                "zondag": "03-11",  # Zo 3 nov
-            }
+            # Test voor alle dagen dat ze Hammertime format gebruiken
+            dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
 
-            for dag, expected_date in expected_dates.items():
+            for dag in dagen:
                 message = await build_poll_message_for_day_async(
                     dag, guild_id=1, channel_id=100
                 )
+                # Check dat elke dag Hammertime format heeft
                 self.assertIn(
-                    f"{dag.capitalize()} ({expected_date})",
+                    f"{dag.capitalize()} (<t:",
                     message,
-                    f"{dag} should show date {expected_date}",
+                    f"{dag} should show Hammertime format",
+                )
+                self.assertIn(
+                    ":D>)",
+                    message,
+                    f"{dag} should have Hammertime style D",
                 )

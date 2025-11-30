@@ -881,6 +881,10 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
     KEY_19 = "om 19:00 uur"
     KEY_2030 = "om 20:30 uur"
 
+    # Import TimeZoneHelper voor Hammertime conversie
+    from apps.utils.time_zone_helper import TimeZoneHelper
+    from apps.utils.message_builder import _get_next_weekday_date_iso
+
     # DENY_CHANNEL_NAMES check
     deny_names = _get_deny_channel_names()
 
@@ -926,11 +930,17 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
 
             # Bepaal winnende tijd
             if c2030 >= c19:
-                winnaar_txt = "20:30"
+                winnaar_tijd_str = "20:30"
                 winnaar_key = KEY_2030
             else:
-                winnaar_txt = "19:00"
+                winnaar_tijd_str = "19:00"
                 winnaar_key = KEY_19
+
+            # Bereken datum en converteer naar Hammertime
+            datum_iso = _get_next_weekday_date_iso(dag)
+            winnaar_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+                datum_iso, winnaar_tijd_str, style="t"
+            )
 
             # Bouw deelnemerslijst met gasten
             channel_members = getattr(channel, "members", [])
@@ -944,11 +954,11 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
                 channel_member_ids,
             )
 
-            # Berichttekst - gebruik unified notification layout (5 uur lifetime)
+            # Berichttekst - gebruik unified notification layout (5 uur lifetime) met Hammertime
             if participant_list:
-                text = f"Totaal {totaal} deelnemers: {participant_list}\nDe DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
+                text = f"Totaal {totaal} deelnemers: {participant_list}\nDe DMK-avond van {dag} om {winnaar_hammertime} gaat door! Veel plezier!"
             else:
-                text = f"De DMK-avond van {dag} om {winnaar_txt} gaat door! Veel plezier!"
+                text = f"De DMK-avond van {dag} om {winnaar_hammertime} gaat door! Veel plezier!"
 
             try:
                 await send_persistent_mention(channel, mentions_str, text)

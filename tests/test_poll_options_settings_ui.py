@@ -118,8 +118,10 @@ class TestPollOptionsSettingsUI(BaseTestCase):
 
     async def test_poll_option_button_style_enabled(self):
         """Test dat enabled button groen (success) is voor toekomstige poll."""
-        # Gebruik zondag - dat is in de toekomst als het nu vrijdag (22 nov) is
-        button = PollOptionButton("zondag", "19:00", enabled=True, heeft_stemmen=False, guild_id=456)
+        from datetime import datetime, timezone
+        # Mock tijd: vrijdag 18:00 - zondag is dan in de toekomst
+        mock_now = datetime(2024, 11, 22, 18, 0, 0, tzinfo=timezone.utc)  # Vrijdag 18:00
+        button = PollOptionButton("zondag", "19:00", enabled=True, heeft_stemmen=False, guild_id=456, now=mock_now)
 
         self.assertEqual(button.style, discord.ButtonStyle.success)
         self.assertEqual(button.label, "Zondag 19:00")
@@ -168,13 +170,16 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         self, mock_is_disabled, mock_heeft_stemmen
     ):
         """Test button callback toggle van enabled naar disabled."""
+        from datetime import datetime, timezone
         channel_id = 123
         guild_id = 456
         channel = MagicMock()
         mock_is_disabled.return_value = False  # Bot is actief
         mock_heeft_stemmen.return_value = False
 
-        view = PollOptionsSettingsView(channel_id, channel, guild_id)
+        # Mock tijd: vrijdag 18:00 - zondag is dan in de toekomst
+        mock_now = datetime(2024, 11, 22, 18, 0, 0, tzinfo=timezone.utc)  # Vrijdag 18:00
+        view = PollOptionsSettingsView(channel_id, channel, guild_id, now=mock_now)
         button = view.children[12]  # Zondag 19:00 (index 12 in 14-button view - in toekomst)
         assert isinstance(button, PollOptionButton)
 
@@ -211,6 +216,7 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         self, mock_is_disabled, mock_heeft_stemmen
     ):
         """Test button callback toggle van disabled naar enabled."""
+        from datetime import datetime, timezone
         channel_id = 123
         guild_id = 456
         channel = MagicMock()
@@ -220,7 +226,9 @@ class TestPollOptionsSettingsUI(BaseTestCase):
         # Disable eerst
         poll_settings.set_poll_option_state(channel_id, "zaterdag", "20:30", False)
 
-        view = PollOptionsSettingsView(channel_id, channel, guild_id)
+        # Mock tijd: vrijdag 18:00 - zaterdag is dan in de toekomst
+        mock_now = datetime(2024, 11, 22, 18, 0, 0, tzinfo=timezone.utc)  # Vrijdag 18:00
+        view = PollOptionsSettingsView(channel_id, channel, guild_id, now=mock_now)
         button = view.children[11]  # Zaterdag 20:30 (index 11 in 14-button view)
         assert isinstance(button, PollOptionButton)
 

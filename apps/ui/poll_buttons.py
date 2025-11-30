@@ -18,8 +18,29 @@ from apps.utils.poll_settings import (
     is_paused,
 )
 from apps.utils.poll_storage import get_user_votes, toggle_vote
+from apps.utils.time_zone_helper import TimeZoneHelper
+from apps.utils.message_builder import _get_next_weekday_date_iso
 
 HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
+
+
+def _get_timezone_legend(dag: str) -> str:
+    """Genereer compacte tijdzone legenda voor ephemeral stem-interface."""
+    # Haal emoji's uit poll_options.json (centrale bron)
+    all_options = get_poll_options()
+    emoji_1900 = next(
+        (opt.emoji for opt in all_options if opt.dag == dag.lower() and opt.tijd == "om 19:00 uur"),
+        "🔴"
+    )
+    emoji_2030 = next(
+        (opt.emoji for opt in all_options if opt.dag == dag.lower() and opt.tijd == "om 20:30 uur"),
+        "🟠"
+    )
+
+    datum_iso = _get_next_weekday_date_iso(dag)
+    tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
+    tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
+    return f"{emoji_1900} 19:00 = {tijd_1900} | {emoji_2030} 20:30 = {tijd_2030}"
 
 
 class PollButton(Button):
@@ -62,10 +83,12 @@ class PollButton(Button):
 
             # ✅ Snelle ACK: bewerk meteen hetzelfde ephemere bericht (geen nieuw bericht)
             header = HEADER_TMPL.format(dag=self.dag.capitalize())
+            legenda = _get_timezone_legend(self.dag)
+            header_volledig = f"{header}\n{legenda}"
             if not interaction.response.is_done():
                 try:
                     await interaction.response.edit_message(
-                        content=f"{header}\n🔄 Je stem wordt verwerkt…"
+                        content=f"{header_volledig}\n🔄 Je stem wordt verwerkt…"
                     )
                 except Exception:  # pragma: no cover
                     # Als het niet lukt, val later terug op message.edit
@@ -77,12 +100,12 @@ class PollButton(Button):
                 try:
                     if interaction.message is not None:
                         await interaction.message.edit(
-                            content=f"{header}\n❌ De stemmogelijkheid is gesloten.",
+                            content=f"{header_volledig}\n❌ De stemmogelijkheid is gesloten.",
                             view=None,
                         )
                     else:
                         await interaction.edit_original_response(
-                            content=f"{header}\n❌ De stemmogelijkheid is gesloten.",
+                            content=f"{header_volledig}\n❌ De stemmogelijkheid is gesloten.",
                             view=None,
                         )
                 except Exception:  # pragma: no cover
@@ -104,19 +127,19 @@ class PollButton(Button):
             try:
                 if interaction.message is not None:
                     await interaction.message.edit(
-                        content=f"{header}\n{status}",
+                        content=f"{header_volledig}\n{status}",
                         view=new_view,
                     )
                 else:
                     await interaction.edit_original_response(
-                        content=f"{header}\n{status}",
+                        content=f"{header_volledig}\n{status}",
                         view=new_view,
                     )
             except Exception:  # pragma: no cover
                 # Als bewerken mislukt, probeer nog één keer via edit_original_response
                 try:
                     await interaction.edit_original_response(
-                        content=f"{header}\n{status}",
+                        content=f"{header_volledig}\n{status}",
                         view=new_view,
                     )
                 except Exception:  # pragma: no cover
@@ -143,15 +166,18 @@ class PollButton(Button):
                 new_view = await create_poll_button_view(
                     user_id, guild_id, channel_id, dag=self.dag
                 )
+                header = HEADER_TMPL.format(dag=self.dag.capitalize())
+                legenda = _get_timezone_legend(self.dag)
+                header_volledig = f"{header}\n{legenda}"
                 msg = "⚠️ Er ging iets mis, probeer opnieuw."
                 if interaction.message is not None:
                     await interaction.message.edit(
-                        content=f"{HEADER_TMPL.format(dag=self.dag.capitalize())}\n{msg}",
+                        content=f"{header_volledig}\n{msg}",
                         view=new_view,
                     )
                 else:
                     await interaction.edit_original_response(
-                        content=f"{HEADER_TMPL.format(dag=self.dag.capitalize())}\n{msg}",
+                        content=f"{header_volledig}\n{msg}",
                         view=new_view,
                     )
             except Exception as inner:  # pragma: no cover
@@ -209,7 +235,10 @@ async def create_poll_button_views_per_day(
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
         if view.children:  # Alleen tonen als er knoppen zijn
             header = HEADER_TMPL.format(dag=dag.capitalize())
-            views.append((dag, header, view))
+            # Voeg tijdzone legenda toe
+            legenda = _get_timezone_legend(dag)
+            header_met_legenda = f"{header}\n{legenda}"
+            views.append((dag, header_met_legenda, view))
     return views
 
 

@@ -23,6 +23,7 @@ class SimpleOption:
     def __init__(self, dag: str, tijd: str, emoji: str) -> None:
         self.dag = dag
         self.tijd = tijd
+        self.emoji = emoji  # Voeg emoji attribuut toe
         self.label = f"{emoji} {dag.capitalize()} {tijd}"
 
 
@@ -102,8 +103,10 @@ class TestPollButtonViewConstruction(BaseTestCase):
         header op wanneer er zichtbare opties zijn.
         """
         opties = [
-            SimpleOption("vrijdag", "om 19:00 uur", ""),
-            SimpleOption("zaterdag", "om 20:30 uur", ""),
+            SimpleOption("vrijdag", "om 19:00 uur", "🔴"),
+            SimpleOption("vrijdag", "om 20:30 uur", "🟠"),
+            SimpleOption("zaterdag", "om 19:00 uur", "🟡"),
+            SimpleOption("zaterdag", "om 20:30 uur", "⚪"),
         ]
         votes = {"vrijdag": [], "zaterdag": []}
 
@@ -117,11 +120,19 @@ class TestPollButtonViewConstruction(BaseTestCase):
             )
 
         self.assertEqual(len(views), 2)
-        expected_headers = {
-            "vrijdag": "📅 **Vrijdag** — kies jouw tijden 👇",
-            "zaterdag": "📅 **Zaterdag** — kies jouw tijden 👇",
-        }
+        # Headers bevatten nu ook tijdzone legenda met dag-specifieke emoji's
         for dag, header, view in views:
-            self.assertIn(dag, expected_headers)
-            self.assertEqual(header, expected_headers[dag])
+            self.assertIn(dag, ["vrijdag", "zaterdag"])
+            # Check dat header de basis tekst bevat
+            self.assertIn(f"📅 **{dag.capitalize()}** — kies jouw tijden 👇", header)
+            # Check dat tijdzone legenda aanwezig is (met juiste emoji per dag)
+            self.assertIn("19:00 = <t:", header)  # Tijd aanwezig
+            self.assertIn(":F>", header)  # Hammertime full format
+            # Check dag-specifieke emoji's
+            if dag == "vrijdag":
+                self.assertIn("🔴", header)
+                self.assertIn("🟠", header)
+            elif dag == "zaterdag":
+                self.assertIn("🟡", header)
+                self.assertIn("⚪", header)
             self.assertTrue(view.children)  # niet leeg

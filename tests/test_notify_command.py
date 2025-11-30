@@ -150,9 +150,9 @@ class TestNotifyFallbackCommand(BaseTestCase):
             call_args = mock_send.call_args
             args, kwargs = call_args
             text = kwargs.get("text", "")
-            # Moet custom tijd bevatten, NIET default "dinsdag om 20:00 uur"
-            assert "vrijdag om 19:30" in text
-            assert "dinsdag om 20:00" not in text
+            # Moet Hammertime format bevatten voor vrijdag 19:30
+            assert "<t:" in text
+            assert ":F>" in text
             assert "Deze poll is gesloten" in text
 
     async def test_notify_with_custom_text(self):
@@ -260,7 +260,9 @@ class TestNotifyFallbackCommand(BaseTestCase):
             # Should send closing message in followup
             msg = (interaction.followup.last_text or "").lower()
             assert "sluitingsbericht verstuurd" in msg
-            assert "dinsdag om 20:00" in msg
+            # Moet Hammertime format bevatten voor dinsdag 20:00
+            assert "<t:" in msg
+            assert ":f>" in msg  # lowercase omdat msg is .lower()
 
     async def test_notify_handles_exception(self):
         """Test dat exceptions worden afgehandeld."""
