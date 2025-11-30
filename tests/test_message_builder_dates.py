@@ -66,7 +66,7 @@ class TestGetNextWeekdayDate(BaseTestCase):
         tuesday = datetime(2025, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         with patch("apps.utils.message_builder.datetime") as mock_dt:
             mock_dt.now.return_value = tuesday
-            result = _get_next_weekday_date("maandag")
+            result = _get_next_weekday_date("invaliddag")
             self.assertEqual(result, "")
 
     def test_get_next_weekday_date_case_insensitive(self):
@@ -79,6 +79,50 @@ class TestGetNextWeekdayDate(BaseTestCase):
             result_mixed = _get_next_weekday_date("Vrijdag")
             self.assertEqual(result_lower, result_upper)
             self.assertEqual(result_lower, result_mixed)
+
+    def test_get_next_weekday_date_for_monday_on_tuesday(self):
+        """Test dat maandag op dinsdag de aankomende maandag retourneert."""
+        # Dinsdag 5 november 2024, 14:00 (voor 20:00)
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Maandag in deze periode: 4 november
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("maandag")
+            self.assertEqual(result, "04-11")  # 4 november
+
+    def test_get_next_weekday_date_for_tuesday_on_tuesday(self):
+        """Test dat dinsdag op dinsdag de volgende dinsdag retourneert."""
+        # Dinsdag 5 november 2024, 14:00 (voor 20:00)
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Dinsdag in deze periode: 5 november
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("dinsdag")
+            self.assertEqual(result, "05-11")  # 5 november
+
+    def test_get_next_weekday_date_for_wednesday_on_tuesday(self):
+        """Test dat woensdag op dinsdag de aankomende woensdag retourneert."""
+        # Dinsdag 5 november 2024, 14:00
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Woensdag in deze periode: 6 november
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("woensdag")
+            self.assertEqual(result, "30-10")  # 30 oktober (van huidige periode)
+
+    def test_get_next_weekday_date_for_thursday_on_tuesday(self):
+        """Test dat donderdag op dinsdag de aankomende donderdag retourneert."""
+        # Dinsdag 5 november 2024, 14:00
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Donderdag in deze periode: 31 oktober
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("donderdag")
+            self.assertEqual(result, "31-10")  # 31 oktober
 
 
 class TestBuildPollMessageWithDates(BaseTestCase):
@@ -133,3 +177,33 @@ class TestBuildPollMessageWithDates(BaseTestCase):
             # Verwacht "DMK-poll voor Vrijdag (07-11): - (Gepauzeerd)"
             self.assertIn("Vrijdag (07-11)", message)
             self.assertIn("Gepauzeerd", message)
+
+    async def test_build_message_shows_dates_for_all_weekdays(self):
+        """Test dat alle weekdagen (maandag t/m zondag) datums tonen."""
+        # Dinsdag 5 november 2024, 14:00 (voor 20:00)
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+
+            # Verwachte datums voor alle dagen van deze poll-periode
+            expected_dates = {
+                "maandag": "04-11",  # Ma 4 nov
+                "dinsdag": "05-11",  # Di 5 nov
+                "woensdag": "30-10",  # Wo 30 okt
+                "donderdag": "31-10",  # Do 31 okt
+                "vrijdag": "01-11",  # Vr 1 nov
+                "zaterdag": "02-11",  # Za 2 nov
+                "zondag": "03-11",  # Zo 3 nov
+            }
+
+            for dag, expected_date in expected_dates.items():
+                message = await build_poll_message_for_day_async(
+                    dag, guild_id=1, channel_id=100
+                )
+                self.assertIn(
+                    f"{dag.capitalize()} ({expected_date})",
+                    message,
+                    f"{dag} should show date {expected_date}",
+                )

@@ -19,7 +19,7 @@ from apps.utils.poll_storage import (
 
 def _get_next_weekday_date(dag: str) -> str:
     """
-    Bereken datum voor vrijdag/zaterdag/zondag van de huidige poll-periode in DD-MM formaat.
+    Bereken datum voor elke dag van de week van de huidige poll-periode in DD-MM formaat.
 
     De poll-periode loopt van dinsdag 20:00 tot de volgende dinsdag 20:00.
     Datums blijven stabiel gedurende de hele periode en updaten alleen na dinsdag 20:00.
@@ -29,7 +29,15 @@ def _get_next_weekday_date(dag: str) -> str:
     tz = pytz.timezone("Europe/Amsterdam")
     now = datetime.now(tz)
 
-    dag_mapping = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
+    dag_mapping = {
+        "maandag": 0,
+        "dinsdag": 1,
+        "woensdag": 2,
+        "donderdag": 3,
+        "vrijdag": 4,
+        "zaterdag": 5,
+        "zondag": 6,
+    }
     target_weekday = dag_mapping.get(dag.lower())
     if target_weekday is None:
         return ""
@@ -70,7 +78,7 @@ async def build_poll_message_for_day_async(
     Bouwt de tekst van het pollbericht voor één dag, GESCOPED per guild+channel.
 
     Parameters:
-    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - dag: 'maandag' | 'dinsdag' | 'woensdag' | 'donderdag' | 'vrijdag' | 'zaterdag' | 'zondag'
     - guild_id: Discord guild ID (server)
     - channel_id: Discord channel ID (tekstkanaal)
     - hide_counts: verberg stemaantallen (True/False)
