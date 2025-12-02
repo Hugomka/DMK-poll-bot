@@ -81,6 +81,47 @@ def set_channel_disabled(channel_id: int, disabled: bool) -> None:
     _save(data)
 
 
+def get_dag_als_vandaag(channel_id: int) -> str | None:
+    """
+    Haal de opgeslagen dag_als_vandaag waarde op voor een kanaal.
+
+    Args:
+        channel_id: Het numerieke ID van het kanaal.
+
+    Returns:
+        De dag naam (bijv. "dinsdag") of None als niet ingesteld.
+    """
+    data = _load()
+    dag_als_vandaag_map = data.get("dag_als_vandaag", {})
+    cid_str = str(channel_id)
+    return dag_als_vandaag_map.get(cid_str)
+
+
+def set_dag_als_vandaag(channel_id: int, dag: str | None) -> None:
+    """
+    Sla de dag_als_vandaag waarde op voor een kanaal.
+
+    Als dag None is, wordt de waarde verwijderd (terug naar normale modus).
+
+    Args:
+        channel_id: Het numerieke ID van het kanaal.
+        dag: De dag naam (bijv. "dinsdag") of None om te wissen.
+    """
+    data = _load()
+    dag_als_vandaag_map = data.get("dag_als_vandaag", {})
+    cid_str = str(channel_id)
+
+    if dag is None:
+        # Verwijder de waarde
+        dag_als_vandaag_map.pop(cid_str, None)
+    else:
+        # Sla de waarde op
+        dag_als_vandaag_map[cid_str] = dag
+
+    data["dag_als_vandaag"] = dag_als_vandaag_map
+    _save(data)
+
+
 def _load() -> dict[str, Any]:
     if os.path.exists(POLL_MESSAGE_FILE):
         try:

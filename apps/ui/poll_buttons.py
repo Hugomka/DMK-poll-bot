@@ -13,7 +13,6 @@ from apps.entities.poll_option import get_poll_options
 from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_message import check_all_voted_celebration, update_poll_message
 from apps.utils.poll_settings import (
-    get_enabled_poll_days,
     get_poll_option_state,
     is_paused,
 )
@@ -227,11 +226,23 @@ async def create_poll_button_view(
 async def create_poll_button_views_per_day(
     user_id: str, guild_id: int, channel_id: int
 ) -> list[tuple[str, str, PollButtonView]]:
+    from apps.utils.poll_settings import get_enabled_rolling_window_days
+
     votes = await get_user_votes(user_id, guild_id, channel_id)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     views: list[tuple[str, str, PollButtonView]] = []
 
-    for dag in get_enabled_poll_days(channel_id):
+    # Gebruik rolling window om alleen future + today dagen beschikbaar te maken
+    dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag=None)
+
+    for day_info in dagen_info:
+        dag = day_info["dag"]
+        is_past = day_info["is_past"]
+
+        # Skip dagen in het verleden - die zijn alleen zichtbaar, niet stembaar
+        if is_past:
+            continue
+
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
         if view.children:  # Alleen tonen als er knoppen zijn
             header = HEADER_TMPL.format(dag=dag.capitalize())

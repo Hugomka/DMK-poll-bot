@@ -159,12 +159,18 @@ class PollStatus(commands.Cog):
             # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
 
-            # Gebruik enabled dagen op basis van poll-opties settings
-            from apps.utils.poll_settings import get_enabled_poll_days
+            # Gebruik rolling window voor chronologische volgorde met datums
+            from apps.utils.poll_settings import get_enabled_rolling_window_days
+            from apps.utils.time_zone_helper import TimeZoneHelper
+            from apps.utils.poll_message import get_dag_als_vandaag
 
-            enabled_days = get_enabled_poll_days(cid_val)
+            # Haal opgeslagen dag_als_vandaag op (voor consistentie met poll berichten)
+            dag_als_vandaag = get_dag_als_vandaag(cid_val)
+            dagen_info = get_enabled_rolling_window_days(cid_val, dag_als_vandaag)
 
-            for dag in enabled_days:
+            for day_info in dagen_info:
+                dag = day_info["dag"]
+                datum_iso = day_info["datum_iso"]
                 instelling = get_setting(cid_val, dag)
                 zicht_txt = (
                     "altijd zichtbaar"
@@ -204,8 +210,14 @@ class PollStatus(commands.Cog):
                 regels.append(regel)
 
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
+
+                # Voeg datum toe in Hammertime format (D = long date)
+                datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+                    datum_iso, "18:00", style="D"
+                )
+
                 embed.add_field(
-                    name=f"{dag.capitalize()} ({zicht_txt})",
+                    name=f"{dag.capitalize()} ({datum_hammertime}) — {zicht_txt}",
                     value=value,
                     inline=False,
                 )

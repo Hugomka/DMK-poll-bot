@@ -21,9 +21,11 @@ from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_message import (
     clear_message_id,
     create_notification_message,
+    get_dag_als_vandaag,
     get_message_id,
     save_message_id,
     set_channel_disabled,
+    set_dag_als_vandaag,
     update_poll_message,
 )
 from apps.utils.poll_settings import (
@@ -153,7 +155,11 @@ class PollLifecycle(commands.Cog):
             activation_type = "wekelijks"
             set_scheduled_activation(channel_id, activation_type, tijd, dag=dag)
             is_recurrent = frequentie == "wekelijks" or frequentie is None
+
+            # Bij wekelijks: stel dag_als_vandaag in op de scheduler dag
+            # Dit zorgt ervoor dat de rolling window meteen correct is
             if is_recurrent:
+                set_dag_als_vandaag(channel_id, dag)
                 return f"📅 De poll wordt elke **{dag}** om **{tijd}** uur automatisch geactiveerd."
             else:
                 return f"📅 De poll wordt eenmalig op aanstaande **{dag}** om **{tijd}** uur geactiveerd."
@@ -176,6 +182,7 @@ class PollLifecycle(commands.Cog):
         datum="Specifieke datum (DD-MM-YYYY) - verplicht met tijd",
         tijd="Tijd in HH:mm formaat - verplicht met dag of datum",
         frequentie="Eenmalig (op datum) of wekelijks (elke week op deze dag)",
+        dag_als_vandaag="Welke dag als 'vandaag' beschouwen voor rolling window (optioneel)",
     )
     async def on(  # pragma: no cover
         self,
@@ -195,6 +202,18 @@ class PollLifecycle(commands.Cog):
         datum: str | None = None,
         tijd: str | None = None,
         frequentie: Literal["eenmalig", "wekelijks"] | None = None,
+        dag_als_vandaag: (
+            Literal[
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ]
+            | None
+        ) = None,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
@@ -226,7 +245,7 @@ class PollLifecycle(commands.Cog):
             if non_bot_berichten:
                 # Er zijn non-bot berichten - vraag om bevestiging
                 await self._toon_opschoon_bevestiging(
-                    interaction, channel, non_bot_berichten, schedule_message=None
+                    interaction, channel, non_bot_berichten, schedule_message=None, dag_als_vandaag=dag_als_vandaag
                 )
                 return  # De bevestigingsview handelt de rest af
         except Exception as e:
@@ -239,8 +258,11 @@ class PollLifecycle(commands.Cog):
         except Exception as e:
             print(f"⚠️ Kon bot-berichten niet verwijderen: {e}")
 
+        # Stap 2.5: Sla dag_als_vandaag op voor dit kanaal (voor consistentie met status)
+        set_dag_als_vandaag(channel.id, dag_als_vandaag)
+
         # Stap 3: Plaats de polls (handmatige activatie zonder scheduling)
-        await self._plaats_polls(interaction, channel, schedule_message=None)
+        await self._plaats_polls(interaction, channel, schedule_message=None, dag_als_vandaag=dag_als_vandaag)
 
     async def _toon_opschoon_bevestiging(  # pragma: no cover
         self,
@@ -248,6 +270,7 @@ class PollLifecycle(commands.Cog):
         channel: Any,
         non_bot_berichten: list,
         schedule_message: str | None = None,
+        dag_als_vandaag: str | None = None,
     ) -> None:
         """
         Toon een bevestigingsdialoog voor het opschonen van non-bot berichten.
@@ -273,7 +296,7 @@ class PollLifecycle(commands.Cog):
                 )
 
                 # Plaats de polls
-                await self._plaats_polls(interaction, channel, schedule_message)
+                await self._plaats_polls(interaction, channel, schedule_message, dag_als_vandaag)
 
             except Exception as e:  # pragma: no cover
                 await button_interaction.followup.send(
@@ -293,7 +316,7 @@ class PollLifecycle(commands.Cog):
                 )
 
                 # Plaats de polls
-                await self._plaats_polls(interaction, channel, schedule_message)
+                await self._plaats_polls(interaction, channel, schedule_message, dag_als_vandaag)
             except Exception as e:  # pragma: no cover
                 await button_interaction.followup.send(
                     f"❌ Fout bij plaatsen: {e}",
@@ -386,15 +409,22 @@ class PollLifecycle(commands.Cog):
         interaction: discord.Interaction,
         channel: Any,
         schedule_message: str | None = None,
+        dag_als_vandaag: str | None = None,
     ) -> None:
         """
         Plaats of update de poll-berichten in het kanaal.
+
+        Args:
+            interaction: Discord interaction
+            channel: Het kanaal waar polls geplaatst worden
+            schedule_message: Optioneel schedule bericht
+            dag_als_vandaag: Optioneel, welke dag als "vandaag" beschouwen voor rolling window
         """
-        # Gebruik enabled dagen op basis van poll-opties settings
-        from apps.utils.poll_settings import get_enabled_poll_days
+        # Gebruik enabled dagen op basis van rolling window + poll-opties settings
+        from apps.utils.poll_settings import get_enabled_rolling_window_days
 
         channel_id = getattr(channel, "id", 0)
-        dagen = get_enabled_poll_days(channel_id)
+        dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag)
 
         try:
             # Kanaal opnieuw activeren voor de scheduler
@@ -440,11 +470,13 @@ class PollLifecycle(commands.Cog):
 
             # Tweede t/m vierde berichten: dag-berichten (ALLEEN TEKST, GEEN KNOPPEN)
             guild = _get_attr(channel, "guild")
-            for dag in dagen:
+            for day_info in dagen_info:
+                dag = day_info["dag"]
+                datum_iso = day_info["datum_iso"]
                 gid_val = getattr(guild, "id", "0") if guild is not None else "0"
                 cid_val = getattr(channel, "id", "0") or "0"
                 content = await build_poll_message_for_day_async(
-                    dag, gid_val, cid_val, guild=guild, channel=channel
+                    dag, gid_val, cid_val, guild=guild, channel=channel, datum_iso=datum_iso
                 )
 
                 mid = get_message_id(channel.id, dag)
@@ -576,6 +608,13 @@ class PollLifecycle(commands.Cog):
                 await reset_votes_scoped(gid, cid)
             except Exception:  # pragma: no cover
                 await reset_votes()
+
+            # 2.5) Stel dag_als_vandaag in op de huidige dag (voor rolling window)
+            from apps.utils.constants import DAG_NAMEN
+
+            now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+            huidige_dag = DAG_NAMEN[now.weekday()]
+            set_dag_als_vandaag(cid, huidige_dag)
 
             # 3) Update reset-tijd in scheduler-state
             now = datetime.now(scheduler.TZ)

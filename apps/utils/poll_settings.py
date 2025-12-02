@@ -786,3 +786,44 @@ def get_enabled_poll_days(channel_id: int) -> list[str]:
         Lijst van enabled dagen (bijv. ['vrijdag', 'zondag'])
     """
     return [dag for dag in WEEK_DAYS if not is_day_completely_disabled(channel_id, dag)]
+
+
+def get_enabled_rolling_window_days(
+    channel_id: int, dag_als_vandaag: str | None = None
+) -> list[dict[str, str]]:
+    """
+    Geef lijst van enabled dagen terug binnen rolling window (1 terug + vandaag + 5 vooruit).
+
+    Args:
+        channel_id: Het kanaal ID
+        dag_als_vandaag: Optioneel, welke dag als "vandaag" beschouwen
+
+    Returns:
+        Lijst van dicts met 'dag' (naam) en 'datum_iso' (YYYY-MM-DD) voor enabled dagen binnen window
+
+    Voorbeeld: [
+        {'dag': 'zondag', 'datum_iso': '2024-11-30', 'is_past': True, 'is_today': False, 'is_future': False},
+        {'dag': 'maandag', 'datum_iso': '2024-12-01', 'is_past': False, 'is_today': True, 'is_future': False},
+        {'dag': 'dinsdag', 'datum_iso': '2024-12-02', 'is_past': False, 'is_today': False, 'is_future': True},
+        ...
+    ]
+    """
+    from apps.utils.message_builder import get_rolling_window_days
+
+    # Haal rolling window op
+    window = get_rolling_window_days(dag_als_vandaag)
+
+    # Filter op enabled dagen (volgens poll option settings)
+    enabled_days = []
+    for day_info in window:
+        dag = day_info["dag"]
+        if not is_day_completely_disabled(channel_id, dag):
+            enabled_days.append({
+                "dag": dag,
+                "datum_iso": day_info["datum"].strftime("%Y-%m-%d"),
+                "is_past": day_info["is_past"],
+                "is_today": day_info["is_today"],
+                "is_future": day_info["is_future"],
+            })
+
+    return enabled_days

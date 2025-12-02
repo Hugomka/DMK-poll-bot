@@ -23,8 +23,9 @@ class TestPollBerichten(BaseTestCase):
         self.assertIn("gepauzeerd", bericht.lower())
 
     async def test_pollbericht_verbergt_aantallen(self):
+        # Gebruik toekomstige datum zodat hide_counts=True wordt gerespecteerd
         bericht = await build_poll_message_for_day_async(
-            "zondag", 1, 123, hide_counts=True, pauze=False
+            "zondag", 1, 123, hide_counts=True, pauze=False, datum_iso="2025-12-07"
         )
         self.assertIn("stemmen verborgen", bericht.lower())
 

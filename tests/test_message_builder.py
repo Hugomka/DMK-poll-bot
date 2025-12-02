@@ -133,8 +133,9 @@ class TestMessageBuilder(BaseTestCase):
 
         with patch("apps.utils.message_builder.get_poll_options", return_value=options), \
              patch("apps.utils.message_builder.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}):
+            # Gebruik toekomstige datum zodat hide_counts=True wordt gerespecteerd
             txt = await mb.build_poll_message_for_day_async(
-                "vrijdag", guild_id=1, channel_id=2, hide_counts=True
+                "vrijdag", guild_id=1, channel_id=2, hide_counts=True, datum_iso="2025-12-05"
             )
             # Normale tijdslots worden wel getoond met Hammertime
             assert "🟢 Om <t:" in txt  # Hammertime voor 19:00

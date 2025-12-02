@@ -24,6 +24,7 @@ from apps.utils.poll_message import (
     save_message_id,
     schedule_poll_update,
     set_channel_disabled,
+    set_dag_als_vandaag,
 )
 from apps.utils.poll_settings import (
     get_enabled_poll_days,
@@ -1030,6 +1031,15 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
                     any_reset = True
                 except Exception:  # pragma: no cover
                     pass
+
+            # Stel dag_als_vandaag in op de huidige dag (voor rolling window)
+            try:
+                from apps.utils.constants import DAG_NAMEN
+
+                huidige_dag = DAG_NAMEN[now.weekday()]
+                set_dag_als_vandaag(cid, huidige_dag)
+            except Exception:  # pragma: no cover
+                pass
 
             # Wis celebration message
             try:
