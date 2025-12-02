@@ -330,7 +330,8 @@ DMK-poll-bot/
 | `votes.json`              | ✅ | Alle stemmen (per user/gast per dag). Async lock voor veilige I/O.               |
 | `poll_settings.json`      | ✅ | Kanaal-instellingen: pauze, zichtbaarheid (altijd/deadline), namen tonen, scheduling (activatie/deactivatie tijden), poll-opties (welke dagen/tijden enabled), notificatie preferences (8 toggles per kanaal). |
 | `poll_message.json`       | ✅ | Opslag van bericht-ID's van de channel-polls (om te kunnen updaten/verwijderen). |
-| `archive/dmk_archive.csv` | ✅ | Wekelijks CSV-archief met weeknummer, datums en aantallen per optie/dag.         |
+| `archive/dmk_archive_{guild_id}_{channel_id}_weekend.csv` | ✅ | Wekelijks CSV-archief voor weekend polls (vrijdag-zondag) met weeknummer, datums en aantallen per optie/dag. |
+| `archive/dmk_archive_{guild_id}_{channel_id}_weekday.csv` | ✅ | Wekelijks CSV-archief voor weekday polls (maandag-donderdag) met weeknummer, datums en aantallen per optie/dag. |
 | `opening_message.txt`     | ❌ | Aanpasbaar openingsbericht dat getoond wordt boven de polls.                     |
 | `tenor-links.json`        | ✅ | Celebration GIF URLs met gebruikscounts (wordt automatisch gesynchroniseerd).   |
 | `tenor-links.template.json` | ❌ | Template voor GIF lijst (bron van waarheid, wordt WEL gecommit).              |
@@ -342,7 +343,13 @@ DMK-poll-bot/
 
 ### Archief
 
-Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan `dmk_archive.csv` met: ISO weeknummer (bijv. 2025-W44), datum vr/za/zo, en per dag de aantallen voor 19:00, 20:30, misschien, was misschien (💤), niet meedoen, en niet gestemd (👻). Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/dmk_archive_{guild_id}_{channel_id}.csv`.
+Bij resetten voor een nieuwe week voegt de bot 1 regel toe aan **beide** archieven met: ISO weeknummer (bijv. 2025-W44), datum per dag, en per dag de aantallen voor 19:00, 20:30, misschien, was misschien (💤), niet meedoen, en niet gestemd (👻).
+
+**Twee aparte archieven:**
+- **Weekend archief** (`_weekend.csv`): Vrijdag, zaterdag, zondag
+- **Weekday archief** (`_weekdays.csv`): Maandag, dinsdag, woensdag, donderdag
+
+Downloaden en wissen kan met de archief-commando's. Archief is **per guild en per kanaal** opgeslagen in `archive/dmk_archive_{guild_id}_{channel_id}_{type}.csv`.
 
 #### Archive migratie
 
@@ -441,13 +448,15 @@ De bot moet blijven draaien om deze taken uit te voeren (resourceverbruik is laa
 
 ### Archief
 
-* **Commando:** `/dmk-poll-archief` → toont een ephemeral bericht met:
-  - 📊 **CSV-bestand** direct beschikbaar voor download
-  - **Dropdown** om formaat te kiezen: 🇺🇸 Comma (`,`) voor internationale tools of 🇳🇱 Semicolon (`;`) voor Nederlandse Excel
+* **Commando:** `/dmk-poll-archief` → toont ephemeral berichten met aparte archieven:
+  - 📊 **Weekend archief** (vrijdag-zondag): Altijd beschikbaar voor download
+  - 📊 **Weekday archief** (maandag-donderdag): Alleen zichtbaar wanneer weekday polls actief zijn
+  - Elk archief heeft eigen **dropdown** om formaat te kiezen: 🇺🇸 Comma (`,`) voor internationale tools of 🇳🇱 Semicolon (`;`) voor Nederlandse Excel
   - Bij selectie wordt het bestand direct vervangen met de nieuwe delimiter
-  - **Verwijder-knop** om het hele archief permanent te verwijderen
+  - Elke archief heeft eigen **verwijder-knop**, maar verwijderen verwijdert **beide** archieven permanent
 * Archief groeit met 1 regel per week (na reset).
 * Archief is **per guild en per kanaal**, zodat meerdere Discord-servers of meerdere kanalen op dezelfde server hun eigen archief hebben.
+* **Bestandsnamen**: `dmk_archive_{guild_id}_{channel_id}_weekend.csv` en `dmk_archive_{guild_id}_{channel_id}_weekday.csv`
 
 ---
 
@@ -662,6 +671,42 @@ cat .scheduler_state.json
 ---
 
 ## 🎉 Recente verbeteringen
+
+### v2.3 - Rolling Window Date System (2025-12-02)
+
+**Rolling Window Datum Systeem:**
+- **7-daags rollend venster**: Polls tonen altijd chronologische datums (-1 dag, vandaag, +5 dagen vooruit)
+- **Automatische datum updates**: Poll-berichten, stemberichten, en scheduler notificaties gebruiken rolling window voor correcte datums
+- **Consistente datum weergave**: Alle datum bugs opgelost - geen 27 november meer wanneer 4 december verwacht wordt
+- **Hammertime timestamps**: Discord timestamps tonen correcte datums in gebruiker's tijdzone
+
+**Wat is gefixt:**
+- Message builder fallback gebruikt rolling window i.p.v. oude `_get_next_weekday_date_iso` logica
+- Vote message legendas (stemberichten) tonen correcte rolling window datums
+- Scheduler decision announcements gebruiken rolling window per channel
+- Poll options settings UI gebruikt rolling window voor tijdzone legenda
+- Automatische cleanup van oude berichten buiten rolling window
+
+**Test resultaten:** 34 nieuwe/aangepaste tests passing ✅
+- `test_remaining_date_bugs.py`: Bewijst dat fallback correcte datums gebruikt
+- `test_vote_message_dates.py`: Bewijst dat stemberichten correcte datums tonen
+- `test_rolling_window_integration.py`: Test integratie met `/dmk-poll-on`
+- `test_scheduler_update_all_polls.py`: Rolling window mock updates
+
+**Bestanden aangepast:**
+- `apps/utils/message_builder.py`: Rolling window fallback logica
+- `apps/ui/poll_buttons.py`: Vote message datums uit rolling window
+- `apps/scheduler.py`: Decision announcement + cleanup oude berichten
+- `apps/ui/poll_options_settings.py`: Settings embed met channel_id parameter
+- `apps/commands/poll_config.py`: Geeft channel_id door aan settings embed
+- `apps/commands/poll_lifecycle.py`: Cleanup oude berichten buiten rolling window
+- `apps/commands/poll_status.py`: Gebruikt altijd huidige dag (geen opgeslagen waarde)
+- `apps/utils/poll_message.py`: Haalt datums uit rolling window
+
+**Belangrijke notitie:**
+- `dag_als_vandaag` parameter wordt NIET meer opgeslagen in state
+- Rolling window gebruikt altijd de huidige dag bij updates (berekend on-the-fly)
+- Oude berichten buiten rolling window worden automatisch verwijderd
 
 ### v2.2 - Code Simplification (2025-11-09)
 

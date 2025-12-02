@@ -75,44 +75,51 @@ class TestPollArchive(BaseTestCase):
         content = self._last_content(interaction.followup.send)
         assert "geen archief" in content.lower()
 
-    async def test_archief_success_with_view(self):
-        """Test dat archief tonen werkt met ArchiveView (nieuwe methode)"""
+    async def test_archief_success_with_view_weekend_only(self):
+        """Test dat archief tonen werkt met ArchiveView (alleen weekend archief)"""
         channel = MagicMock()
         channel.id = 123
         guild = MagicMock()
         guild.id = 456
         interaction = _mk_interaction(channel=channel, guild=guild)
 
-        csv_data = b"week,datum\n1,2024-01-01"
+        weekend_csv = b"week,datum_vrijdag,datum_zaterdag,datum_zondag\n1,2024-01-05,2024-01-06,2024-01-07"
 
         with patch(
             "apps.commands.poll_archive.archive_exists_scoped", return_value=True
         ), patch(
             "apps.commands.poll_archive.ArchiveView"
         ) as mock_view_class, patch(
-            "apps.commands.poll_archive.create_archive", return_value=csv_data
-        ):
+            "apps.commands.poll_archive.create_archive"
+        ) as mock_create_archive:
+            # Eerste call (check voor weekday) returnt None
+            # Tweede call (weekend data) returnt weekend_csv
+            mock_create_archive.side_effect = [weekend_csv, None]
+
             mock_view = MagicMock()
             mock_view.selected_delimiter = ","
             mock_view_class.return_value = mock_view
 
             await self._run(self.cog.archief, interaction)
 
-        # View moet zijn aangemaakt met juiste parameters
-        mock_view_class.assert_called_once_with(456, 123)
+        # View moet zijn aangemaakt met juiste parameters (weekday=False)
+        mock_view_class.assert_called_once_with(456, 123, weekday=False)
 
-        # Followup moet zijn aangeroepen met file en view
-        interaction.followup.send.assert_awaited_once()
+        # Followup moet 1x zijn aangeroepen (alleen weekend)
+        assert interaction.followup.send.await_count == 1
         args, kwargs = interaction.followup.send.call_args
 
-        # Check content bevat beschrijvende tekst
+        # Check content bevat weekend beschrijving
         content = kwargs.get("content", "")
-        assert "DMK Poll Archief" in content
-        assert "CSV-formaat" in content
-        assert "Verwijder archief" in content
+        assert "DMK Poll Archief - Weekend" in content
+        assert "vrijdag-zondag" in content
 
         # Check file parameter
         assert "file" in kwargs
+
+        # Check filename bevat _weekend
+        file_obj = kwargs["file"]
+        assert "_weekend.csv" in file_obj.filename
 
         # Check view parameter
         assert "view" in kwargs
@@ -120,6 +127,75 @@ class TestPollArchive(BaseTestCase):
 
         # Check ephemeral is True
         assert kwargs.get("ephemeral") is True
+
+    async def test_archief_success_with_view_weekend_and_weekday(self):
+        """Test dat archief tonen werkt met ArchiveView (weekend + weekday archieven)"""
+        channel = MagicMock()
+        channel.id = 123
+        guild = MagicMock()
+        guild.id = 456
+        interaction = _mk_interaction(channel=channel, guild=guild)
+
+        weekend_csv = b"week,datum_vrijdag,datum_zaterdag,datum_zondag\n1,2024-01-05,2024-01-06,2024-01-07"
+        weekday_csv = b"week,datum_maandag,datum_dinsdag,datum_woensdag,datum_donderdag\n1,2024-01-01,2024-01-02,2024-01-03,2024-01-04"
+
+        with patch(
+            "apps.commands.poll_archive.archive_exists_scoped", return_value=True
+        ), patch(
+            "apps.commands.poll_archive.ArchiveView"
+        ) as mock_view_class, patch(
+            "apps.commands.poll_archive.create_archive"
+        ) as mock_create_archive:
+            # Eerste call (weekend data): weekend_csv
+            # Tweede call (check weekday): weekday_csv (bestaat!)
+            # Derde call (weekday data): weekday_csv
+            mock_create_archive.side_effect = [weekend_csv, weekday_csv, weekday_csv]
+
+            mock_weekend_view = MagicMock()
+            mock_weekend_view.selected_delimiter = ","
+            mock_weekday_view = MagicMock()
+            mock_weekday_view.selected_delimiter = ","
+
+            # Eerste call: weekend view, tweede call: weekday view
+            mock_view_class.side_effect = [mock_weekend_view, mock_weekday_view]
+
+            await self._run(self.cog.archief, interaction)
+
+        # View moet 2x zijn aangemaakt (weekend + weekday)
+        assert mock_view_class.call_count == 2
+
+        # Check eerste call: weekend view
+        first_call = mock_view_class.call_args_list[0]
+        assert first_call[0] == (456, 123)  # guild_id, channel_id
+        assert first_call[1] == {"weekday": False}
+
+        # Check tweede call: weekday view
+        second_call = mock_view_class.call_args_list[1]
+        assert second_call[0] == (456, 123)
+        assert second_call[1] == {"weekday": True}
+
+        # Followup moet 2x zijn aangeroepen (weekend + weekday)
+        assert interaction.followup.send.await_count == 2
+
+        # Check eerste bericht (weekend)
+        _, first_send_kwargs = interaction.followup.send.call_args_list[0]
+        weekend_content = first_send_kwargs.get("content", "")
+        assert "DMK Poll Archief - Weekend" in weekend_content
+        assert "vrijdag-zondag" in weekend_content
+        assert "_weekend.csv" in first_send_kwargs["file"].filename
+        assert first_send_kwargs["view"] == mock_weekend_view
+
+        # Check tweede bericht (weekday)
+        _, second_send_kwargs = interaction.followup.send.call_args_list[1]
+        weekday_content = second_send_kwargs.get("content", "")
+        assert "DMK Poll Archief - Weekday" in weekday_content
+        assert "maandag-donderdag" in weekday_content
+        assert "_weekday.csv" in second_send_kwargs["file"].filename
+        assert second_send_kwargs["view"] == mock_weekday_view
+
+        # Beide berichten moeten ephemeral zijn
+        assert first_send_kwargs.get("ephemeral") is True
+        assert second_send_kwargs.get("ephemeral") is True
 
     async def test_archief_success_without_view(self):
         """Test dat archief tonen werkt zonder ArchiveView (fallback)"""
@@ -311,10 +387,25 @@ class TestArchiveView(BaseTestCase):
 
         assert view.guild_id == 123
         assert view.channel_id == 456
+        assert view.weekday is False  # Default
         assert view.selected_delimiter == ","  # Default
 
         # Check dat alle componenten zijn toegevoegd
         assert len(view.children) == 2  # SelectMenu, Delete button (geen Download button)
+
+    async def test_archive_view_initialization_with_weekday(self):
+        """Test dat ArchiveView correct wordt geïnitialiseerd met weekday=True"""
+        from apps.ui.archive_view import ArchiveView
+
+        view = ArchiveView(guild_id=123, channel_id=456, weekday=True)
+
+        assert view.guild_id == 123
+        assert view.channel_id == 456
+        assert view.weekday is True
+        assert view.selected_delimiter == ","  # Default
+
+        # Check dat alle componenten zijn toegevoegd
+        assert len(view.children) == 2  # SelectMenu, Delete button
 
     async def test_delimiter_select_menu_callback_updates_file(self):
         """Test dat delimiter selectie direct het CSV bestand update"""
@@ -395,6 +486,54 @@ class TestArchiveView(BaseTestCase):
         content = args[0] if args else ""
         assert "Kon archief niet genereren" in content
         assert kwargs["ephemeral"] is True
+
+    async def test_delimiter_select_menu_callback_weekday_archive(self):
+        """Test dat delimiter selectie werkt voor weekday archief"""
+        from unittest.mock import PropertyMock
+        from apps.ui.archive_view import ArchiveView, DelimiterSelectMenu
+
+        view = ArchiveView(guild_id=123, channel_id=456, weekday=True)
+        select_menu = None
+
+        # Vind de SelectMenu
+        for child in view.children:
+            if isinstance(child, DelimiterSelectMenu):
+                select_menu = child
+                break
+
+        assert select_menu is not None
+
+        # Mock interaction
+        interaction = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+
+        csv_data = b"week;datum_maandag\n1;2024-01-01"
+
+        # Roep callback aan met gemockte values
+        with patch("apps.ui.archive_view.create_archive", return_value=csv_data) as mock_create, \
+             patch.object(type(select_menu), "values", new_callable=PropertyMock, return_value=[";"]):
+            await select_menu.callback(interaction)
+
+        # Check dat create_archive aangeroepen is met weekday=True
+        mock_create.assert_called_once_with(123, 456, ";", True)
+
+        # Check dat delimiter is gewijzigd
+        assert view.selected_delimiter == ";"
+
+        # Check dat message is geüpdatet
+        interaction.response.edit_message.assert_awaited_once()
+        _, kwargs = interaction.response.edit_message.call_args
+
+        # Check content bevat weekday beschrijving
+        content = kwargs.get("content", "")
+        assert "DMK Poll Archief - Weekday" in content
+        assert "maandag-donderdag" in content
+
+        # Check filename bevat _weekday
+        assert "attachments" in kwargs
+        assert len(kwargs["attachments"]) == 1
+        file_obj = kwargs["attachments"][0]
+        assert "_weekday.csv" in file_obj.filename
 
 
 class TestArchiveWithNonVoters(BaseTestCase):

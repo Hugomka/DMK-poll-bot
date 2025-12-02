@@ -15,6 +15,7 @@ from discord.ext import commands
 from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.celebration_gif import get_celebration_gif_url
+from apps.utils.constants import DAG_NAMEN
 from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
 from apps.utils.notification_texts import (
     NOTIFICATION_TEXTS,
@@ -96,16 +97,6 @@ class PollStatus(commands.Cog):
             if not schedule:
                 return "Geen"
 
-            day_names = [
-                "maandag",
-                "dinsdag",
-                "woensdag",
-                "donderdag",
-                "vrijdag",
-                "zaterdag",
-                "zondag",
-            ]
-
             typ = schedule.get("type")
             tijd = schedule.get("tijd", "??:??")
 
@@ -115,7 +106,7 @@ class PollStatus(commands.Cog):
                     # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
                     datum_obj = datetime.strptime(datum, "%Y-%m-%d")
                     datum_display = datum_obj.strftime("%d-%m-%Y")
-                    dag_naam = day_names[datum_obj.weekday()]
+                    dag_naam = DAG_NAMEN[datum_obj.weekday()]
                     result = f"{dag_naam} {datum_display} om {tijd}"
                 except Exception:  # pragma: no cover
                     result = f"{datum} om {tijd}"

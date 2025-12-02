@@ -597,6 +597,7 @@ def create_archive(
     guild_id: Optional[int | str] = None,
     channel_id: Optional[int | str] = None,
     delimiter: str = ",",
+    weekday: bool = False,
 ) -> Optional[bytes]:
     """
     Genereer CSV archief met gespecificeerde delimiter.
@@ -605,14 +606,15 @@ def create_archive(
         guild_id: Guild ID voor scoped archief
         channel_id: Channel ID voor scoped archief
         delimiter: CSV delimiter ("," of ";")
+        weekday: True voor weekday archief (ma-do), False voor weekend archief (vr-zo)
 
     Returns:
         CSV data als bytes, of None als archief niet bestaat
     """
-    if not archive_exists_scoped(guild_id, channel_id):
-        return None
+    csv_path = get_archive_path_scoped(guild_id, channel_id, weekday=weekday)
 
-    csv_path = get_archive_path_scoped(guild_id, channel_id)
+    if not os.path.exists(csv_path):
+        return None
 
     # Lees originele CSV (altijd met komma delimiter)
     with open(csv_path, "r", encoding="utf-8") as f:
@@ -680,8 +682,19 @@ def open_archive_bytes_scoped(
 def delete_archive_scoped(
     guild_id: Optional[int | str] = None, channel_id: Optional[int | str] = None
 ) -> bool:
-    """Verwijder archief. Zonder IDs → legacy pad."""
-    if archive_exists_scoped(guild_id, channel_id):
-        os.remove(get_archive_path_scoped(guild_id, channel_id))
-        return True
-    return False
+    """Verwijder alle archieven (weekend + weekday). Zonder IDs → legacy pad."""
+    deleted_any = False
+
+    # Verwijder weekend archief
+    weekend_path = get_archive_path_scoped(guild_id, channel_id, weekday=False)
+    if os.path.exists(weekend_path):
+        os.remove(weekend_path)
+        deleted_any = True
+
+    # Verwijder weekday archief (indien aanwezig)
+    weekday_path = get_archive_path_scoped(guild_id, channel_id, weekday=True)
+    if os.path.exists(weekday_path):
+        os.remove(weekday_path)
+        deleted_any = True
+
+    return deleted_any
