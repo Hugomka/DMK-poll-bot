@@ -3,6 +3,7 @@
 Tests voor poll_archive.py om coverage te verhogen van 52% naar 80%+
 """
 
+import os
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -74,44 +75,51 @@ class TestPollArchive(BaseTestCase):
         content = self._last_content(interaction.followup.send)
         assert "geen archief" in content.lower()
 
-    async def test_archief_success_with_view(self):
-        """Test dat archief tonen werkt met ArchiveView (nieuwe methode)"""
+    async def test_archief_success_with_view_weekend_only(self):
+        """Test dat archief tonen werkt met ArchiveView (alleen weekend archief)"""
         channel = MagicMock()
         channel.id = 123
         guild = MagicMock()
         guild.id = 456
         interaction = _mk_interaction(channel=channel, guild=guild)
 
-        csv_data = b"week,datum\n1,2024-01-01"
+        weekend_csv = b"week,datum_vrijdag,datum_zaterdag,datum_zondag\n1,2024-01-05,2024-01-06,2024-01-07"
 
         with patch(
             "apps.commands.poll_archive.archive_exists_scoped", return_value=True
         ), patch(
             "apps.commands.poll_archive.ArchiveView"
         ) as mock_view_class, patch(
-            "apps.commands.poll_archive.create_archive", return_value=csv_data
-        ):
+            "apps.commands.poll_archive.create_archive"
+        ) as mock_create_archive:
+            # Eerste call (check voor weekday) returnt None
+            # Tweede call (weekend data) returnt weekend_csv
+            mock_create_archive.side_effect = [weekend_csv, None]
+
             mock_view = MagicMock()
             mock_view.selected_delimiter = ","
             mock_view_class.return_value = mock_view
 
             await self._run(self.cog.archief, interaction)
 
-        # View moet zijn aangemaakt met juiste parameters
-        mock_view_class.assert_called_once_with(456, 123)
+        # View moet zijn aangemaakt met juiste parameters (weekday=False)
+        mock_view_class.assert_called_once_with(456, 123, weekday=False)
 
-        # Followup moet zijn aangeroepen met file en view
-        interaction.followup.send.assert_awaited_once()
+        # Followup moet 1x zijn aangeroepen (alleen weekend)
+        assert interaction.followup.send.await_count == 1
         args, kwargs = interaction.followup.send.call_args
 
-        # Check content bevat beschrijvende tekst
+        # Check content bevat weekend beschrijving
         content = kwargs.get("content", "")
-        assert "DMK Poll Archief" in content
-        assert "CSV-formaat" in content
-        assert "Verwijder archief" in content
+        assert "DMK Poll Archief - Weekend" in content
+        assert "vrijdag-zondag" in content
 
         # Check file parameter
         assert "file" in kwargs
+
+        # Check filename bevat _weekend
+        file_obj = kwargs["file"]
+        assert "_weekend.csv" in file_obj.filename
 
         # Check view parameter
         assert "view" in kwargs
@@ -119,6 +127,75 @@ class TestPollArchive(BaseTestCase):
 
         # Check ephemeral is True
         assert kwargs.get("ephemeral") is True
+
+    async def test_archief_success_with_view_weekend_and_weekday(self):
+        """Test dat archief tonen werkt met ArchiveView (weekend + weekday archieven)"""
+        channel = MagicMock()
+        channel.id = 123
+        guild = MagicMock()
+        guild.id = 456
+        interaction = _mk_interaction(channel=channel, guild=guild)
+
+        weekend_csv = b"week,datum_vrijdag,datum_zaterdag,datum_zondag\n1,2024-01-05,2024-01-06,2024-01-07"
+        weekday_csv = b"week,datum_maandag,datum_dinsdag,datum_woensdag,datum_donderdag\n1,2024-01-01,2024-01-02,2024-01-03,2024-01-04"
+
+        with patch(
+            "apps.commands.poll_archive.archive_exists_scoped", return_value=True
+        ), patch(
+            "apps.commands.poll_archive.ArchiveView"
+        ) as mock_view_class, patch(
+            "apps.commands.poll_archive.create_archive"
+        ) as mock_create_archive:
+            # Eerste call (weekend data): weekend_csv
+            # Tweede call (check weekday): weekday_csv (bestaat!)
+            # Derde call (weekday data): weekday_csv
+            mock_create_archive.side_effect = [weekend_csv, weekday_csv, weekday_csv]
+
+            mock_weekend_view = MagicMock()
+            mock_weekend_view.selected_delimiter = ","
+            mock_weekday_view = MagicMock()
+            mock_weekday_view.selected_delimiter = ","
+
+            # Eerste call: weekend view, tweede call: weekday view
+            mock_view_class.side_effect = [mock_weekend_view, mock_weekday_view]
+
+            await self._run(self.cog.archief, interaction)
+
+        # View moet 2x zijn aangemaakt (weekend + weekday)
+        assert mock_view_class.call_count == 2
+
+        # Check eerste call: weekend view
+        first_call = mock_view_class.call_args_list[0]
+        assert first_call[0] == (456, 123)  # guild_id, channel_id
+        assert first_call[1] == {"weekday": False}
+
+        # Check tweede call: weekday view
+        second_call = mock_view_class.call_args_list[1]
+        assert second_call[0] == (456, 123)
+        assert second_call[1] == {"weekday": True}
+
+        # Followup moet 2x zijn aangeroepen (weekend + weekday)
+        assert interaction.followup.send.await_count == 2
+
+        # Check eerste bericht (weekend)
+        _, first_send_kwargs = interaction.followup.send.call_args_list[0]
+        weekend_content = first_send_kwargs.get("content", "")
+        assert "DMK Poll Archief - Weekend" in weekend_content
+        assert "vrijdag-zondag" in weekend_content
+        assert "_weekend.csv" in first_send_kwargs["file"].filename
+        assert first_send_kwargs["view"] == mock_weekend_view
+
+        # Check tweede bericht (weekday)
+        _, second_send_kwargs = interaction.followup.send.call_args_list[1]
+        weekday_content = second_send_kwargs.get("content", "")
+        assert "DMK Poll Archief - Weekday" in weekday_content
+        assert "maandag-donderdag" in weekday_content
+        assert "_weekday.csv" in second_send_kwargs["file"].filename
+        assert second_send_kwargs["view"] == mock_weekday_view
+
+        # Beide berichten moeten ephemeral zijn
+        assert first_send_kwargs.get("ephemeral") is True
+        assert second_send_kwargs.get("ephemeral") is True
 
     async def test_archief_success_without_view(self):
         """Test dat archief tonen werkt zonder ArchiveView (fallback)"""
@@ -310,10 +387,25 @@ class TestArchiveView(BaseTestCase):
 
         assert view.guild_id == 123
         assert view.channel_id == 456
+        assert view.weekday is False  # Default
         assert view.selected_delimiter == ","  # Default
 
         # Check dat alle componenten zijn toegevoegd
         assert len(view.children) == 2  # SelectMenu, Delete button (geen Download button)
+
+    async def test_archive_view_initialization_with_weekday(self):
+        """Test dat ArchiveView correct wordt geïnitialiseerd met weekday=True"""
+        from apps.ui.archive_view import ArchiveView
+
+        view = ArchiveView(guild_id=123, channel_id=456, weekday=True)
+
+        assert view.guild_id == 123
+        assert view.channel_id == 456
+        assert view.weekday is True
+        assert view.selected_delimiter == ","  # Default
+
+        # Check dat alle componenten zijn toegevoegd
+        assert len(view.children) == 2  # SelectMenu, Delete button
 
     async def test_delimiter_select_menu_callback_updates_file(self):
         """Test dat delimiter selectie direct het CSV bestand update"""
@@ -394,6 +486,54 @@ class TestArchiveView(BaseTestCase):
         content = args[0] if args else ""
         assert "Kon archief niet genereren" in content
         assert kwargs["ephemeral"] is True
+
+    async def test_delimiter_select_menu_callback_weekday_archive(self):
+        """Test dat delimiter selectie werkt voor weekday archief"""
+        from unittest.mock import PropertyMock
+        from apps.ui.archive_view import ArchiveView, DelimiterSelectMenu
+
+        view = ArchiveView(guild_id=123, channel_id=456, weekday=True)
+        select_menu = None
+
+        # Vind de SelectMenu
+        for child in view.children:
+            if isinstance(child, DelimiterSelectMenu):
+                select_menu = child
+                break
+
+        assert select_menu is not None
+
+        # Mock interaction
+        interaction = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+
+        csv_data = b"week;datum_maandag\n1;2024-01-01"
+
+        # Roep callback aan met gemockte values
+        with patch("apps.ui.archive_view.create_archive", return_value=csv_data) as mock_create, \
+             patch.object(type(select_menu), "values", new_callable=PropertyMock, return_value=[";"]):
+            await select_menu.callback(interaction)
+
+        # Check dat create_archive aangeroepen is met weekday=True
+        mock_create.assert_called_once_with(123, 456, ";", True)
+
+        # Check dat delimiter is gewijzigd
+        assert view.selected_delimiter == ";"
+
+        # Check dat message is geüpdatet
+        interaction.response.edit_message.assert_awaited_once()
+        _, kwargs = interaction.response.edit_message.call_args
+
+        # Check content bevat weekday beschrijving
+        content = kwargs.get("content", "")
+        assert "DMK Poll Archief - Weekday" in content
+        assert "maandag-donderdag" in content
+
+        # Check filename bevat _weekday
+        assert "attachments" in kwargs
+        assert len(kwargs["attachments"]) == 1
+        file_obj = kwargs["attachments"][0]
+        assert "_weekday.csv" in file_obj.filename
 
 
 class TestArchiveWithNonVoters(BaseTestCase):
@@ -588,6 +728,221 @@ class TestArchiveWithNonVoters(BaseTestCase):
             # Cleanup
             if os.path.exists(csv_path):
                 os.remove(csv_path)
+
+
+class TestWeekdayArchive(BaseTestCase):
+    """Tests voor weekday archive functionaliteit (dual archive systeem)"""
+
+    async def test_weekday_archive_created_when_weekday_enabled(self):
+        """Test dat weekday archief wordt aangemaakt als weekday polls ingeschakeld zijn"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from datetime import datetime
+        import pytz
+        import csv
+
+        # Setup: enable maandag poll
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag", "vrijdag"]):
+            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+
+            await append_week_snapshot_scoped(
+                guild_id=123,
+                channel_id=456,
+                now=now,
+                channel=None
+            )
+
+            # Check dat weekend archief bestaat
+            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+            assert os.path.exists(weekend_path), "Weekend archief moet bestaan"
+
+            # Check dat weekday archief bestaat
+            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
+            assert os.path.exists(weekday_path), "Weekday archief moet bestaan"
+
+            # Verify weekday CSV structure
+            with open(weekday_path, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+
+            assert len(rows) == 2, "Weekday CSV moet header + 1 data rij hebben"
+
+            header = rows[0]
+            assert header[0] == "week"
+            assert header[1] == "datum_maandag"
+            assert header[2] == "datum_dinsdag"
+            assert header[3] == "datum_woensdag"
+            assert header[4] == "datum_donderdag"
+            assert "ma_19" in header
+            assert "di_19" in header
+            assert "wo_19" in header
+            assert "do_19" in header
+
+            # Cleanup
+            if os.path.exists(weekend_path):
+                os.remove(weekend_path)
+            if os.path.exists(weekday_path):
+                os.remove(weekday_path)
+
+    async def test_weekday_archive_not_created_when_weekday_disabled(self):
+        """Test dat weekday archief NIET wordt aangemaakt als alleen weekend polls ingeschakeld zijn"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from datetime import datetime
+        import pytz
+
+        # Setup: only weekend days enabled
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]):
+            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+
+            await append_week_snapshot_scoped(
+                guild_id=123,
+                channel_id=456,
+                now=now,
+                channel=None
+            )
+
+            # Check dat weekend archief bestaat
+            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+            assert os.path.exists(weekend_path), "Weekend archief moet bestaan"
+
+            # Check dat weekday archief NIET bestaat
+            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
+            assert not os.path.exists(weekday_path), "Weekday archief mag niet bestaan"
+
+            # Cleanup
+            if os.path.exists(weekend_path):
+                os.remove(weekend_path)
+
+    async def test_week_dates_weekdays_calculates_correct_dates(self):
+        """Test dat _week_dates_weekdays correct de maandag-donderdag datums berekent"""
+        from apps.utils.archive import _week_dates_weekdays
+        from datetime import datetime
+        import pytz
+
+        # Test: vrijdag 21 november → vorige maandag t/m donderdag (18-21 nov)
+        now = datetime(2025, 11, 21, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+        week, ma, di, wo, do = _week_dates_weekdays(now)
+
+        assert week == "2025-W47"
+        assert ma == "2025-11-17"  # Vorige maandag
+        assert di == "2025-11-18"
+        assert wo == "2025-11-19"
+        assert do == "2025-11-20"
+
+    async def test_week_dates_weekdays_on_monday_goes_back_week(self):
+        """Test dat op maandag zelf terug wordt gegaan naar vorige maandag"""
+        from apps.utils.archive import _week_dates_weekdays
+        from datetime import datetime
+        import pytz
+
+        # Test: maandag 17 november → vorige maandag (10 nov)
+        now = datetime(2025, 11, 17, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+        week, ma, di, wo, do = _week_dates_weekdays(now)
+
+        assert week == "2025-W46"
+        assert ma == "2025-11-10"  # Vorige week maandag
+        assert di == "2025-11-11"
+        assert wo == "2025-11-12"
+        assert do == "2025-11-13"
+
+    async def test_weekday_archive_path_has_suffix(self):
+        """Test dat weekday archief pad correct _weekdays suffix heeft"""
+        from apps.utils.archive import get_archive_path_scoped
+
+        weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+        weekday_path = get_archive_path_scoped(123, 456, weekday=True)
+
+        assert weekend_path.endswith("dmk_archive_123_456.csv")
+        assert weekday_path.endswith("dmk_archive_123_456_weekdays.csv")
+        assert weekend_path != weekday_path
+
+    async def test_weekday_archive_contains_all_four_days_data(self):
+        """Test dat weekday archief data voor alle 4 weekdagen bevat"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from apps.utils.poll_storage import toggle_vote
+        from datetime import datetime
+        import pytz
+        import csv
+
+        # Setup: vote for maandag
+        await toggle_vote("user1", "maandag", "om 19:00 uur", 123, 456)
+        await toggle_vote("user2", "dinsdag", "om 20:30 uur", 123, 456)
+        await toggle_vote("user3", "woensdag", "misschien", 123, 456)
+        await toggle_vote("user4", "donderdag", "niet meedoen", 123, 456)
+
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag", "dinsdag", "woensdag", "donderdag"]):
+            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+
+            await append_week_snapshot_scoped(
+                guild_id=123,
+                channel_id=456,
+                now=now,
+                channel=None
+            )
+
+            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
+
+            with open(weekday_path, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+
+            header = rows[0]
+            data_row = rows[1]
+
+            # Find column indices
+            ma_19_idx = header.index("ma_19")
+            di_2030_idx = header.index("di_2030")
+            wo_misschien_idx = header.index("wo_misschien")
+            do_niet_idx = header.index("do_niet")
+
+            # Verify data
+            assert data_row[ma_19_idx] == "1", "Maandag 19:00 moet 1 stem hebben"
+            assert data_row[di_2030_idx] == "1", "Dinsdag 20:30 moet 1 stem hebben"
+            assert data_row[wo_misschien_idx] == "1", "Woensdag misschien moet 1 stem hebben"
+            assert data_row[do_niet_idx] == "1", "Donderdag niet meedoen moet 1 stem hebben"
+
+            # Cleanup
+            if os.path.exists(weekday_path):
+                os.remove(weekday_path)
+            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+            if os.path.exists(weekend_path):
+                os.remove(weekend_path)
+
+    async def test_weekday_archive_updates_existing_week(self):
+        """Test dat weekday archief bestaande week update in plaats van nieuwe rij toe te voegen"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from datetime import datetime
+        import pytz
+        import csv
+
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag"]):
+            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+
+            # Eerste archivering
+            await append_week_snapshot_scoped(123, 456, now, None)
+
+            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
+
+            with open(weekday_path, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                rows_before = list(reader)
+
+            assert len(rows_before) == 2, "Moet header + 1 data rij hebben"
+
+            # Tweede archivering (zelfde week)
+            await append_week_snapshot_scoped(123, 456, now, None)
+
+            with open(weekday_path, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                rows_after = list(reader)
+
+            assert len(rows_after) == 2, "Moet nog steeds header + 1 data rij hebben (geen duplicate)"
+
+            # Cleanup
+            if os.path.exists(weekday_path):
+                os.remove(weekday_path)
+            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+            if os.path.exists(weekend_path):
+                os.remove(weekend_path)
 
 
 if __name__ == "__main__":

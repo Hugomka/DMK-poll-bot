@@ -66,7 +66,7 @@ class TestGetNextWeekdayDate(BaseTestCase):
         tuesday = datetime(2025, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         with patch("apps.utils.message_builder.datetime") as mock_dt:
             mock_dt.now.return_value = tuesday
-            result = _get_next_weekday_date("maandag")
+            result = _get_next_weekday_date("invaliddag")
             self.assertEqual(result, "")
 
     def test_get_next_weekday_date_case_insensitive(self):
@@ -79,6 +79,50 @@ class TestGetNextWeekdayDate(BaseTestCase):
             result_mixed = _get_next_weekday_date("Vrijdag")
             self.assertEqual(result_lower, result_upper)
             self.assertEqual(result_lower, result_mixed)
+
+    def test_get_next_weekday_date_for_monday_on_tuesday(self):
+        """Test dat maandag op dinsdag de aankomende maandag retourneert."""
+        # Dinsdag 5 november 2024, 14:00 (voor 20:00)
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Maandag in deze periode: 4 november
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("maandag")
+            self.assertEqual(result, "04-11")  # 4 november
+
+    def test_get_next_weekday_date_for_tuesday_on_tuesday(self):
+        """Test dat dinsdag op dinsdag de volgende dinsdag retourneert."""
+        # Dinsdag 5 november 2024, 14:00 (voor 20:00)
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Dinsdag in deze periode: 5 november
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("dinsdag")
+            self.assertEqual(result, "05-11")  # 5 november
+
+    def test_get_next_weekday_date_for_wednesday_on_tuesday(self):
+        """Test dat woensdag op dinsdag de aankomende woensdag retourneert."""
+        # Dinsdag 5 november 2024, 14:00
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Woensdag in deze periode: 6 november
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("woensdag")
+            self.assertEqual(result, "30-10")  # 30 oktober (van huidige periode)
+
+    def test_get_next_weekday_date_for_thursday_on_tuesday(self):
+        """Test dat donderdag op dinsdag de aankomende donderdag retourneert."""
+        # Dinsdag 5 november 2024, 14:00
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        # Donderdag in deze periode: 31 oktober
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+            result = _get_next_weekday_date("donderdag")
+            self.assertEqual(result, "31-10")  # 31 oktober
 
 
 class TestBuildPollMessageWithDates(BaseTestCase):
@@ -139,3 +183,31 @@ class TestBuildPollMessageWithDates(BaseTestCase):
             self.assertIn("Vrijdag (<t:", message)
             self.assertIn(":D>)", message)
             self.assertIn("Gepauzeerd", message)
+
+    async def test_build_message_shows_dates_for_all_weekdays(self):
+        """Test dat alle weekdagen (maandag t/m zondag) datums tonen in Hammertime format."""
+        # Dinsdag 5 november 2024, 14:00 (voor 20:00)
+        # Poll-periode: di 29 okt 20:00 - di 5 nov 20:00
+        tuesday = datetime(2024, 11, 5, 14, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+
+        with patch("apps.utils.message_builder.datetime") as mock_dt:
+            mock_dt.now.return_value = tuesday
+
+            # Test voor alle dagen dat ze Hammertime format gebruiken
+            dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+
+            for dag in dagen:
+                message = await build_poll_message_for_day_async(
+                    dag, guild_id=1, channel_id=100
+                )
+                # Check dat elke dag Hammertime format heeft
+                self.assertIn(
+                    f"{dag.capitalize()} (<t:",
+                    message,
+                    f"{dag} should show Hammertime format",
+                )
+                self.assertIn(
+                    ":D>)",
+                    message,
+                    f"{dag} should have Hammertime style D",
+                )

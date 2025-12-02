@@ -110,8 +110,14 @@ class TestPollButtonViewConstruction(BaseTestCase):
         ]
         votes = {"vrijdag": [], "zaterdag": []}
 
+        # Mock rolling window days met vrijdag en zaterdag als future days
+        mock_rolling_window = [
+            {"dag": "vrijdag", "datum_iso": "2024-12-06", "is_past": False, "is_today": False, "is_future": True},
+            {"dag": "zaterdag", "datum_iso": "2024-12-07", "is_past": False, "is_today": False, "is_future": True},
+        ]
+
         with patch(f"{MODULE}.get_poll_options", return_value=opties), patch(
-            f"{MODULE}.get_enabled_poll_days", return_value=["vrijdag", "zaterdag"]
+            "apps.utils.poll_settings.get_enabled_rolling_window_days", return_value=mock_rolling_window
         ), patch(f"{MODULE}.is_vote_button_visible", return_value=True), patch(
             f"{MODULE}.get_user_votes", new_callable=AsyncMock, return_value=votes
         ):

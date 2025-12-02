@@ -133,8 +133,9 @@ class TestMessageBuilder(BaseTestCase):
 
         with patch("apps.utils.message_builder.get_poll_options", return_value=options), \
              patch("apps.utils.message_builder.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}):
+            # Gebruik toekomstige datum zodat hide_counts=True wordt gerespecteerd
             txt = await mb.build_poll_message_for_day_async(
-                "vrijdag", guild_id=1, channel_id=2, hide_counts=True
+                "vrijdag", guild_id=1, channel_id=2, hide_counts=True, datum_iso="2025-12-05"
             )
             # Normale tijdslots worden wel getoond met Hammertime
             assert "🟢 Om <t:" in txt  # Hammertime voor 19:00
@@ -400,3 +401,154 @@ class TestMessageBuilder(BaseTestCase):
             )
             # Niet-stemmers worden altijd getoond, ook bij verborgen counts (motivatie!)
             assert "👻 Niet gestemd (1 personen)" in txt
+
+    async def test_build_message_past_date_shows_counts_despite_hide_setting(self):
+        """Verleden datum overschrijft hide_counts=True en toont altijd counts."""
+        options = [opt("maandag", "om 19:00 uur", "🟥")]
+        counts = {"om 19:00 uur": 5}
+
+        # Gebruik een datum ver in het verleden
+        past_date = "2024-01-01"
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch("apps.utils.message_builder.get_counts_for_day", return_value=counts), \
+           patch("apps.utils.poll_settings.get_poll_option_state", return_value=True):
+            txt = await mb.build_poll_message_for_day_async(
+                "maandag",
+                guild_id=1,
+                channel_id=2,
+                hide_counts=True,  # Verborgen, maar wordt overschreven voor verleden
+                datum_iso=past_date,
+            )
+            # Verleden datum moet counts tonen ondanks hide_counts=True
+            assert "(5 stemmen)" in txt
+            assert "(stemmen verborgen)" not in txt
+
+    async def test_build_message_invalid_datum_iso_falls_back_safely(self):
+        """Invalid datum_iso veroorzaakt exception die wordt afgevangen."""
+        options = [opt("vrijdag", "om 19:00 uur", "🔴")]
+        counts = {"om 19:00 uur": 3}
+
+        # Invalid datum_iso die parse error veroorzaakt
+        invalid_date = "invalid-date-format"
+
+        with patch(
+            "apps.utils.message_builder.get_poll_options", return_value=options
+        ), patch("apps.utils.message_builder.get_counts_for_day", return_value=counts):
+            txt = await mb.build_poll_message_for_day_async(
+                "vrijdag",
+                guild_id=1,
+                channel_id=2,
+                hide_counts=True,
+                datum_iso=invalid_date,
+            )
+            # Bij parse error: assume niet-verleden, dus counts verborgen
+            assert "(stemmen verborgen)" in txt
+
+    async def test_get_weekday_date_returns_from_rolling_window(self):
+        """_get_weekday_date_for_rolling_window gebruikt rolling window voor correcte datum."""
+        mock_window = [
+            {"dag": "vrijdag", "datum": datetime(2025, 12, 5)},
+            {"dag": "zaterdag", "datum": datetime(2025, 12, 6)},
+        ]
+
+        with patch(
+            "apps.utils.message_builder.get_rolling_window_days", return_value=mock_window
+        ):
+            result = mb._get_weekday_date_for_rolling_window("vrijdag", dag_als_vandaag=None)
+            assert result == "2025-12-05"
+
+    async def test_get_weekday_date_returns_empty_string_when_not_found(self):
+        """_get_weekday_date_for_rolling_window returnt lege string als dag niet in window."""
+        mock_window = [
+            {"dag": "zaterdag", "datum": datetime(2025, 12, 6)},
+        ]
+
+        with patch(
+            "apps.utils.message_builder.get_rolling_window_days", return_value=mock_window
+        ):
+            result = mb._get_weekday_date_for_rolling_window("maandag", dag_als_vandaag=None)
+            assert result == ""
+
+    async def test_get_non_voters_with_stored_ids_builds_display_names(self):
+        """get_non_voters_for_day haalt display names op voor niet-stemmers uit storage."""
+        # Mock members met verschillende name attributes
+        mock_member1 = SimpleNamespace(
+            id=123,
+            display_name="Alice",
+            global_name="AliceGlobal",
+            name="alice_user"
+        )
+        mock_member2 = SimpleNamespace(
+            id=456,
+            display_name=None,
+            global_name="BobGlobal",
+            name="bob_user"
+        )
+
+        def mock_get_member(member_id):
+            if member_id == 123:
+                return mock_member1
+            elif member_id == 456:
+                return mock_member2
+            return None
+
+        async def mock_fetch_member(member_id):
+            return mock_get_member(member_id)
+
+        mock_guild = SimpleNamespace(
+            id=1,
+            get_member=mock_get_member,
+            fetch_member=mock_fetch_member
+        )
+        mock_channel = SimpleNamespace(id=2, members=[])
+        all_votes = {}
+
+        # Mock get_non_voters_from_storage om 2 non-voter IDs te returnen
+        with patch(
+            "apps.utils.message_builder.get_non_voters_from_storage",
+            new=AsyncMock(return_value=(2, ["123", "456"]))
+        ):
+            count, text = await mb.get_non_voters_for_day(
+                "vrijdag",
+                cast(mb.discord.Guild, mock_guild),
+                mock_channel,
+                all_votes
+            )
+
+            assert count == 2
+            assert "@Alice" in text
+            assert "@BobGlobal" in text  # display_name is None, gebruikt global_name
+
+    async def test_get_non_voters_handles_member_fetch_exception(self):
+        """get_non_voters_for_day skip members die exception gooien bij fetch."""
+        def mock_get_member(_):
+            return None
+
+        async def mock_fetch_member(_):
+            raise RuntimeError("Member not found")
+
+        mock_guild = SimpleNamespace(
+            id=1,
+            get_member=mock_get_member,
+            fetch_member=mock_fetch_member
+        )
+        mock_channel = SimpleNamespace(id=2, members=[])
+        all_votes = {}
+
+        # Mock get_non_voters_from_storage om 2 non-voter IDs te returnen
+        with patch(
+            "apps.utils.message_builder.get_non_voters_from_storage",
+            new=AsyncMock(return_value=(2, ["123", "456"]))
+        ):
+            count, text = await mb.get_non_voters_for_day(
+                "vrijdag",
+                cast(mb.discord.Guild, mock_guild),
+                mock_channel,
+                all_votes
+            )
+
+            # Beide members gooien exception, dus 0 non-voters
+            assert count == 0
+            assert text == ""

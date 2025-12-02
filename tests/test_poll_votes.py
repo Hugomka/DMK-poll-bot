@@ -70,7 +70,7 @@ class TestPollVotesStemmen(BaseTestCase):
         assert "Geen kanaal" in content
 
     async def test_stemmen_zichtbaar_alle_dagen(self):
-        """Test dat stemmen zichtbaar maken werkt voor alle dagen"""
+        """Test dat stemmen zichtbaar maken werkt voor alle enabled dagen"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
@@ -78,13 +78,16 @@ class TestPollVotesStemmen(BaseTestCase):
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
-        ) as mock_update:
+        ) as mock_update, patch(
+            "apps.commands.poll_votes.get_enabled_poll_days",
+            return_value=["vrijdag", "zaterdag", "zondag"]
+        ):
             # Mock return value voor laatste dag (zondag)
             mock_set_visibility.return_value = {"modus": "altijd", "tijd": "18:00"}
 
             await self._run(self.cog.stemmen, interaction, actie, dag=None, tijd=None)
 
-        # Moet voor alle 3 dagen zijn aangeroepen
+        # Moet voor alle 3 enabled dagen zijn aangeroepen (default: weekend)
         assert mock_set_visibility.call_count == 3
         mock_set_visibility.assert_any_call(123, "vrijdag", modus="altijd", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "zaterdag", modus="altijd", tijd="18:00")
@@ -187,7 +190,7 @@ class TestPollVotesStemmen(BaseTestCase):
         assert "verborgen tot 18:00" in content.lower()
 
     async def test_stemmen_verborgen_alle_dagen_met_tijd(self):
-        """Test dat stemmen verbergen werkt voor alle dagen met opgegeven tijd"""
+        """Test dat stemmen verbergen werkt voor alle enabled dagen met opgegeven tijd"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
@@ -195,7 +198,10 @@ class TestPollVotesStemmen(BaseTestCase):
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
-        ) as mock_update:
+        ) as mock_update, patch(
+            "apps.commands.poll_votes.get_enabled_poll_days",
+            return_value=["vrijdag", "zaterdag", "zondag"]
+        ):
             # Mock return value voor laatste dag
             mock_set_visibility.return_value = {"modus": "deadline", "tijd": "20:00"}
 
@@ -203,7 +209,7 @@ class TestPollVotesStemmen(BaseTestCase):
                 self.cog.stemmen, interaction, actie, dag=None, tijd="20:00"
             )
 
-        # Moet voor alle 3 dagen zijn aangeroepen met custom tijd
+        # Moet voor alle 3 enabled dagen zijn aangeroepen met custom tijd (default: weekend)
         assert mock_set_visibility.call_count == 3
         mock_set_visibility.assert_any_call(123, "vrijdag", modus="deadline", tijd="20:00")
         mock_set_visibility.assert_any_call(123, "zaterdag", modus="deadline", tijd="20:00")
@@ -219,7 +225,7 @@ class TestPollVotesStemmen(BaseTestCase):
         assert "verborgen tot 20:00" in content.lower()
 
     async def test_stemmen_verborgen_alle_dagen_zonder_tijd(self):
-        """Test dat stemmen verbergen voor alle dagen fallback naar 18:00 gebruikt"""
+        """Test dat stemmen verbergen voor alle enabled dagen fallback naar 18:00 gebruikt"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel)
@@ -227,13 +233,16 @@ class TestPollVotesStemmen(BaseTestCase):
 
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_votes.get_enabled_poll_days",
+            return_value=["vrijdag", "zaterdag", "zondag"]
         ):
             # Mock return value voor laatste dag
             mock_set_visibility.return_value = {"modus": "deadline", "tijd": "18:00"}
 
             await self._run(self.cog.stemmen, interaction, actie, dag=None, tijd=None)
 
-        # Moet voor alle 3 dagen zijn aangeroepen met default tijd
+        # Moet voor alle 3 enabled dagen zijn aangeroepen met default tijd (default: weekend)
         assert mock_set_visibility.call_count == 3
         mock_set_visibility.assert_any_call(123, "vrijdag", modus="deadline", tijd="18:00")
         mock_set_visibility.assert_any_call(123, "zaterdag", modus="deadline", tijd="18:00")

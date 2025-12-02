@@ -13,19 +13,19 @@ from apps.ui.poll_options_settings import (
     PollOptionsSettingsView,
     create_poll_options_settings_embed,
 )
+from apps.utils.poll_settings import WEEK_DAYS
+from apps.utils.poll_storage import get_votes_for_option
 
 
 @app_commands.command(
     name="dmk-poll-instelling",
     description="⚙️ Open instellingen voor de poll (admin/moderator)",
 )
-@app_commands.describe(
-    instelling="Welke instelling wil je aanpassen?"
-)
+@app_commands.describe(instelling="Welke instelling wil je aanpassen?")
 @app_commands.choices(
     instelling=[
-        app_commands.Choice(name="📊 Poll-opties (vrijdag/zaterdag/zondag 19:00/20:30)", value="poll-opties"),
-        app_commands.Choice(name="🔔 Notificaties (reminders/donderdag/misschien)", value="notificaties"),
+        app_commands.Choice(name="📊 Poll-opties", value="poll-opties"),
+        app_commands.Choice(name="🔔 Notificaties", value="notificaties"),
     ]
 )
 @app_commands.default_permissions(moderate_members=True)
@@ -37,7 +37,7 @@ async def poll_instelling(
     Open instellingen paneel voor de poll.
 
     Opties:
-    - Poll-opties: Toggle vrijdag/zaterdag/zondag 19:00/20:30 aan/uit
+    - Poll-opties: Toggle maandag t/m zondag 19:00/20:30 aan/uit
     - Notificaties: Toggle reminders/donderdag/misschien aan/uit
     """
     await interaction.response.defer(ephemeral=True)
@@ -59,25 +59,40 @@ async def poll_instelling(
                 )
                 return
 
-            embed = create_poll_options_settings_embed()
-            view = PollOptionsSettingsView(channel_id, channel)
+            # Haal guild_id op
+            guild_id = interaction.guild_id
+            if not guild_id:
+                await interaction.followup.send(
+                    "❌ Kan guild ID niet bepalen.", ephemeral=True
+                )
+                return
 
-            await interaction.followup.send(
-                embed=embed,
-                view=view,
-                ephemeral=True
+            # Verzamel stemmen per optie (voor alle dagen en tijden)
+            votes_per_option: dict[str, int] = {}
+            for dag in WEEK_DAYS:
+                for tijd_key in ["om 19:00 uur", "om 20:30 uur"]:
+                    try:
+                        stemmen = await get_votes_for_option(
+                            dag, tijd_key, guild_id, channel_id
+                        )
+                        optie_key = f"{dag}_{tijd_key}"
+                        votes_per_option[optie_key] = stemmen
+                    except Exception:  # pragma: no cover
+                        votes_per_option[optie_key] = 0
+
+            embed = create_poll_options_settings_embed(channel_id)
+            view = PollOptionsSettingsView(
+                channel_id, channel, guild_id, votes_per_option
             )
+
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         elif instelling.value == "notificaties":
             # Open notificatie instellingen UI
             embed = create_notification_settings_embed()
             view = NotificationSettingsView(channel_id)
 
-            await interaction.followup.send(
-                embed=embed,
-                view=view,
-                ephemeral=True
-            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         else:
             await interaction.followup.send(

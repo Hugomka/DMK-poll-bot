@@ -18,20 +18,99 @@ from apps.utils.poll_storage import (
 from apps.utils.time_zone_helper import TimeZoneHelper
 
 
+def get_rolling_window_days(dag_als_vandaag: str | None = None) -> list[dict[str, Any]]:
+    """
+    Bereken rolling window van 7 dagen: 1 dag terug + vandaag + 5 dagen vooruit.
+
+    Args:
+        dag_als_vandaag: Optioneel, welke dag als "vandaag" beschouwen (bijv. "dinsdag").
+                        Als None, gebruik echte vandaag.
+
+    Returns:
+        List van dicts met keys: 'dag' (naam), 'datum' (datetime object), 'is_past', 'is_today', 'is_future'
+
+    Voorbeeld op maandag 1 december:
+        - 1 terug: zondag 30 nov
+        - vandaag: maandag 1 dec
+        - 5 vooruit: dinsdag 2 dec, woensdag 3 dec, donderdag 4 dec, vrijdag 5 dec, zaterdag 6 dec
+    """
+    from apps.utils.constants import DAG_MAPPING, DAG_NAMEN
+
+    tz = pytz.timezone("Europe/Amsterdam")
+    now = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Bepaal "vandaag" datum
+    if dag_als_vandaag:
+        target_weekday = DAG_MAPPING.get(dag_als_vandaag.lower())
+        if target_weekday is None:
+            # Fallback naar echte vandaag
+            today = now
+        else:
+            # Bereken de volgende occurrence van deze dag (of vandaag als het die dag is)
+            days_diff = (target_weekday - now.weekday()) % 7
+            if days_diff == 0:
+                # Vandaag is al die dag
+                today = now
+            else:
+                # Ga vooruit naar die dag
+                today = now + timedelta(days=days_diff)
+    else:
+        today = now
+
+    # Bereken window: -1 dag tot +5 dagen
+    window = []
+    for offset in range(-1, 6):  # -1, 0, 1, 2, 3, 4, 5
+        datum = today + timedelta(days=offset)
+        weekday = datum.weekday()
+        dag_naam = DAG_NAMEN[weekday]
+
+        window.append({
+            "dag": dag_naam,
+            "datum": datum,
+            "is_past": offset < 0,
+            "is_today": offset == 0,
+            "is_future": offset > 0,
+        })
+
+    return window
+
+
+def _get_weekday_date_for_rolling_window(dag: str, dag_als_vandaag: str | None = None) -> str:
+    """
+    Bereken datum voor een specifieke dag binnen de rolling window in YYYY-MM-DD formaat.
+
+    Args:
+        dag: De weekdag naam (bijv. "vrijdag")
+        dag_als_vandaag: Optioneel, welke dag als "vandaag" beschouwen
+
+    Returns:
+        ISO datum string (YYYY-MM-DD) of lege string bij fout
+    """
+    window = get_rolling_window_days(dag_als_vandaag)
+
+    for day_info in window:
+        if day_info["dag"] == dag.lower():
+            return day_info["datum"].strftime("%Y-%m-%d")
+
+    # Niet gevonden in window (zou niet moeten gebeuren)
+    return ""
+
+
 def _get_next_weekday_date(dag: str) -> str:
     """
-    Bereken datum voor vrijdag/zaterdag/zondag van de huidige poll-periode in DD-MM formaat.
+    Bereken datum voor elke dag van de week van de huidige poll-periode in DD-MM formaat.
 
     De poll-periode loopt van dinsdag 20:00 tot de volgende dinsdag 20:00.
     Datums blijven stabiel gedurende de hele periode en updaten alleen na dinsdag 20:00.
 
     Dit zorgt ervoor dat de datums consistent blijven, ongeacht bot-restarts of andere events.
     """
+    from apps.utils.constants import DAG_MAPPING
+
     tz = pytz.timezone("Europe/Amsterdam")
     now = datetime.now(tz)
 
-    dag_mapping = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
-    target_weekday = dag_mapping.get(dag.lower())
+    target_weekday = DAG_MAPPING.get(dag.lower())
     if target_weekday is None:
         return ""
 
@@ -59,15 +138,16 @@ def _get_next_weekday_date(dag: str) -> str:
 
 def _get_next_weekday_date_iso(dag: str) -> str:
     """
-    Bereken datum voor vrijdag/zaterdag/zondag van de huidige poll-periode in YYYY-MM-DD formaat.
+    Bereken datum voor elke dag van de week van de huidige poll-periode in YYYY-MM-DD formaat.
 
     Identiek aan _get_next_weekday_date, maar retourneert ISO formaat voor Hammertime conversie.
     """
+    from apps.utils.constants import DAG_MAPPING
+
     tz = pytz.timezone("Europe/Amsterdam")
     now = datetime.now(tz)
 
-    dag_mapping = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
-    target_weekday = dag_mapping.get(dag.lower())
+    target_weekday = DAG_MAPPING.get(dag.lower())
     if target_weekday is None:
         return ""
 
@@ -102,12 +182,13 @@ async def build_poll_message_for_day_async(
     pauze: bool = False,
     guild: discord.Guild | None = None,
     channel: Any = None,
+    datum_iso: str | None = None,
 ) -> str:
     """
     Bouwt de tekst van het pollbericht voor één dag, GESCOPED per guild+channel.
 
     Parameters:
-    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - dag: 'maandag' | 'dinsdag' | 'woensdag' | 'donderdag' | 'vrijdag' | 'zaterdag' | 'zondag'
     - guild_id: Discord guild ID (server)
     - channel_id: Discord channel ID (tekstkanaal)
     - hide_counts: verberg stemaantallen (True/False)
@@ -115,9 +196,20 @@ async def build_poll_message_for_day_async(
     - pauze: voeg marker toe in de titel
     - guild: optioneel, voor mentions in andere helpers
     - channel: optioneel, voor niet-stemmers tracking
+    - datum_iso: optioneel, YYYY-MM-DD datum (voor rolling window). Als None, gebruik oude logica.
     """
     # Genereer Hammertime voor de datum (18:00 = deadline tijd)
-    datum_iso = _get_next_weekday_date_iso(dag)
+    if datum_iso is None:
+        # Fallback: gebruik rolling window om correcte datum te krijgen
+        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
+        for day_info in dagen_info:
+            if day_info["dag"] == dag.lower():
+                datum_iso = day_info["datum"].strftime("%Y-%m-%d")
+                break
+        # Ultimate fallback als dag niet in rolling window (zou niet moeten gebeuren)
+        if datum_iso is None:
+            datum_iso = _get_next_weekday_date_iso(dag)
+
     datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
         datum_iso, "18:00", style="D"  # D = long date format (bijv. "28 november 2025")
     )
@@ -125,6 +217,24 @@ async def build_poll_message_for_day_async(
     if pauze:
         title += " **- _(Gepauzeerd)_**"
     message = f"{title}\n"
+
+    # Bepaal of deze dag in het verleden ligt
+    # Verleden dagen moeten ALTIJD counts tonen (negeer hide_counts parameter)
+    from datetime import date as date_class
+    try:
+        # Parse datum_iso als date object
+        year, month, day = datum_iso.split("-")
+        datum_date = date_class(int(year), int(month), int(day))
+        today = date_class.today()
+        is_past = datum_date < today
+    except (ValueError, AttributeError):
+        # Bij parse error: assume niet-verleden (safe default)
+        is_past = False
+
+    # Override hide_counts en hide_ghosts voor verleden dagen
+    # Verleden dagen tonen altijd counts én niet-stemmers
+    effective_hide_counts = False if is_past else hide_counts
+    effective_hide_ghosts = False if is_past else hide_ghosts
 
     # Filter opties voor deze dag
     all_opties = [o for o in get_poll_options() if o.dag == dag]
@@ -147,14 +257,24 @@ async def build_poll_message_for_day_async(
         return message
 
     # Aantallen per tijd (scoped), tenzij verborgen
-    counts = {} if hide_counts else await get_counts_for_day(dag, guild_id, channel_id)
+    # Voor verleden dagen: altijd counts ophalen (effective_hide_counts is False)
+    counts = {} if effective_hide_counts else await get_counts_for_day(dag, guild_id, channel_id)
 
     # Bepaal of we in deadline-modus zitten (voor misschien-filtering)
     setting = get_setting(int(channel_id), dag) or {}
     is_deadline_mode = isinstance(setting, dict) and setting.get("modus") == "deadline"
 
-    # Bereken datum voor Hammertime conversie
-    datum_iso = _get_next_weekday_date_iso(dag)
+    # Bereken datum voor Hammertime conversie (gebruik datum_iso parameter als beschikbaar)
+    # Als niet beschikbaar, haal op uit rolling window
+    if datum_iso is None:
+        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
+        for day_info in dagen_info:
+            if day_info["dag"] == dag.lower():
+                datum_iso = day_info["datum"].strftime("%Y-%m-%d")
+                break
+        # Ultimate fallback als dag niet in rolling window
+        if datum_iso is None:
+            datum_iso = _get_next_weekday_date_iso(dag)
 
     for opt in opties:
         # Filter "misschien" uit resultaten in deadline-modus:
@@ -178,14 +298,15 @@ async def build_poll_message_for_day_async(
             # Voor "misschien", "niet meedoen", etc.: geen Hammertime
             label = f"{opt.emoji} {opt.tijd.capitalize()}"
 
-        if hide_counts:
+        if effective_hide_counts:
             message += f"{label} (stemmen verborgen)\n"
         else:
             n = int(counts.get(opt.tijd, 0))
             message += f"{label} ({n} stemmen)\n"
 
     # Voeg niet-stemmers toe (tenzij verborgen via hide_ghosts)
-    if guild and channel and not hide_ghosts:
+    # Voor verleden dagen: altijd niet-stemmers tonen (effective_hide_ghosts is False)
+    if guild and channel and not effective_hide_ghosts:
         all_votes = await load_votes(guild_id, channel_id)
         non_voter_count, _ = await get_non_voters_for_day(
             dag, guild, channel, all_votes
@@ -372,7 +493,7 @@ async def build_doorgaan_participant_list(
                                 or getattr(member, "name", "Lid")
                             )
                             mention = getattr(member, "mention", None)
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         pass
 
                 participants.append(
@@ -384,7 +505,7 @@ async def build_doorgaan_participant_list(
                     }
                 )
 
-        except Exception:
+        except Exception:  # pragma: no cover
             # Onbekende of niet-parsbare id; negeren
             continue
 

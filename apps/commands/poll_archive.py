@@ -80,31 +80,55 @@ class PollArchive(commands.Cog):
                 )
                 return
 
-            # Toon CSV bestand met delimiter selectie
-            view = ArchiveView(gid, cid)
-            csv_data = create_archive(gid, cid, view.selected_delimiter)
+            # Genereer weekend archief (altijd aanwezig)
+            weekend_view = ArchiveView(gid, cid, weekday=False)
+            weekend_csv = create_archive(gid, cid, weekend_view.selected_delimiter, weekday=False)
 
-            if not csv_data:
+            if not weekend_csv:
                 await interaction.followup.send(
-                    "❌ Kon archief niet genereren.", ephemeral=True
+                    "❌ Kon weekend archief niet genereren.", ephemeral=True
                 )
                 return
 
-            # Beschrijvende tekst voor het bericht
-            message_content = (
-                "\n📊 **DMK Poll Archief**\n"
+            # Weekend bericht
+            weekend_content = (
+                "\n📊 **DMK Poll Archief - Weekend (vrijdag-zondag)**\n"
                 "Je kunt een **CSV-formaat** tussen NL en US kiezen en download het archiefbestand dat geschikt is voor je spreadsheet.\n\n"
                 "⚠️ **Let op**:\n"
                 "Op de 'Verwijder archief'-knop klikken verwijdert je het hele archief permanent."
             )
 
-            filename = f"dmk_archive_{gid}_{cid}.csv"
+            weekend_filename = f"dmk_archive_{gid}_{cid}_weekend.csv"
             await interaction.followup.send(
-                content=message_content,
-                file=File(io.BytesIO(csv_data), filename=filename),
-                view=view,
+                content=weekend_content,
+                file=File(io.BytesIO(weekend_csv), filename=weekend_filename),
+                view=weekend_view,
                 ephemeral=True,
             )
+
+            # Check of er ook weekday archief is
+            weekday_csv_check = create_archive(gid, cid, ",", weekday=True)
+
+            if weekday_csv_check:
+                # Weekday archief bestaat - stuur tweede bericht
+                weekday_view = ArchiveView(gid, cid, weekday=True)
+                weekday_csv = create_archive(gid, cid, weekday_view.selected_delimiter, weekday=True)
+
+                if weekday_csv:  # Type guard voor None check
+                    weekday_content = (
+                        "\n📊 **DMK Poll Archief - Weekday (maandag-donderdag)**\n"
+                        "Je kunt een **CSV-formaat** tussen NL en US kiezen en download het archiefbestand dat geschikt is voor je spreadsheet.\n\n"
+                        "⚠️ **Let op**:\n"
+                        "Op de 'Verwijder archief'-knop klikken verwijdert je het hele archief permanent."
+                    )
+
+                    weekday_filename = f"dmk_archive_{gid}_{cid}_weekday.csv"
+                    await interaction.followup.send(
+                        content=weekday_content,
+                        file=File(io.BytesIO(weekday_csv), filename=weekday_filename),
+                        view=weekday_view,
+                        ephemeral=True,
+                    )
         except Exception as e:  # pragma: no cover
             await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
 

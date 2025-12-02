@@ -68,12 +68,9 @@ def _get_next_weekday_date(dag: str) -> str:
     from datetime import timedelta
     import pytz
 
-    dag_mapping = {
-        "maandag": 0, "dinsdag": 1, "woensdag": 2, "donderdag": 3,
-        "vrijdag": 4, "zaterdag": 5, "zondag": 6
-    }
+    from apps.utils.constants import DAG_MAPPING
 
-    target_weekday = dag_mapping.get(dag.lower())
+    target_weekday = DAG_MAPPING.get(dag.lower())
     if target_weekday is None:
         raise ValueError(f"Ongeldige dag: {dag}")
 

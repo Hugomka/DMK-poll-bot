@@ -319,9 +319,13 @@ class TestNonVoterEdgeCases(unittest.IsolatedAsyncioTestCase):
         member1 = SimpleNamespace(id=100, bot=False)
         mock_channel = SimpleNamespace(members=[member1])
 
-        # Manually create a non-voter entry for all days
+        # Manually create a non-voter entry for all 7 days
         scoped = {
             "_non_voter::100": {
+                "maandag": ["niet gestemd"],
+                "dinsdag": ["niet gestemd"],
+                "woensdag": ["niet gestemd"],
+                "donderdag": ["niet gestemd"],
                 "vrijdag": ["niet gestemd"],
                 "zaterdag": ["niet gestemd"],
                 "zondag": ["niet gestemd"],
@@ -329,7 +333,11 @@ class TestNonVoterEdgeCases(unittest.IsolatedAsyncioTestCase):
         }
         await save_votes_scoped(1, 123, scoped)
 
-        # Member votes for all days
+        # Member votes for all 7 days
+        await toggle_vote("100", "maandag", "om 19:00 uur", 1, 123)
+        await toggle_vote("100", "dinsdag", "om 20:30 uur", 1, 123)
+        await toggle_vote("100", "woensdag", "om 19:00 uur", 1, 123)
+        await toggle_vote("100", "donderdag", "om 20:30 uur", 1, 123)
         await toggle_vote("100", "vrijdag", "om 19:00 uur", 1, 123)
         await toggle_vote("100", "zaterdag", "om 20:30 uur", 1, 123)
         await toggle_vote("100", "zondag", "om 19:00 uur", 1, 123)

@@ -540,7 +540,8 @@ class TestVerwijderberichtCommand(BaseTestCase):
         interaction = _mk_interaction(channel=channel, guild=MagicMock(), admin=True)
 
         # Expected message keys that should be cleared
-        expected_keys = ["opening", "vrijdag", "zaterdag", "zondag", "stemmen",
+        expected_keys = ["opening", "maandag", "dinsdag", "woensdag", "donderdag",
+                        "vrijdag", "zaterdag", "zondag", "stemmen",
                         "notification_temp", "notification_persistent", "notification",
                         "celebration"]
 

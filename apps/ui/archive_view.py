@@ -12,10 +12,11 @@ from apps.utils.archive import create_archive, delete_archive_scoped
 class ArchiveView(View):
     """View met dropdown voor CSV formaat selectie en delete knop."""
 
-    def __init__(self, guild_id: int | None = None, channel_id: int | None = None):
+    def __init__(self, guild_id: int | None = None, channel_id: int | None = None, weekday: bool = False):
         super().__init__(timeout=None)
         self.guild_id = guild_id
         self.channel_id = channel_id
+        self.weekday = weekday
         self.selected_delimiter = ","  # Default
 
         # Add SelectMenu (row 0)
@@ -65,6 +66,7 @@ class DelimiterSelectMenu(Select):
             self.parent_view.guild_id,
             self.parent_view.channel_id,
             self.parent_view.selected_delimiter,
+            self.parent_view.weekday,
         )
 
         if not csv_data:
@@ -76,14 +78,16 @@ class DelimiterSelectMenu(Select):
         # Genereer bestandsnaam
         guild_id = self.parent_view.guild_id or 0
         channel_id = self.parent_view.channel_id or 0
-        filename = f"dmk_archive_{guild_id}_{channel_id}.csv"
+        archive_type = "weekday" if self.parent_view.weekday else "weekend"
+        filename = f"dmk_archive_{guild_id}_{channel_id}_{archive_type}.csv"
 
         # Behoud de originele tekst van het bericht
+        day_range = "maandag-donderdag" if self.parent_view.weekday else "vrijdag-zondag"
         message_content = (
-            "\n📊 **DMK Poll Archief**\n"
+            f"\n📊 **DMK Poll Archief - {'Weekday' if self.parent_view.weekday else 'Weekend'} ({day_range})**\n"
             "Je kunt een **CSV-formaat** tussen NL en US kiezen en download het archiefbestand dat geschikt is voor je spreadsheet.\n\n"
             "⚠️ **Let op**:\n"
-            "Op de verwijder-knop klikken verwijdert je het hele archief permanent."
+            "Op de 'Verwijder archief'-knop klikken verwijdert je het hele archief permanent."
         )
 
         # Update bericht met nieuw CSV bestand

@@ -4,12 +4,14 @@
 Tests for schedule field display in /dmk-poll-status command.
 """
 
+import os
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from apps.commands.poll_status import PollStatus
+from apps.utils import poll_settings
 from apps.utils.poll_settings import (
-    reset_settings,
     set_default_activation,
     set_default_deactivation,
     set_scheduled_activation,
@@ -21,12 +23,29 @@ class TestStatusScheduleField(unittest.IsolatedAsyncioTestCase):
     """Test that /dmk-poll-status shows schedule fields correctly with default labels."""
 
     def setUp(self):
-        """Reset settings before each test."""
-        reset_settings()
+        """Reset settings before each test using temp file."""
+        # Create temp file for this test
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json", encoding="utf-8"
+        )
+        self.temp_file.close()
+        self.temp_settings_path = self.temp_file.name
+
+        # Patch SETTINGS_FILE to use temp file
+        self.original_settings_file = poll_settings.SETTINGS_FILE
+        poll_settings.SETTINGS_FILE = self.temp_settings_path
 
     def tearDown(self):
         """Clean up after each test."""
-        reset_settings()
+        # Restore original settings file
+        poll_settings.SETTINGS_FILE = self.original_settings_file
+
+        # Remove temp file
+        try:
+            if os.path.exists(self.temp_settings_path):
+                os.remove(self.temp_settings_path)
+        except Exception:
+            pass
 
     async def test_status_shows_geen_when_no_schedules(self):
         """Test that status shows 'Geen' when no schedules are set."""

@@ -376,9 +376,13 @@ class TestStatusCommand(BaseTestCase):
 
     async def test_status_geen_schedules(self):
         """Test dat 'Geen' wordt getoond als er geen schedules zijn"""
+        from apps.utils.poll_settings import set_default_activation, set_default_deactivation
+
         kanaal_id = 654321
 
-        # Geen schedules instellen - gewoon een leeg kanaal
+        # Clear any seeded defaults
+        set_default_activation(None)
+        set_default_deactivation(None)
 
         # Maak nep-interaction
         mock_guild = MagicMock()
@@ -433,6 +437,395 @@ class TestStatusCommand(BaseTestCase):
         assert deactivatie_field is not None  # Type narrowing for Pylance
         self.assertEqual(str(activatie_field.value), "Geen")
         self.assertEqual(str(deactivatie_field.value), "Geen")
+
+    async def test_status_only_shows_enabled_days(self):
+        """Test dat status alleen enabled dagen toont op basis van poll-opties instelling"""
+        from apps.utils.poll_settings import set_poll_option_state
+        from apps.entities.poll_option import get_poll_options
+
+        kanaal_id = 789012
+
+        # Stel alle opties in op disabled, behalve vrijdag, zaterdag en zondag
+        for opt in get_poll_options():
+            if opt.dag in ["vrijdag", "zaterdag", "zondag"]:
+                set_poll_option_state(kanaal_id, opt.dag, opt.tijd, True)
+            else:
+                set_poll_option_state(kanaal_id, opt.dag, opt.tijd, False)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # ⏯️ Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # 🔍 Controleer dat een embed is gestuurd
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        # Verzamel alle field namen
+        field_names = [str(field.name) for field in embed.fields]
+
+        # Controleer dat alleen de enabled dagen aanwezig zijn
+        self.assertTrue(
+            any("Vrijdag" in name for name in field_names),
+            "Vrijdag should be shown (enabled)",
+        )
+        self.assertTrue(
+            any("Zaterdag" in name for name in field_names),
+            "Zaterdag should be shown (enabled)",
+        )
+        self.assertTrue(
+            any("Zondag" in name for name in field_names),
+            "Zondag should be shown (enabled)",
+        )
+
+        # Controleer dat de disabled dagen NIET aanwezig zijn
+        self.assertFalse(
+            any("Maandag" in name for name in field_names),
+            "Maandag should NOT be shown (disabled)",
+        )
+        self.assertFalse(
+            any("Dinsdag" in name for name in field_names),
+            "Dinsdag should NOT be shown (disabled)",
+        )
+        self.assertFalse(
+            any("Woensdag" in name for name in field_names),
+            "Woensdag should NOT be shown (disabled)",
+        )
+        self.assertFalse(
+            any("Donderdag" in name for name in field_names),
+            "Donderdag should NOT be shown (disabled)",
+        )
+
+    async def test_status_shows_all_days_when_all_enabled(self):
+        """Test dat status alle 7 dagen toont als ze allemaal enabled zijn"""
+        from apps.utils.poll_settings import set_poll_option_state
+        from apps.entities.poll_option import get_poll_options
+
+        kanaal_id = 890123
+
+        # Stel alle opties in als enabled
+        for opt in get_poll_options():
+            set_poll_option_state(kanaal_id, opt.dag, opt.tijd, True)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # ⏯️ Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # 🔍 Controleer dat een embed is gestuurd
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        # Verzamel alle field namen
+        field_names = [str(field.name) for field in embed.fields]
+
+        # Controleer dat alle 7 dagen aanwezig zijn
+        all_days = [
+            "Maandag",
+            "Dinsdag",
+            "Woensdag",
+            "Donderdag",
+            "Vrijdag",
+            "Zaterdag",
+            "Zondag",
+        ]
+        for dag in all_days:
+            self.assertTrue(
+                any(dag.lower() in name.lower() for name in field_names),
+                f"{dag} should be shown (enabled). Found fields: {field_names}",
+            )
+
+    async def test_status_shows_only_weekdays_when_enabled(self):
+        """Test dat status alleen weekdagen toont als alleen die zijn enabled"""
+        from apps.utils.poll_settings import set_poll_option_state
+        from apps.entities.poll_option import get_poll_options
+
+        kanaal_id = 901234
+
+        # Stel alleen weekdagen in als enabled
+        for opt in get_poll_options():
+            if opt.dag in ["maandag", "dinsdag", "woensdag", "donderdag"]:
+                set_poll_option_state(kanaal_id, opt.dag, opt.tijd, True)
+            else:
+                set_poll_option_state(kanaal_id, opt.dag, opt.tijd, False)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # ⏯️ Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # 🔍 Controleer dat een embed is gestuurd
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        # Verzamel alle field namen
+        field_names = [str(field.name) for field in embed.fields]
+
+        # Controleer dat alleen de weekdagen aanwezig zijn
+        self.assertTrue(
+            any("Maandag" in name for name in field_names),
+            "Maandag should be shown (enabled)",
+        )
+        self.assertTrue(
+            any("Dinsdag" in name for name in field_names),
+            "Dinsdag should be shown (enabled)",
+        )
+        self.assertTrue(
+            any("Woensdag" in name for name in field_names),
+            "Woensdag should be shown (enabled)",
+        )
+        self.assertTrue(
+            any("Donderdag" in name for name in field_names),
+            "Donderdag should be shown (enabled)",
+        )
+
+        # Controleer dat weekend dagen NIET aanwezig zijn
+        self.assertFalse(
+            any("Vrijdag" in name for name in field_names),
+            "Vrijdag should NOT be shown (disabled)",
+        )
+        self.assertFalse(
+            any("Zaterdag" in name for name in field_names),
+            "Zaterdag should NOT be shown (disabled)",
+        )
+        self.assertFalse(
+            any("Zondag" in name for name in field_names),
+            "Zondag should NOT be shown (disabled)",
+        )
+
+
+    async def test_status_shows_day_with_only_1900_enabled(self):
+        """Test dat een dag wordt getoond als alleen 19:00 enabled is"""
+        from apps.utils.poll_settings import set_poll_option_state
+
+        kanaal_id = 111222
+
+        # Stel vrijdag in: alleen 19:00 enabled, 20:30 disabled
+        set_poll_option_state(kanaal_id, "vrijdag", "om 19:00 uur", True)
+        set_poll_option_state(kanaal_id, "vrijdag", "om 20:30 uur", False)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # Controleer dat vrijdag wordt getoond
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        field_names = [str(field.name) for field in embed.fields]
+        self.assertTrue(
+            any("vrijdag" in name.lower() for name in field_names),
+            "Vrijdag should be shown when only 19:00 is enabled",
+        )
+
+    async def test_status_shows_day_with_only_2030_enabled(self):
+        """Test dat een dag wordt getoond als alleen 20:30 enabled is"""
+        from apps.utils.poll_settings import set_poll_option_state
+
+        kanaal_id = 222333
+
+        # Stel zaterdag in: 19:00 disabled, alleen 20:30 enabled
+        set_poll_option_state(kanaal_id, "zaterdag", "om 19:00 uur", False)
+        set_poll_option_state(kanaal_id, "zaterdag", "om 20:30 uur", True)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # Controleer dat zaterdag wordt getoond
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        field_names = [str(field.name) for field in embed.fields]
+        self.assertTrue(
+            any("zaterdag" in name.lower() for name in field_names),
+            "Zaterdag should be shown when only 20:30 is enabled",
+        )
+
+    async def test_status_hides_day_with_both_times_disabled(self):
+        """Test dat een dag NIET wordt getoond als beide tijden disabled zijn"""
+        from apps.utils.poll_settings import set_poll_option_state
+
+        kanaal_id = 333444
+
+        # Stel zondag in: beide tijden disabled
+        set_poll_option_state(kanaal_id, "zondag", "om 19:00 uur", False)
+        set_poll_option_state(kanaal_id, "zondag", "om 20:30 uur", False)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # Controleer dat zondag NIET wordt getoond
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        field_names = [str(field.name) for field in embed.fields]
+        self.assertFalse(
+            any("zondag" in name.lower() for name in field_names),
+            "Zondag should NOT be shown when both times are disabled",
+        )
+
+    async def test_status_shows_day_with_both_times_enabled(self):
+        """Test dat een dag wordt getoond als beide tijden enabled zijn"""
+        from apps.utils.poll_settings import set_poll_option_state
+
+        kanaal_id = 444555
+
+        # Stel vrijdag in: beide tijden enabled
+        set_poll_option_state(kanaal_id, "vrijdag", "om 19:00 uur", True)
+        set_poll_option_state(kanaal_id, "vrijdag", "om 20:30 uur", True)
+
+        # Maak nep-interaction
+        mock_guild = MagicMock()
+        mock_guild.id = kanaal_id
+
+        mock_channel = MagicMock()
+        mock_channel.id = kanaal_id
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
+
+        mock_user = MagicMock()
+        mock_user.guild_permissions.administrator = True
+
+        interaction = MagicMock()
+        interaction.guild = mock_guild
+        interaction.channel = mock_channel
+        interaction.user = mock_user
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+
+        # Aanroepen van status
+        await self.cog._status_impl(interaction)
+
+        # Controleer dat vrijdag wordt getoond
+        interaction.followup.send.assert_called()
+        kwargs = interaction.followup.send.call_args[1]
+        embed = kwargs.get("embed")
+        self.assertIsNotNone(embed)
+
+        field_names = [str(field.name) for field in embed.fields]
+        self.assertTrue(
+            any("vrijdag" in name.lower() for name in field_names),
+            "Vrijdag should be shown when both times are enabled",
+        )
 
 
 class TestNotifyCommandEdgeCases(BaseTestCase):

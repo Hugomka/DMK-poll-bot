@@ -15,20 +15,8 @@ from discord.ext import commands
 from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.celebration_gif import get_celebration_gif_url
+from apps.utils.constants import DAG_NAMEN
 from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
-from apps.utils.poll_message import (
-    LOCAL_CELEBRATION_IMAGE,
-    create_celebration_embed,
-    is_channel_disabled,
-)
-from apps.utils.poll_settings import (
-    WEEKEND_DAYS,
-    get_setting,
-    is_paused,
-    get_effective_activation,
-    get_effective_deactivation,
-)
-from apps.utils.poll_storage import get_was_misschien_count, load_votes
 from apps.utils.notification_texts import (
     NOTIFICATION_TEXTS,
     format_opening_time_from_schedule,
@@ -36,6 +24,18 @@ from apps.utils.notification_texts import (
     get_text_herinnering_dag,
     get_text_poll_gesloten,
 )
+from apps.utils.poll_message import (
+    LOCAL_CELEBRATION_IMAGE,
+    create_celebration_embed,
+    is_channel_disabled,
+)
+from apps.utils.poll_settings import (
+    get_effective_activation,
+    get_effective_deactivation,
+    get_setting,
+    is_paused,
+)
+from apps.utils.poll_storage import get_was_misschien_count, load_votes
 
 
 def _is_denied_channel(channel) -> bool:
@@ -61,7 +61,9 @@ class PollStatus(commands.Cog):
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.command(
         name="dmk-poll-status",
-        description=with_default_suffix("Toon pauze, zichtbaarheid en alle stemmen per dag"),
+        description=with_default_suffix(
+            "Toon pauze, zichtbaarheid en alle stemmen per dag"
+        ),
     )
     async def status(self, interaction: discord.Interaction) -> None:
         # Alleen defer hier, de echte logica staat in _status_impl
@@ -95,9 +97,6 @@ class PollStatus(commands.Cog):
             if not schedule:
                 return "Geen"
 
-            day_names = ["maandag", "dinsdag", "woensdag", "donderdag",
-                        "vrijdag", "zaterdag", "zondag"]
-
             typ = schedule.get("type")
             tijd = schedule.get("tijd", "??:??")
 
@@ -107,7 +106,7 @@ class PollStatus(commands.Cog):
                     # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
                     datum_obj = datetime.strptime(datum, "%Y-%m-%d")
                     datum_display = datum_obj.strftime("%d-%m-%Y")
-                    dag_naam = day_names[datum_obj.weekday()]
+                    dag_naam = DAG_NAMEN[datum_obj.weekday()]
                     result = f"{dag_naam} {datum_display} om {tijd}"
                 except Exception:  # pragma: no cover
                     result = f"{datum} om {tijd}"
@@ -151,7 +150,16 @@ class PollStatus(commands.Cog):
             # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
 
-            for dag in WEEKEND_DAYS:
+            # Gebruik rolling window voor chronologische volgorde met datums
+            from apps.utils.poll_settings import get_enabled_rolling_window_days
+            from apps.utils.time_zone_helper import TimeZoneHelper
+
+            # Gebruik altijd de huidige dag (niet opgeslagen waarde)
+            dagen_info = get_enabled_rolling_window_days(cid_val, dag_als_vandaag=None)
+
+            for day_info in dagen_info:
+                dag = day_info["dag"]
+                datum_iso = day_info["datum_iso"]
                 instelling = get_setting(cid_val, dag)
                 zicht_txt = (
                     "altijd zichtbaar"
@@ -175,7 +183,9 @@ class PollStatus(commands.Cog):
 
                     # Insert was_misschien after misschien option
                     if opt.tijd == "misschien":
-                        was_misschien = await get_was_misschien_count(dag, gid_val, cid_val)
+                        was_misschien = await get_was_misschien_count(
+                            dag, gid_val, cid_val
+                        )
                         regel = f"💤 was misschien — **{was_misschien}** stemmen"
                         regels.append(regel)
 
@@ -189,8 +199,14 @@ class PollStatus(commands.Cog):
                 regels.append(regel)
 
                 value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
+
+                # Voeg datum toe in Hammertime format (D = long date)
+                datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+                    datum_iso, "18:00", style="D"
+                )
+
                 embed.add_field(
-                    name=f"{dag.capitalize()} ({zicht_txt})",
+                    name=f"{dag.capitalize()} ({datum_hammertime}) — {zicht_txt}",
                     value=value,
                     inline=False,
                 )
@@ -198,7 +214,7 @@ class PollStatus(commands.Cog):
             await interaction.followup.send(
                 embed=embed,
                 ephemeral=True,
-                allowed_mentions=discord.AllowedMentions.none()
+                allowed_mentions=discord.AllowedMentions.none(),
             )
 
         except Exception as e:  # pragma: no cover
@@ -216,7 +232,7 @@ class PollStatus(commands.Cog):
     @app_commands.describe(
         notificatie="Kies een standaard notificatietekst.",
         eigen_tekst="Optioneel: eigen notificatietekst (overschrijft standaard keuze).",
-        ping="Kies welke ping te gebruiken (default: everyone)."
+        ping="Kies welke ping te gebruiken (default: everyone).",
     )
     @app_commands.choices(
         notificatie=[
@@ -226,8 +242,8 @@ class PollStatus(commands.Cog):
         ping=[
             app_commands.Choice(name="everyone", value="everyone"),
             app_commands.Choice(name="here", value="here"),
-            app_commands.Choice(name="none", value="none")
-        ]
+            app_commands.Choice(name="none", value="none"),
+        ],
     )
     async def notify_fallback(
         self,
@@ -254,22 +270,29 @@ class PollStatus(commands.Cog):
                 send = getattr(channel, "send", None)
                 if send:
                     from apps.utils.discord_client import safe_call
+
                     await safe_call(send, content=sluitingsbericht)
 
                 await interaction.followup.send(
-                    f"Sluitingsbericht verstuurd (poll gaat open: **{opening_time}**).", ephemeral=True
+                    f"Sluitingsbericht verstuurd (poll gaat open: **{opening_time}**).",
+                    ephemeral=True,
                 )
             except Exception as e:  # pragma: no cover
-                await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+                await interaction.followup.send(
+                    f"❌ Er ging iets mis: {e}", ephemeral=True
+                )
             return
 
         # 2) Kanaal is denied → stil terug
         if _is_denied_channel(channel):
-            await interaction.followup.send("❌ Dit kanaal is uitgesloten van notificaties.", ephemeral=True)
+            await interaction.followup.send(
+                "❌ Dit kanaal is uitgesloten van notificaties.", ephemeral=True
+            )
             return
 
         # 3) Zet scheduler aan (enable channel voor scheduler)
         from apps.utils.poll_message import set_channel_disabled
+
         set_channel_disabled(cid, False)
 
         # 4) Bepaal de te versturen tekst
@@ -299,12 +322,13 @@ class PollStatus(commands.Cog):
                     if notif:
                         notification_text = notif.content
                     else:
-                        await interaction.followup.send("❌ Onbekende notificatie geselecteerd.", ephemeral=True)
+                        await interaction.followup.send(
+                            "❌ Onbekende notificatie geselecteerd.", ephemeral=True
+                        )
                         return
             else:
                 await interaction.followup.send(
-                    "❌ Geef een notificatie of eigen tekst op.",
-                    ephemeral=True
+                    "❌ Geef een notificatie of eigen tekst op.", ephemeral=True
                 )
                 return
 
@@ -373,12 +397,15 @@ class PollStatus(commands.Cog):
                 else:  # everyone (default)
                     mention_str = "@everyone"
 
-                await send_temporary_mention(channel, mentions=mention_str, text=notification_text)
+                await send_temporary_mention(
+                    channel, mentions=mention_str, text=notification_text
+                )
 
             # Include ping type in confirmation message
             ping_info = f" (ping: {ping})" if ping != "everyone" else ""
             await interaction.followup.send(
-                f"✅ Notificatie verstuurd: **{notification_name}**{ping_info}", ephemeral=True
+                f"✅ Notificatie verstuurd: **{notification_name}**{ping_info}",
+                ephemeral=True,
             )
 
         except Exception as e:  # pragma: no cover

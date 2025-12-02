@@ -674,8 +674,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
 
 async def update_all_polls(bot) -> None:  # pragma: no cover
     """
-    Update per kanaal de poll-berichten (vrijdag, zaterdag, zondag) als er al polls zijn.
-    Deze functie blijft ongewijzigd.
+    Update per kanaal de poll-berichten binnen rolling window en verwijder oude berichten.
     """
     log_job("update_all_polls", status="executed")
     tasks: List[asyncio.Task] = []
@@ -719,7 +718,28 @@ async def update_all_polls(bot) -> None:  # pragma: no cover
             if allow_from_per_channel_only and not has_poll:
                 continue
 
-            for dag in get_enabled_poll_days(cid):
+            # Gebruik rolling window logica (altijd huidige dag)
+            from apps.utils.poll_settings import get_enabled_rolling_window_days
+
+            dagen_info = get_enabled_rolling_window_days(cid, dag_als_vandaag=None)
+
+            # Verwijder oude dag-berichten die niet meer in de rolling window zitten
+            from apps.utils.constants import DAG_NAMEN
+            from apps.utils.discord_client import fetch_message_or_none, safe_call
+
+            enabled_dagen_set = {day_info["dag"] for day_info in dagen_info}
+            for dag_naam in DAG_NAMEN:
+                if dag_naam not in enabled_dagen_set:
+                    mid = get_message_id(cid, dag_naam)
+                    if mid:
+                        msg = await fetch_message_or_none(channel, mid)
+                        if msg is not None:
+                            await safe_call(msg.delete)
+                        clear_message_id(cid, dag_naam)
+
+            # Update poll-berichten voor dagen in rolling window
+            for day_info in dagen_info:
+                dag = day_info["dag"]
                 tasks.append(schedule_poll_update(channel, dag, delay=0.0))
 
     if tasks:
@@ -937,7 +957,18 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
                 winnaar_key = KEY_19
 
             # Bereken datum en converteer naar Hammertime
-            datum_iso = _get_next_weekday_date_iso(dag)
+            # Gebruik rolling window om correcte datum te krijgen
+            from apps.utils.poll_settings import get_enabled_rolling_window_days
+            dagen_info = get_enabled_rolling_window_days(cid, dag_als_vandaag=None)
+            datum_iso = None
+            for day_info in dagen_info:
+                if day_info["dag"] == dag.lower():
+                    datum_iso = day_info["datum_iso"]
+                    break
+            # Ultimate fallback als dag niet in rolling window
+            if datum_iso is None:
+                datum_iso = _get_next_weekday_date_iso(dag)
+
             winnaar_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
                 datum_iso, winnaar_tijd_str, style="t"
             )
@@ -1031,6 +1062,9 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
                 except Exception:  # pragma: no cover
                     pass
 
+            # NIET: dag_als_vandaag opslaan in state
+            # We gebruiken altijd de huidige dag bij updates (berekend on-the-fly)
+
             # Wis celebration message
             try:
                 from apps.utils.poll_message import remove_celebration_message
@@ -1039,8 +1073,9 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
             except Exception:  # pragma: no cover
                 pass
 
-            # Wis bekende message IDs
-            for key in ["vrijdag", "zaterdag", "zondag", "stemmen"]:
+            # Wis bekende message IDs (alle weekdagen + stemmen)
+            from apps.utils.constants import DAG_NAMEN
+            for key in [*DAG_NAMEN, "stemmen"]:
                 try:
                     clear_message_id(cid, key)
                 except Exception:  # pragma: no cover
