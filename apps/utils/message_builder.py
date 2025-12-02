@@ -493,7 +493,7 @@ async def build_doorgaan_participant_list(
                                 or getattr(member, "name", "Lid")
                             )
                             mention = getattr(member, "mention", None)
-                    except Exception:
+                    except Exception:  # pragma: no cover
                         pass
 
                 participants.append(
@@ -505,7 +505,7 @@ async def build_doorgaan_participant_list(
                     }
                 )
 
-        except Exception:
+        except Exception:  # pragma: no cover
             # Onbekende of niet-parsbare id; negeren
             continue
 
