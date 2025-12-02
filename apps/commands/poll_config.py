@@ -80,7 +80,7 @@ async def poll_instelling(
                     except Exception:  # pragma: no cover
                         votes_per_option[optie_key] = 0
 
-            embed = create_poll_options_settings_embed()
+            embed = create_poll_options_settings_embed(channel_id)
             view = PollOptionsSettingsView(
                 channel_id, channel, guild_id, votes_per_option
             )

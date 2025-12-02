@@ -258,11 +258,21 @@ class PollLifecycle(commands.Cog):
         except Exception as e:
             print(f"⚠️ Kon bot-berichten niet verwijderen: {e}")
 
-        # Stap 2.5: Sla dag_als_vandaag op voor dit kanaal (voor consistentie met status)
-        set_dag_als_vandaag(channel.id, dag_als_vandaag)
+        # Stap 2.5: Bepaal welke dag als "vandaag" te gebruiken
+        # Als dag_als_vandaag None is, gebruik echte huidige dag (zodat rolling window correct werkt)
+        if dag_als_vandaag is None:
+            from apps.utils.constants import DAG_NAMEN
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+            effective_dag_als_vandaag = DAG_NAMEN[now.weekday()]
+        else:
+            effective_dag_als_vandaag = dag_als_vandaag
+
+        # NIET opslaan in state - we gebruiken altijd de huidige dag bij updates
 
         # Stap 3: Plaats de polls (handmatige activatie zonder scheduling)
-        await self._plaats_polls(interaction, channel, schedule_message=None, dag_als_vandaag=dag_als_vandaag)
+        await self._plaats_polls(interaction, channel, schedule_message=None, dag_als_vandaag=effective_dag_als_vandaag)
 
     async def _toon_opschoon_bevestiging(  # pragma: no cover
         self,
@@ -467,6 +477,19 @@ class PollLifecycle(commands.Cog):
                 )
                 if opening_msg is not None:
                     save_message_id(channel.id, "opening", opening_msg.id)
+
+            # Verwijder oude dag-berichten die niet meer in de rolling window zitten
+            from apps.utils.constants import DAG_NAMEN
+            enabled_dagen_set = {day_info["dag"] for day_info in dagen_info}
+            for dag_naam in DAG_NAMEN:
+                if dag_naam not in enabled_dagen_set:
+                    # Deze dag zit niet meer in de rolling window - verwijder het bericht
+                    mid = get_message_id(channel.id, dag_naam)
+                    if mid:
+                        msg = await fetch_message_or_none(channel, mid)
+                        if msg is not None:
+                            await safe_call(msg.delete)
+                        clear_message_id(channel.id, dag_naam)
 
             # Tweede t/m vierde berichten: dag-berichten (ALLEEN TEKST, GEEN KNOPPEN)
             guild = _get_attr(channel, "guild")

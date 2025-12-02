@@ -36,7 +36,21 @@ def _get_timezone_legend(dag: str) -> str:
         "🟠"
     )
 
-    datum_iso = _get_next_weekday_date_iso(dag)
+    # Gebruik rolling window om de correcte datum te krijgen (consistent met poll messages)
+    from apps.utils.message_builder import get_rolling_window_days
+    dagen_info = get_rolling_window_days(dag_als_vandaag=None)
+
+    # Zoek de datum voor deze dag in de rolling window
+    datum_iso = None
+    for day_info in dagen_info:
+        if day_info["dag"] == dag.lower():
+            datum_iso = day_info["datum"].strftime("%Y-%m-%d")
+            break
+
+    # Fallback als dag niet gevonden (zou niet moeten gebeuren)
+    if datum_iso is None:
+        datum_iso = _get_next_weekday_date_iso(dag)
+
     tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
     tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
     return f"{emoji_1900} 19:00 = {tijd_1900} | {emoji_2030} 20:30 = {tijd_2030}"

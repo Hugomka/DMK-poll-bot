@@ -200,8 +200,15 @@ async def build_poll_message_for_day_async(
     """
     # Genereer Hammertime voor de datum (18:00 = deadline tijd)
     if datum_iso is None:
-        # Fallback naar oude logica (voor backward compatibility)
-        datum_iso = _get_next_weekday_date_iso(dag)
+        # Fallback: gebruik rolling window om correcte datum te krijgen
+        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
+        for day_info in dagen_info:
+            if day_info["dag"] == dag.lower():
+                datum_iso = day_info["datum"].strftime("%Y-%m-%d")
+                break
+        # Ultimate fallback als dag niet in rolling window (zou niet moeten gebeuren)
+        if datum_iso is None:
+            datum_iso = _get_next_weekday_date_iso(dag)
 
     datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
         datum_iso, "18:00", style="D"  # D = long date format (bijv. "28 november 2025")
@@ -257,8 +264,17 @@ async def build_poll_message_for_day_async(
     setting = get_setting(int(channel_id), dag) or {}
     is_deadline_mode = isinstance(setting, dict) and setting.get("modus") == "deadline"
 
-    # Bereken datum voor Hammertime conversie
-    datum_iso = _get_next_weekday_date_iso(dag)
+    # Bereken datum voor Hammertime conversie (gebruik datum_iso parameter als beschikbaar)
+    # Als niet beschikbaar, haal op uit rolling window
+    if datum_iso is None:
+        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
+        for day_info in dagen_info:
+            if day_info["dag"] == dag.lower():
+                datum_iso = day_info["datum"].strftime("%Y-%m-%d")
+                break
+        # Ultimate fallback als dag niet in rolling window
+        if datum_iso is None:
+            datum_iso = _get_next_weekday_date_iso(dag)
 
     for opt in opties:
         # Filter "misschien" uit resultaten in deadline-modus:

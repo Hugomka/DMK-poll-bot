@@ -162,11 +162,9 @@ class PollStatus(commands.Cog):
             # Gebruik rolling window voor chronologische volgorde met datums
             from apps.utils.poll_settings import get_enabled_rolling_window_days
             from apps.utils.time_zone_helper import TimeZoneHelper
-            from apps.utils.poll_message import get_dag_als_vandaag
 
-            # Haal opgeslagen dag_als_vandaag op (voor consistentie met poll berichten)
-            dag_als_vandaag = get_dag_als_vandaag(cid_val)
-            dagen_info = get_enabled_rolling_window_days(cid_val, dag_als_vandaag)
+            # Gebruik altijd de huidige dag (niet opgeslagen waarde)
+            dagen_info = get_enabled_rolling_window_days(cid_val, dag_als_vandaag=None)
 
             for day_info in dagen_info:
                 dag = day_info["dag"]

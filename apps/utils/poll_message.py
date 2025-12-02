@@ -272,12 +272,25 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
     Als er geen message_id is of het bericht bestaat niet meer,
     wordt het bericht opnieuw aangemaakt en opgeslagen.
     """
+    cid_val_temp = int(getattr(channel, "id", 0))
+
+    # Gebruik rolling window om correcte datums te krijgen
+    from apps.utils.poll_settings import get_enabled_rolling_window_days
+    dagen_info = get_enabled_rolling_window_days(cid_val_temp, dag_als_vandaag=None)
+
+    # Maak een mapping van dag naar datum
+    dag_naar_datum = {day_info["dag"]: day_info["datum_iso"] for day_info in dagen_info}
+
     if dag:
+        # Filter alleen de gevraagde dag (als die in de rolling window zit)
+        if dag not in dag_naar_datum:
+            # Dag zit niet in rolling window, negeer
+            return
         keys = [dag]
     else:
-        # Haal channel_id op voor get_enabled_poll_days
-        cid_temp = int(getattr(channel, "id", 0))
-        keys = get_enabled_poll_days(cid_temp)
+        # Alle enabled dagen uit rolling window
+        keys = [day_info["dag"] for day_info in dagen_info]
+
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     guild_obj = getattr(channel, "guild", None)
     gid_val: int | str = int(getattr(guild_obj, "id", 0))
@@ -300,6 +313,9 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
             # Update non-voters in storage before building the message
             await update_non_voters(gid_val, cid_val, channel)
 
+            # Haal datum op uit rolling window
+            datum_iso = dag_naar_datum.get(d)
+
             # Bepaal content (zowel voor edit als create)
             hide = should_hide_counts(cid_val, d, now)
             hide_ghosts_val = should_hide_ghosts(cid_val, d, now)
@@ -313,6 +329,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                 pauze=paused,
                 guild=getattr(channel, "guild", None),  # Voor namen
                 channel=channel,  # Voor niet-stemmers tracking
+                datum_iso=datum_iso,  # Correcte datum uit rolling window
             )
 
             decision = await build_decision_line(gid_val, cid_val, d, now)
