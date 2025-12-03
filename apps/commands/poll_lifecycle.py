@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -21,7 +20,6 @@ from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_message import (
     clear_message_id,
     create_notification_message,
-    get_dag_als_vandaag,
     get_message_id,
     save_message_id,
     set_channel_disabled,
@@ -39,18 +37,94 @@ from apps.utils.poll_settings import (
 from apps.utils.poll_storage import reset_votes, reset_votes_scoped
 
 
-def _load_opening_message() -> str:
-    """Laad het opening bericht uit config/opening_message.txt."""
-    OPENING_MESSAGE = "opening_message.txt"
-    DEFAULT_MESSAGE = "@everyone \n# 🎮 **Welkom bij de Deaf Mario Kart-poll!**"
-    if not (os.path.exists(OPENING_MESSAGE)):
-        return DEFAULT_MESSAGE
-    try:
-        with open(OPENING_MESSAGE, "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except Exception:  # pragma: no cover
-        # Fallback als het bestand niet bestaat of niet gelezen kan worden
-        return DEFAULT_MESSAGE
+def _load_opening_message(channel_id: int | None = None) -> str:
+    """
+    Genereer dynamisch opening bericht op basis van channel settings.
+
+    Args:
+        channel_id: Het kanaal ID (optioneel). Als None, gebruik fallback met generieke tekst.
+
+    Returns:
+        Opening message string met accurate channel-specifieke informatie
+    """
+    from apps.utils.poll_settings import (
+        get_enabled_poll_days,
+        get_setting,
+        is_notification_enabled,
+    )
+    from apps.utils.time_zone_helper import TimeZoneHelper
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    # Basis header (altijd hetzelfde)
+    header = "@everyone\n# 🎮 **Welkom bij de DMK-poll!**\n\n"
+
+    # Als geen channel_id, gebruik generieke fallback
+    if channel_id is None:
+        return header + "Klik op **🗳️ Stemmen** om je keuzes aan te geven.\n\nVeel plezier! 🎉"
+
+    # Haal enabled dagen op
+    enabled_days = get_enabled_poll_days(channel_id)
+    if not enabled_days:
+        enabled_days = ["vrijdag", "zaterdag", "zondag"]  # Fallback
+
+    # Format dagen lijst
+    if len(enabled_days) == 1:
+        dagen_tekst = enabled_days[0]
+    elif len(enabled_days) == 2:
+        dagen_tekst = f"{enabled_days[0]} en {enabled_days[1]}"
+    else:
+        dagen_tekst = ", ".join(enabled_days[:-1]) + f" en {enabled_days[-1]}"
+
+    # Bepaal deadline tijd (gebruik eerste enabled dag als referentie)
+    eerste_dag = enabled_days[0] if enabled_days else "vrijdag"
+    setting = get_setting(channel_id, eerste_dag)
+    deadline_tijd = setting.get("tijd", "18:00")
+
+    # Bereken HammerTime voor deadline (gebruik morgen als voorbeeld datum)
+    now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+    morgen = (now + timedelta(days=1)).date()
+    deadline_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
+        morgen.strftime("%Y-%m-%d"), deadline_tijd, style="t"
+    )
+
+    # Basis intro
+    intro = f"Elke week organiseren we DMK-avonden op {dagen_tekst}. Stem hieronder op de avonden waarop jij mee wilt doen! De stemmen blijven verborgen tot de deadline van {deadline_hammertime} uur."
+
+    # Check welke notificaties enabled zijn
+    reminders_enabled = is_notification_enabled(channel_id, "reminders")
+    misschien_enabled = is_notification_enabled(channel_id, "misschien")
+
+    # Build notification text
+    notification_parts = []
+    if reminders_enabled:
+        notification_parts.append("Als je nog niet gestemd hebt, krijg je 2 uur voor de deadline een herinnering.")
+    if misschien_enabled:
+        notification_parts.append("Heb je op 'misschien' gestemd? Dan krijg je 1 uur voor de deadline een herinnering om je stem te bevestigen. Als je dan nog niet stemt, wordt je stem automatisch omgezet naar 'niet meedoen'.")
+
+    notification_text = " ".join(notification_parts) if notification_parts else ""
+
+    # Append call to action
+    if notification_text:
+        notification_text += " Dus wees op tijd als je graag mee wilt doen, en zet de meldingen voor dit kanaal aan."
+
+    # Build complete message
+    message_parts = [header, intro]
+    if notification_text:
+        message_parts.append(notification_text)
+
+    message_parts.extend([
+        "\nℹ️ **Stem alsjeblieft op elke dag, ook als je denkt niet mee te doen. Zo blijft het overzicht duidelijk.**",
+        "\n📅 **Hoe werkt het?**",
+        "• Klik op **🗳️ Stemmen** om je keuzes aan te geven",
+        "• Je kunt meerdere tijden kiezen",
+        "• Je kunt je stem altijd aanpassen",
+        "\n👥 **Gasten meebrengen?**",
+        "Gebruik `/gast-add` om gasten toe te voegen aan je stem.",
+        "\nVeel plezier! 🎉"
+    ])
+
+    return "\n".join(message_parts)
 
 
 def _get_attr(obj: Any, name: str) -> Any:
@@ -452,8 +526,8 @@ class PollLifecycle(commands.Cog):
             except Exception:  # pragma: no cover
                 pass
 
-            # Eerste bericht: Opening met @everyone
-            opening_text = _load_opening_message() + "\n\u200b"
+            # Eerste bericht: Opening met @everyone (dynamisch gegenereerd)
+            opening_text = _load_opening_message(channel_id=channel.id)
 
             send = _get_attr(channel, "send")
             opening_mid = get_message_id(channel.id, "opening")
@@ -966,153 +1040,21 @@ class PollLifecycle(commands.Cog):
         self, interaction: discord.Interaction, channel: Any
     ) -> None:
         """
-        Voer poll-off uit: verwijder alle bot-berichten + scheduler uitschakelen.
+        Voer poll-off uit: verwijder alle bot-berichten ZONDER scheduler uit te schakelen.
+        Dit is TIJDELIJK sluiten - automatische activering blijft werken.
+
+        Voor PERMANENT uitschakelen, gebruik /dmk-poll-stopzetten.
         """
         try:
             # 1) Verwijder alle bot-berichten en wis message IDs
             await self._delete_all_bot_messages(channel)
 
-            # 2) Kanaal permanent uitzetten voor scheduler
+            # 2) Plaats sluitingsbericht met informatie over automatische heropening
+            from apps.utils.poll_settings import get_effective_activation
+
             channel_id = getattr(channel, "id", 0)
-            try:
-                set_channel_disabled(channel_id, True)
-            except Exception:  # pragma: no cover
-                pass
-
-            # 3) Wis geplande activatie (voor /dmk-poll-on)
-            try:
-                clear_scheduled_activation(channel_id)
-            except Exception:  # pragma: no cover
-                pass
-
-            # 4) Terugkoppeling
-            await interaction.followup.send(
-                "✅ Alle bot-berichten zijn verwijderd. Scheduler voor dit kanaal is uitgezet. Gebruik /dmk-poll-on om later opnieuw te starten.",
-                ephemeral=True,
-            )
-
-        except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
-
-    # -----------------------------
-    # /dmk-poll-verwijderen (nieuw: eenvoudig)
-    # -----------------------------
-    @app_commands.guild_only()
-    @app_commands.default_permissions(moderate_members=True)
-    @app_commands.command(
-        name="dmk-poll-verwijderen",
-        description=with_default_suffix(
-            "Verwijder pollberichten en plaats sluitingsbericht"
-        ),
-    )
-    async def verwijderbericht(
-        self, interaction: discord.Interaction
-    ) -> None:  # pragma: no cover
-        await interaction.response.defer(ephemeral=True)
-        channel = interaction.channel
-        if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
-            return
-
-        # Stap 1: Controleer op non-bot berichten in het kanaal
-        try:
-            non_bot_berichten = await self._scan_non_bot_messages(channel)
-            if non_bot_berichten:
-                # Er zijn non-bot berichten - vraag om bevestiging
-                await self._toon_cleanup_bevestiging_verwijderen(
-                    interaction, channel, non_bot_berichten
-                )
-                return  # De bevestigingsview handelt de rest af
-        except Exception as e:
-            # Als scannen faalt, ga gewoon door
-            print(f"⚠️ Kon niet scannen naar oude berichten: {e}")
-
-        # Stap 2: Voer verwijderen uit (geen non-bot berichten, dus geen bevestiging nodig)
-        await self._execute_verwijderen(interaction, channel)
-
-    async def _toon_cleanup_bevestiging_verwijderen(  # pragma: no cover
-        self,
-        interaction: discord.Interaction,
-        channel: Any,
-        non_bot_berichten: list,
-    ) -> None:
-        """
-        Toon een bevestigingsdialoog voor /dmk-poll-verwijderen.
-        Als bevestigd: verwijder non-bot berichten + bot-berichten, dan sluitingsbericht plaatsen.
-        Als geannuleerd: verwijder alleen bot-berichten, dan sluitingsbericht plaatsen.
-        """
-        from apps.ui.cleanup_confirmation import CleanupConfirmationView
-
-        aantal_berichten = len(non_bot_berichten)
-
-        async def bij_bevestiging(button_interaction: discord.Interaction):
-            """Verwijder alle berichten en plaats sluitingsbericht."""
-            try:
-                # Verwijder alle berichten (bot + non-bot)
-                await self._delete_all_bot_messages(
-                    channel, also_delete=non_bot_berichten
-                )
-
-                await button_interaction.edit_original_response(
-                    content=f"✅ Alle berichten verwijderd (waaronder {len(non_bot_berichten)} van andere gebruikers/bots). Sluitingsbericht wordt geplaatst...",
-                    view=None,
-                )
-
-                # Plaats sluitingsbericht
-                await self._execute_verwijderen(interaction, channel, skip_delete=True)
-
-            except Exception as e:  # pragma: no cover
-                await button_interaction.followup.send(
-                    f"❌ Fout bij verwijderen: {e}",
-                    ephemeral=True,
-                )
-
-        async def bij_annulering(button_interaction: discord.Interaction):
-            """Verwijder alleen bot-berichten en plaats sluitingsbericht."""
-            try:
-                await button_interaction.edit_original_response(
-                    content="✅ Bot-berichten verwijderd. Sluitingsbericht wordt geplaatst...",
-                    view=None,
-                )
-
-                # Plaats sluitingsbericht (delete wordt gedaan door _execute_verwijderen)
-                await self._execute_verwijderen(interaction, channel)
-
-            except Exception as e:  # pragma: no cover
-                await button_interaction.followup.send(
-                    f"❌ Fout bij uitvoeren: {e}",
-                    ephemeral=True,
-                )
-
-        view = CleanupConfirmationView(
-            on_confirm=bij_bevestiging,
-            on_cancel=bij_annulering,
-            message_count=aantal_berichten,
-        )
-
-        await interaction.followup.send(
-            f"⚠️ Er staan **{aantal_berichten}** bericht(en) van andere gebruikers/bots in dit kanaal.\n"
-            f"Wil je deze verwijderen? (Bot-berichten worden altijd verwijderd)",
-            view=view,
-            ephemeral=True,
-        )
-
-    async def _execute_verwijderen(  # pragma: no cover
-        self, interaction: discord.Interaction, channel: Any, skip_delete: bool = False
-    ) -> None:
-        """
-        Voer verwijderen uit: verwijder bot-berichten en plaats sluitingsbericht.
-        Scheduler blijft actief.
-
-        Args:
-            skip_delete: Als True, skip het verwijderen van berichten (al gedaan)
-        """
-        try:
-            # Bepaal de sluitingstijd op basis van /dmk-poll-on instellingen
-            from apps.utils.poll_settings import get_scheduled_activation
-
-            schedule = get_scheduled_activation(channel.id)
-            closing_time = "dinsdag om 20:00 uur"  # Standaard
+            schedule, _is_default = get_effective_activation(channel_id)
+            closing_time = "dinsdag om 20:00 uur"  # Standaard fallback
 
             if schedule:
                 tijd = schedule.get("tijd", "20:00")
@@ -1139,15 +1081,10 @@ class PollLifecycle(commands.Cog):
                         closing_time = f"{dag_naam} {datum_display} om {tijd} uur"
 
             sluitingsbericht = (
-                f"Deze poll is gesloten en gaat pas **{closing_time}** weer open. "
+                f"Deze poll is tijdelijk gesloten en gaat automatisch weer open op **{closing_time}**. "
                 "Dank voor je deelname."
             )
 
-            # 1) Verwijder alle bot-berichten en wis message IDs (alleen als niet al gedaan)
-            if not skip_delete:
-                await self._delete_all_bot_messages(channel)
-
-            # 2) Plaats het sluitingsbericht
             send = _get_attr(channel, "send")
             if send:
                 try:
@@ -1155,12 +1092,172 @@ class PollLifecycle(commands.Cog):
                 except Exception:  # pragma: no cover
                     pass
 
-            # 3) Scheduler blijft actief - NIET uitschakelen!
-            # (Dat is het verschil met /dmk-poll-off)
+            # 3) BELANGRIJK: Scheduler blijft actief - NIET uitschakelen!
+            # Voor permanent uitschakelen, gebruik /dmk-poll-stopzetten
 
             # 4) Terugkoppeling
             await interaction.followup.send(
-                f"✅ Alle bot-berichten zijn verwijderd en sluitingsbericht geplaatst. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
+                f"✅ Alle bot-berichten zijn verwijderd. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
+                ephemeral=True,
+            )
+
+        except Exception as e:  # pragma: no cover
+            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+
+    # -----------------------------
+    # /dmk-poll-stopzetten (permanent uitschakelen)
+    # -----------------------------
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.command(
+        name="dmk-poll-stopzetten",
+        description=with_default_suffix(
+            "Stop de DMK-poll-bot permanent (verwijder berichten + schakel automatisme uit)"
+        ),
+    )
+    async def stopzetten(
+        self, interaction: discord.Interaction
+    ) -> None:  # pragma: no cover
+        """
+        Stop de DMK-poll-bot PERMANENT:
+        - Verwijdert alle poll-berichten
+        - Schakelt automatisme UIT (disabled = true)
+        - Bot moet handmatig weer gestart worden met /dmk-poll-on
+
+        Dit verschilt van /dmk-poll-off (tijdelijk) en /dmk-poll-verwijderen (scheduler blijft actief).
+        """
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        if channel is None:
+            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            return
+
+        # Stap 1: Controleer op non-bot berichten in het kanaal
+        try:
+            non_bot_berichten = await self._scan_non_bot_messages(channel)
+            if non_bot_berichten:
+                # Er zijn non-bot berichten - vraag om bevestiging
+                await self._toon_cleanup_bevestiging_stopzetten(
+                    interaction, channel, non_bot_berichten
+                )
+                return  # De bevestigingsview handelt de rest af
+        except Exception as e:
+            # Als scannen faalt, ga gewoon door
+            print(f"⚠️ Kon niet scannen naar oude berichten: {e}")
+
+        # Stap 2: Voer stopzetten uit (geen non-bot berichten, dus geen bevestiging nodig)
+        await self._execute_stopzetten(interaction, channel)
+
+    async def _toon_cleanup_bevestiging_stopzetten(  # pragma: no cover
+        self,
+        interaction: discord.Interaction,
+        channel: Any,
+        non_bot_berichten: list,
+    ) -> None:
+        """
+        Toon een bevestigingsdialoog voor /dmk-poll-stopzetten.
+        Als bevestigd: verwijder non-bot berichten + bot-berichten, schakel bot uit.
+        Als geannuleerd: verwijder alleen bot-berichten, schakel bot uit.
+        """
+        from apps.ui.cleanup_confirmation import CleanupConfirmationView
+
+        aantal_berichten = len(non_bot_berichten)
+
+        async def bij_bevestiging(button_interaction: discord.Interaction):
+            """Verwijder alle berichten en schakel bot permanent uit."""
+            try:
+                # Verwijder alle berichten (bot + non-bot)
+                await self._delete_all_bot_messages(
+                    channel, also_delete=non_bot_berichten
+                )
+
+                await button_interaction.edit_original_response(
+                    content=f"✅ Alle berichten verwijderd (waaronder {len(non_bot_berichten)} van andere gebruikers/bots). Bot wordt permanent uitgeschakeld...",
+                    view=None,
+                )
+
+                # Schakel bot permanent uit
+                await self._execute_stopzetten(interaction, channel, skip_delete=True)
+
+            except Exception as e:  # pragma: no cover
+                await button_interaction.followup.send(
+                    f"❌ Fout bij stopzetten: {e}",
+                    ephemeral=True,
+                )
+
+        async def bij_annulering(button_interaction: discord.Interaction):
+            """Verwijder alleen bot-berichten en schakel bot permanent uit."""
+            try:
+                await button_interaction.edit_original_response(
+                    content="✅ Bot-berichten verwijderd. Bot wordt permanent uitgeschakeld...",
+                    view=None,
+                )
+
+                # Schakel bot permanent uit (delete wordt gedaan door _execute_stopzetten)
+                await self._execute_stopzetten(interaction, channel)
+
+            except Exception as e:  # pragma: no cover
+                await button_interaction.followup.send(
+                    f"❌ Fout bij uitvoeren: {e}",
+                    ephemeral=True,
+                )
+
+        view = CleanupConfirmationView(
+            on_confirm=bij_bevestiging,
+            on_cancel=bij_annulering,
+            message_count=aantal_berichten,
+        )
+
+        await interaction.followup.send(
+            f"⚠️ Er staan **{aantal_berichten}** bericht(en) van andere gebruikers/bots in dit kanaal.\n"
+            f"Wil je deze verwijderen? (Bot-berichten worden altijd verwijderd)\n\n"
+            f"**LET OP:** Dit schakelt de bot PERMANENT uit. Automatische activering wordt gestopt.",
+            view=view,
+            ephemeral=True,
+        )
+
+    async def _execute_stopzetten(  # pragma: no cover
+        self, interaction: discord.Interaction, channel: Any, skip_delete: bool = False
+    ) -> None:
+        """
+        Voer stopzetten uit: verwijder bot-berichten en schakel scheduler permanent uit.
+
+        Args:
+            skip_delete: Als True, skip het verwijderen van berichten (al gedaan)
+        """
+        try:
+            # 1) Verwijder alle bot-berichten en wis message IDs (alleen als niet al gedaan)
+            if not skip_delete:
+                await self._delete_all_bot_messages(channel)
+
+            # 2) Plaats het sluitingsbericht
+            send = _get_attr(channel, "send")
+            sluitingsbericht = (
+                "🛑 **DMK-poll-bot is permanent uitgeschakeld.**\n\n"
+                "De automatische activering is gestopt. "
+                "Gebruik `/dmk-poll-on` om de bot weer te starten."
+            )
+            if send:
+                try:
+                    await safe_call(send, content=sluitingsbericht)
+                except Exception:  # pragma: no cover
+                    pass
+
+            # 3) Schakel scheduler PERMANENT uit (disabled = true)
+            set_channel_disabled(channel.id, True)
+
+            # 4) Wis geplande activatie
+            try:
+                clear_scheduled_activation(channel.id)
+            except Exception:  # pragma: no cover
+                pass
+
+            # 5) Terugkoppeling
+            await interaction.followup.send(
+                "✅ DMK-poll-bot is permanent uitgeschakeld.\n"
+                "- Alle bot-berichten zijn verwijderd\n"
+                "- Automatische activering is gestopt\n"
+                "- Gebruik `/dmk-poll-on` om de bot weer te starten",
                 ephemeral=True,
             )
 

@@ -32,7 +32,7 @@ class TestCommandDefaults(unittest.TestCase):
             (PollLifecycle, "on"): "dmk-poll-on",
             (PollLifecycle, "reset"): "dmk-poll-reset",
             (PollLifecycle, "pauze"): "dmk-poll-pauze",
-            (PollLifecycle, "verwijderbericht"): "dmk-poll-verwijderen",
+            (PollLifecycle, "stopzetten"): "dmk-poll-stopzetten",
             (PollVotes, "stemmen"): "dmk-poll-stemmen",
             (PollArchive, "archief"): "dmk-poll-archief",
             (PollStatus, "status"): "dmk-poll-status",

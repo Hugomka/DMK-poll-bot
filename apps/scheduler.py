@@ -1141,7 +1141,7 @@ async def notify_for_channel(channel, dag: str) -> bool:  # pragma: no cover
 
         # Tel stemmen per tijdslot (zoals notify_voters_if_avond_gaat_door)
         counts: dict[str, int] = {}
-        for _uid, per_dag in votes.items():
+        for per_dag in votes.values():
             try:
                 tijden = (per_dag or {}).get(dag, [])
                 if isinstance(tijden, list):
@@ -1415,15 +1415,9 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                     except Exception as e:  # pragma: no cover
                         print(f"⚠️ Sluitingsbericht versturen mislukt: {e}")
 
-                    # 6) Kanaal permanent uitzetten voor scheduler
-                    set_channel_disabled(cid, True)
-
-                    # 7) Wis geplande activatie (voor /dmk-poll-on)
-                    try:
-                        from apps.utils.poll_settings import clear_scheduled_activation
-                        clear_scheduled_activation(cid)
-                    except Exception:  # pragma: no cover
-                        pass
+                    # BELANGRIJK: Kanaal NIET disablen bij automatische deactivatie!
+                    # Het kanaal moet automatisch weer geopend kunnen worden op de geplande tijd.
+                    # Alleen handmatige /dmk-poll-stopzetten mag het kanaal permanent disablen.
 
                     print(f"✅ Automatisch gedeactiveerd: kanaal {cid} volgens schedule")
 
@@ -1457,7 +1451,8 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
         for channel in get_channels(guild):
             cid = getattr(channel, "id", 0)
 
-            # Skip disabled channels
+            # Skip disabled channels (handmatig uitgeschakeld met /dmk-poll-off)
+            # Automatische deactivatie disabled het kanaal NIET, dus dit is veilig
             if is_channel_disabled(cid):
                 continue
 
@@ -1508,58 +1503,92 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     except Exception:  # pragma: no cover
                         pass
 
-                    # Opening bericht
-                    opening_text = "@everyone \n# 🎮 **Welkom bij de Deaf Mario Kart-poll!**\n\u200b"
                     send = getattr(channel, "send", None)
 
-                    opening_mid = get_message_id(cid, "opening")
-                    if opening_mid:
-                        opening_msg = await fetch_message_or_none(channel, opening_mid)
-                        if opening_msg is not None:
-                            await safe_call(opening_msg.edit, content=opening_text)
-                        else:
-                            opening_msg = await safe_call(send, content=opening_text) if send else None
-                            if opening_msg is not None:
-                                save_message_id(cid, "opening", opening_msg.id)
-                    else:
-                        opening_msg = await safe_call(send, content=opening_text) if send else None
+                    # STAP 1: Verwijder ALLE bestaande bot-berichten (opschonen)
+                    # Dit zorgt voor een schone start zoals /dmk-poll-on doet
+                    try:
+                        bot_user = getattr(bot, "user", None)
+                        if bot_user:
+                            bot_user_id = getattr(bot_user, "id", None)
+                            if bot_user_id and hasattr(channel, "history"):
+                                # channel.history returns AsyncIterator[discord.Message]
+                                async for bericht in channel.history(limit=100):  # type: ignore[attr-defined]
+                                    author = getattr(bericht, "author", None)
+                                    if author:
+                                        author_id = getattr(author, "id", None)
+                                        if author_id == bot_user_id:
+                                            try:
+                                                await bericht.delete()
+                                            except Exception:  # pragma: no cover
+                                                pass
+                    except Exception as e:  # pragma: no cover
+                        print(f"⚠️ Kon bot-berichten niet verwijderen: {e}")
+
+                    # Wis alle message IDs na cleanup
+                    for key in ["opening", "vrijdag", "zaterdag", "zondag", "maandag", "dinsdag", "woensdag", "donderdag", "stemmen", "notification", "notification_persistent"]:
+                        try:
+                            clear_message_id(cid, key)
+                        except Exception:  # pragma: no cover
+                            pass
+
+                    # STAP 2: Opening bericht (nu nieuw aanmaken met dynamisch gegenereerde tekst)
+                    from apps.commands.poll_lifecycle import _load_opening_message
+                    opening_text = _load_opening_message(channel_id=cid)
+                    if send:
+                        opening_msg = await safe_call(send, content=opening_text)
                         if opening_msg is not None:
                             save_message_id(cid, "opening", opening_msg.id)
 
-                    # Dag-berichten updaten
+                    # STAP 3: Dag-berichten creëren (nieuw)
                     for dag in get_enabled_poll_days(cid):
                         await update_poll_message(channel, dag)
 
-                    # Stemmen-knop bericht
+                    # STAP 4: Stemmen-knop bericht (nieuw aanmaken)
                     key = "stemmen"
                     tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
-                    s_mid = get_message_id(cid, key)
                     paused = is_paused(cid)
                     view = OneStemButtonView(paused=paused)
 
-                    if s_mid:
-                        s_msg = await fetch_message_or_none(channel, s_mid)
-                        if s_msg is not None:
-                            await safe_call(s_msg.edit, content=tekst, view=view)
-                        else:
-                            s_msg = await safe_call(send, content=tekst, view=view) if send else None
-                            if s_msg is not None:
-                                save_message_id(cid, key, s_msg.id)
-                    else:
-                        s_msg = await safe_call(send, content=tekst, view=view) if send else None
+                    if send:
+                        s_msg = await safe_call(send, content=tekst, view=view)
                         if s_msg is not None:
                             save_message_id(cid, key, s_msg.id)
 
-                    # Notificatiebericht - check both old and new keys
-                    n_mid_persistent = get_message_id(cid, "notification_persistent")
-                    n_mid_old = get_message_id(cid, "notification")
-                    if not n_mid_persistent and not n_mid_old:
-                        await create_notification_message(channel)
+                    # STAP 5: Bereken HammerTime voor de activatietijd (voor notificatie en mention)
+                    from apps.utils.time_zone_helper import TimeZoneHelper
+                    from zoneinfo import ZoneInfo
 
-                    # Openingsbericht versturen
+                    hammertime_str = ""
+                    if activation_type == "datum":
+                        scheduled_date = schedule.get("datum")
+                        if scheduled_date:
+                            hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
+                                scheduled_date, scheduled_time, style="t"
+                            )
+                    elif activation_type == "wekelijks":
+                        # Voor wekelijkse activatie: gebruik vandaag als datum
+                        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+                        current_date_obj = now.date()
+                        hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
+                            current_date_obj.strftime("%Y-%m-%d"), scheduled_time, style="t"
+                        )
+
+                    # STAP 6: Notificatiebericht met HammerTime (altijd nieuw aanmaken na cleanup)
+                    # Dit voorkomt dubbele notificatieberichten (Bug 4)
+                    await create_notification_message(
+                        channel, activation_hammertime=hammertime_str if hammertime_str else None
+                    )
+
+                    # STAP 7: Openingsmentions versturen met HammerTime
                     try:
                         from apps.utils.mention_utils import send_temporary_mention
-                        opening_notification = "De DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+
+                        if hammertime_str:
+                            opening_notification = f"De DMK-poll-bot is zojuist aangezet om {hammertime_str}. Veel plezier met de stemmen! 🎮"
+                        else:
+                            opening_notification = "De DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+
                         await send_temporary_mention(
                             channel, mentions="@everyone", text=opening_notification
                         )

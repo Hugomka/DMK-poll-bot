@@ -8,7 +8,7 @@ import asyncio
 from typing import Any, Optional
 
 from apps.utils.discord_client import safe_call
-from apps.utils.poll_message import get_message_id, save_message_id
+from apps.utils.poll_message import clear_message_id, get_message_id, save_message_id
 
 
 def render_notification_content(
@@ -54,7 +54,7 @@ async def send_temporary_mention(
     Stuur een nieuwe notificatie met mentions die gebruikers pingt.
 
     Flow:
-    1. Verwijder vorige notificatiebericht (indien aanwezig)
+    1. Verwijder ALLE bestaande notificatieberichten (om duplicaten te voorkomen)
     2. Stuur nieuw bericht met mentions en optionele knop
     3. Na 5 seconden: verwijder mentions (privacy)
     4. Na delete_after_hours: verwijder het hele bericht
@@ -70,18 +70,22 @@ async def send_temporary_mention(
         delete_after_hours: Na hoeveel uur het bericht verwijderd wordt (standaard 1.0)
         message_key: De storage key voor dit bericht (standaard 'notification_temp')
     """
-    # Stap 1: Verwijder vorig notificatiebericht
+    # Stap 1: Verwijder ALLE bestaande notificatieberichten (temp, persistent, legacy)
+    # om ervoor te zorgen dat er altijd maar één notificatiebericht is
     cid = getattr(channel, "id", 0)
-    old_msg_id = get_message_id(cid, message_key)
-    if old_msg_id:
-        try:
-            from apps.utils.discord_client import fetch_message_or_none
+    notification_keys = ["notification_temp", "notification_persistent", "notification"]
+    for key in notification_keys:
+        old_msg_id = get_message_id(cid, key)
+        if old_msg_id:
+            try:
+                from apps.utils.discord_client import fetch_message_or_none
 
-            old_msg = await fetch_message_or_none(channel, old_msg_id)
-            if old_msg is not None:
-                await safe_call(old_msg.delete)
-        except Exception:
-            pass  # Bericht bestaat niet meer
+                old_msg = await fetch_message_or_none(channel, old_msg_id)
+                if old_msg is not None:
+                    await safe_call(old_msg.delete)
+            except Exception:
+                pass  # Bericht bestaat niet meer
+            clear_message_id(cid, key)
 
     # Stap 2: Stuur nieuw bericht
     send_func = getattr(channel, "send", None)
@@ -192,7 +196,7 @@ async def send_persistent_mention(
     Stuur een "doorgaan" notificatie met unified layout (5 uur lifetime).
 
     Flow:
-    1. Verwijder vorige notificatiebericht
+    1. Verwijder ALLE bestaande notificatieberichten (om duplicaten te voorkomen)
     2. Stuur nieuw bericht met mentions
     3. Behoud mentions in het bericht (geen privacy removal voor persistent)
     4. Na 5 uur: verwijder het hele bericht
@@ -206,18 +210,22 @@ async def send_persistent_mention(
     Returns:
         Het verzonden bericht object, of None bij fout
     """
-    # Stap 1: Verwijder vorig notificatiebericht
+    # Stap 1: Verwijder ALLE bestaande notificatieberichten (temp, persistent, legacy)
+    # om ervoor te zorgen dat er altijd maar één notificatiebericht is
     cid = getattr(channel, "id", 0)
-    old_msg_id = get_message_id(cid, message_key)
-    if old_msg_id:
-        try:
-            from apps.utils.discord_client import fetch_message_or_none
+    notification_keys = ["notification_temp", "notification_persistent", "notification"]
+    for key in notification_keys:
+        old_msg_id = get_message_id(cid, key)
+        if old_msg_id:
+            try:
+                from apps.utils.discord_client import fetch_message_or_none
 
-            old_msg = await fetch_message_or_none(channel, old_msg_id)
-            if old_msg is not None:
-                await safe_call(old_msg.delete)
-        except Exception:
-            pass  # Bericht bestaat niet meer
+                old_msg = await fetch_message_or_none(channel, old_msg_id)
+                if old_msg is not None:
+                    await safe_call(old_msg.delete)
+            except Exception:
+                pass  # Bericht bestaat niet meer
+            clear_message_id(cid, key)
 
     # Stap 2: Stuur nieuw bericht using unified renderer
     send_func = getattr(channel, "send", None)

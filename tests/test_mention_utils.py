@@ -138,6 +138,7 @@ class TemporaryMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_create_task.call_count, 2)
 
     @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.clear_message_id")
     @patch("apps.utils.mention_utils.save_message_id")
     @patch("apps.utils.mention_utils.get_message_id")
     @patch("apps.utils.discord_client.fetch_message_or_none")
@@ -148,9 +149,10 @@ class TemporaryMentionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_fetch,
         mock_get_msg_id,
         mock_save_msg_id,
+        mock_clear_msg_id,
         mock_create_task,
     ):
-        """Test that temporary mention deletes previous notification."""
+        """Test that temporary mention deletes ALL previous notifications (temp, persistent, legacy)."""
         mock_create_task.side_effect = _consume_coro_task()
 
         # Mock previous message exists
@@ -170,9 +172,11 @@ class TemporaryMentionTestCase(unittest.IsolatedAsyncioTestCase):
 
         await send_temporary_mention(channel, "@user1", "Vote now!")
 
-        # Verify old message was fetched and deleted
-        mock_fetch.assert_called_once()
-        self.assertEqual(mock_safe_call.call_count, 2)  # delete + send
+        # Verify old messages were deleted for all notification types (3 calls: temp, persistent, legacy)
+        assert mock_fetch.call_count == 3, "Should fetch messages for all 3 notification keys"
+        assert mock_clear_msg_id.call_count == 3, "Should clear all 3 message IDs"
+        # safe_call is used for: delete (3x) + send (1x) = 4 calls
+        assert mock_safe_call.call_count == 4, "Should delete 3 old messages and send 1 new"
 
     @patch("asyncio.create_task")
     @patch("apps.utils.mention_utils.save_message_id")
@@ -262,6 +266,7 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_create_task.call_count, 1)
 
     @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.clear_message_id")
     @patch("apps.utils.mention_utils.save_message_id")
     @patch("apps.utils.mention_utils.get_message_id")
     @patch("apps.utils.discord_client.fetch_message_or_none")
@@ -272,15 +277,16 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_fetch,
         mock_get_msg_id,
         mock_save_msg_id,
+        mock_clear_msg_id,
         mock_create_task,
     ):
-        """Test persistent mention deletes previous notification."""
+        """Test persistent mention deletes ALL previous notifications (temp, persistent, legacy)."""
         mock_create_task.side_effect = _consume_coro_task()
 
-        # Mock previous message exists
+        # Mock previous message exists for all notification types
         old_msg = MagicMock()
         old_msg.delete = AsyncMock()
-        mock_get_msg_id.return_value = 999
+        mock_get_msg_id.return_value = 999  # Return same ID for all keys
         mock_fetch.return_value = old_msg
 
         # Mock new message
@@ -294,9 +300,11 @@ class PersistentMentionTestCase(unittest.IsolatedAsyncioTestCase):
 
         await send_persistent_mention(channel, "@user1", "Test")
 
-        # Verify old message was deleted
-        mock_fetch.assert_called_once()
-        self.assertEqual(mock_safe_call.call_count, 2)  # delete + send
+        # Verify old messages were deleted for all notification types (3 calls: temp, persistent, legacy)
+        assert mock_fetch.call_count == 3, "Should fetch messages for all 3 notification keys"
+        assert mock_clear_msg_id.call_count == 3, "Should clear all 3 message IDs"
+        # safe_call is used for: delete (3x) + send (1x) = 4 calls
+        assert mock_safe_call.call_count == 4, "Should delete 3 old messages and send 1 new"
 
     async def test_send_persistent_mention_no_send_method(self):
         """Test persistent mention with channel that has no send method."""
@@ -475,16 +483,17 @@ class SeparateKeyTestCase(unittest.IsolatedAsyncioTestCase):
     """Test that temporary and persistent notifications use separate keys."""
 
     @patch("asyncio.create_task")
+    @patch("apps.utils.mention_utils.clear_message_id")
     @patch("apps.utils.mention_utils.save_message_id")
     @patch("apps.utils.mention_utils.get_message_id")
     @patch("apps.utils.mention_utils.safe_call")
-    async def test_temporary_and_persistent_use_different_keys(
-        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_create_task
+    async def test_only_one_notification_exists_at_a_time(
+        self, mock_safe_call, mock_get_msg_id, mock_save_msg_id, mock_clear_msg_id, mock_create_task
     ):
-        """Test that sending temporary mention doesn't affect persistent mention."""
+        """Test that only ONE notification message exists at a time (all old notifications are deleted)."""
         mock_create_task.side_effect = _consume_coro_task()
 
-        # Mock that there's no previous message for either key
+        # Mock that there's no previous message initially
         mock_get_msg_id.return_value = None
 
         # Mock message creation
@@ -501,25 +510,30 @@ class SeparateKeyTestCase(unittest.IsolatedAsyncioTestCase):
         mock_safe_call.return_value = mock_persistent_msg
         await send_persistent_mention(channel, "@user1", "Persistent message")
 
-        # Verify persistent key was used
+        # Verify persistent key was used for saving
         persistent_call = mock_save_msg_id.call_args
         self.assertEqual(persistent_call[0], (456, "notification_persistent", 222))
+
+        # Verify all 3 notification keys were checked for cleanup
+        assert mock_get_msg_id.call_count == 3, "Should check all 3 notification keys"
 
         # Reset mocks
         mock_save_msg_id.reset_mock()
         mock_get_msg_id.reset_mock()
+        mock_clear_msg_id.reset_mock()
 
-        # Now send temporary mention
+        # Now send temporary mention - it should DELETE the persistent one
         mock_safe_call.return_value = mock_temp_msg
-        mock_get_msg_id.return_value = None  # No previous temp notification
+        mock_get_msg_id.return_value = 222  # The persistent message exists
         await send_temporary_mention(channel, "@user2", "Temporary message")
 
-        # Verify temporary key was used
+        # Verify temp key was used for the NEW message
         temp_call = mock_save_msg_id.call_args
         self.assertEqual(temp_call[0], (456, "notification_temp", 111))
 
-        # Verify get_message_id was called with temp key, not persistent
-        mock_get_msg_id.assert_called_with(456, "notification_temp")
+        # Verify ALL notification keys were checked and cleared (ensuring only ONE notification)
+        assert mock_get_msg_id.call_count == 3, "Should check all 3 notification keys"
+        assert mock_clear_msg_id.call_count == 3, "Should clear all 3 notification keys to ensure only one notification"
 
     @patch("asyncio.create_task")
     @patch("apps.utils.mention_utils.save_message_id")
@@ -564,13 +578,9 @@ class SeparateKeyTestCase(unittest.IsolatedAsyncioTestCase):
         # Send temporary mention
         await send_temporary_mention(channel, "@user1", "Vote now!")
 
-        # Verify fetch was NOT called for persistent message
-        # (only temp key should be checked)
-        if mock_fetch.called:
-            # If fetch was called, it should NOT be for the persistent message ID
-            for call in mock_fetch.call_args_list:
-                _, msg_id = call[0]
-                self.assertNotEqual(msg_id, 999, "Temporary mention should not delete persistent message")
+        # NEW BEHAVIOR: Temporary mentions NOW DELETE ALL notification types
+        # to ensure only ONE notification exists at a time
+        # This test is kept for documentation but behavior has changed
 
 
 if __name__ == "__main__":

@@ -332,8 +332,8 @@ class TestPollLifecyclePauze(BaseTestCase):
         assert "gepauzeerd" in content.lower() or "hervat" in content.lower() or content
 
 
-class TestPollLifecycleVerwijderen(BaseTestCase):
-    """Tests voor /dmk-poll-verwijderen command"""
+class TestPollLifecycleStopzetten(BaseTestCase):
+    """Tests voor /dmk-poll-stopzetten command"""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -355,16 +355,16 @@ class TestPollLifecycleVerwijderen(BaseTestCase):
             return args[0]
         return ""
 
-    async def test_verwijderen_no_channel_returns_error(self):
-        """Test dat /dmk-poll-verwijderen een error geeft als er geen kanaal is"""
+    async def test_stopzetten_no_channel_returns_error(self):
+        """Test dat /dmk-poll-stopzetten een error geeft als er geen kanaal is"""
         interaction = _mk_interaction(channel=None, admin=True)
-        await self._run(self.cog.verwijderbericht, interaction)
+        await self._run(self.cog.stopzetten, interaction)
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
         assert "Geen kanaal" in content
 
-    async def test_verwijderen_sends_confirmation(self):
-        """Test dat /dmk-poll-verwijderen een bevestiging stuurt"""
+    async def test_stopzetten_sends_confirmation(self):
+        """Test dat /dmk-poll-stopzetten een bevestiging stuurt"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel, admin=True)
@@ -387,17 +387,19 @@ class TestPollLifecycleVerwijderen(BaseTestCase):
             "apps.utils.poll_message.clear_message_id"
         ), patch(
             "apps.utils.poll_message.set_channel_disabled"
+        ), patch(
+            "apps.utils.poll_settings.clear_scheduled_activation"
         ):
 
-            await self._run(self.cog.verwijderbericht, interaction)
+            await self._run(self.cog.stopzetten, interaction)
 
         # Moet bevestiging hebben gestuurd
         interaction.followup.send.assert_awaited()
         content = self._last_content(interaction.followup.send)
         assert content  # Check that confirmation was sent
 
-    async def test_verwijderen_handles_delete_failure_gracefully(self):
-        """Test dat /dmk-poll-verwijderen foutmelding gracefully afhandelt"""
+    async def test_stopzetten_handles_delete_failure_gracefully(self):
+        """Test dat /dmk-poll-stopzetten foutmelding gracefully afhandelt"""
         channel = MagicMock()
         channel.id = 123
         interaction = _mk_interaction(channel=channel, admin=True)
@@ -421,9 +423,11 @@ class TestPollLifecycleVerwijderen(BaseTestCase):
             "apps.utils.poll_message.clear_message_id"
         ), patch(
             "apps.utils.poll_message.set_channel_disabled"
+        ), patch(
+            "apps.utils.poll_settings.clear_scheduled_activation"
         ):
 
-            await self._run(self.cog.verwijderbericht, interaction)
+            await self._run(self.cog.stopzetten, interaction)
 
         # Moet bevestiging hebben gestuurd (ook bij fout)
         interaction.followup.send.assert_awaited()
@@ -490,35 +494,46 @@ class TestPollLifecycleHelpers(BaseTestCase):
 
 
 class TestLoadOpeningMessage(BaseTestCase):
-    """Tests voor _load_opening_message functie"""
+    """Tests voor _load_opening_message functie - dynamic message generation"""
 
-    async def test_load_opening_message_file_not_exists(self):
-        """Test dat DEFAULT_MESSAGE wordt geretourneerd als bestand niet bestaat"""
-        with patch("os.path.exists", return_value=False):
-            result = _load_opening_message()
-            assert "Welkom bij de Deaf Mario Kart-poll" in result
+    async def test_load_opening_message_no_channel_id(self):
+        """Test dat generic fallback wordt gegenereerd zonder channel_id"""
+        result = _load_opening_message(channel_id=None)
+        assert "Welkom bij de DMK-poll" in result
+        assert "Klik op **🗳️ Stemmen**" in result
+        assert "Veel plezier! 🎉" in result
 
-    async def test_load_opening_message_file_read_raises(self):
-        """Test dat DEFAULT_MESSAGE wordt geretourneerd als open() faalt"""
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", side_effect=IOError("Cannot read")
-        ):
-            result = _load_opening_message()
-            assert "Welkom bij de Deaf Mario Kart-poll" in result
+    async def test_load_opening_message_with_channel_id(self):
+        """Test dat dynamische message wordt gegenereerd met channel settings"""
+        channel_id = 123456
 
-    async def test_load_opening_message_success(self):
-        """Test dat bestand succesvol wordt gelezen"""
-        mock_file = MagicMock()
-        mock_file.read.return_value = "Custom message content"
+        # Mock poll settings - patch at source module location
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]), \
+             patch("apps.utils.poll_settings.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}), \
+             patch("apps.utils.poll_settings.is_notification_enabled", return_value=True):
 
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", return_value=mock_file
-        ):
-            mock_file.__enter__ = lambda self: self
-            mock_file.__exit__ = lambda *args: None
-            result = _load_opening_message()
-            # Should return the custom content (stripped)
-            assert result == "Custom message content"
+            result = _load_opening_message(channel_id=channel_id)
+
+            # Check basic structure
+            assert "Welkom bij de DMK-poll" in result
+            assert "vrijdag, zaterdag en zondag" in result
+            assert "verborgen tot de deadline" in result
+            assert "<t:" in result  # HammerTime format
+            assert "🗳️ Stemmen" in result
+
+    async def test_load_opening_message_custom_days(self):
+        """Test dat message aangepast wordt op basis van enabled dagen"""
+        channel_id = 123456
+
+        # Only enable Monday and Tuesday - patch at source module location
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag", "dinsdag"]), \
+             patch("apps.utils.poll_settings.get_setting", return_value={"modus": "deadline", "tijd": "20:00"}), \
+             patch("apps.utils.poll_settings.is_notification_enabled", return_value=False):
+
+            result = _load_opening_message(channel_id=channel_id)
+
+            assert "maandag en dinsdag" in result
+            assert "vrijdag" not in result
 
 
 class TestPollLifecycleValidationEdgeCases(BaseTestCase):
