@@ -60,6 +60,52 @@ class TestCreateNotificationMessage(BaseTestCase):
         # save_message_id moet NIET zijn aangeroepen
         mock_save.assert_not_called()
 
+    async def test_create_notification_message_with_hammertime(self):
+        """Test dat notification message HammerTime gebruikt wanneer opgegeven"""
+        channel = MagicMock()
+        channel.id = 123
+        mock_msg = MagicMock()
+        mock_msg.id = 999
+        hammertime = "<t:1733270400:t>"
+
+        with patch("apps.utils.poll_message.safe_call", new=AsyncMock(return_value=mock_msg)) as mock_safe_call, patch(
+            "apps.utils.poll_message.save_message_id"
+        ) as mock_save:
+            result = await create_notification_message(channel, activation_hammertime=hammertime)
+
+        # Moet message hebben geretourneerd
+        assert result == mock_msg
+
+        # Controleer dat HammerTime in de content zit
+        call_args = mock_safe_call.call_args
+        content = call_args[1]["content"]
+        assert hammertime in content
+        assert "De DMK-poll-bot is zojuist aangezet om" in content
+
+        # save_message_id moet zijn aangeroepen met persistent key
+        mock_save.assert_called_once_with(123, "notification_persistent", 999)
+
+    async def test_create_notification_message_without_hammertime(self):
+        """Test dat notification message standaard tekst gebruikt zonder HammerTime"""
+        channel = MagicMock()
+        channel.id = 123
+        mock_msg = MagicMock()
+        mock_msg.id = 999
+
+        with patch("apps.utils.poll_message.safe_call", new=AsyncMock(return_value=mock_msg)) as mock_safe_call, patch(
+            "apps.utils.poll_message.save_message_id"
+        ):
+            result = await create_notification_message(channel)
+
+        # Moet message hebben geretourneerd
+        assert result == mock_msg
+
+        # Controleer dat standaard tekst wordt gebruikt (zonder "om")
+        call_args = mock_safe_call.call_args
+        content = call_args[1]["content"]
+        assert "De DMK-poll-bot is zojuist aangezet." in content
+        assert "om <t:" not in content  # Geen HammerTime in standaard tekst
+
 
 class TestUpdateNotificationMessage(BaseTestCase):
     """Tests voor update_notification_message functie"""

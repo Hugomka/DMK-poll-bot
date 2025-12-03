@@ -7,7 +7,6 @@ Tests for scheduling-related functions in poll_lifecycle.py:
 - _load_opening_message
 """
 
-import io
 from unittest.mock import MagicMock, patch
 
 from apps.commands.poll_lifecycle import PollLifecycle, _load_opening_message
@@ -458,68 +457,62 @@ class TestSaveScheduleOff(BaseTestCase):
 
 
 class TestLoadOpeningMessage(BaseTestCase):
-    """Tests for _load_opening_message"""
+    """Tests for _load_opening_message - dynamic message generation"""
 
-    async def test_load_opening_message_file_not_exists(self):
-        """Test that DEFAULT_MESSAGE is returned when file doesn't exist"""
-        with patch("os.path.exists", return_value=False):
-            result = _load_opening_message()
-            assert "Welkom bij de Deaf Mario Kart-poll" in result
-            assert "@everyone" in result
+    async def test_load_opening_message_no_channel_id_returns_generic(self):
+        """Test that generic fallback is generated without channel_id"""
+        result = _load_opening_message(channel_id=None)
+        assert "Welkom bij de DMK-poll" in result
+        assert "@everyone" in result
+        assert "Klik op **🗳️ Stemmen**" in result
+        assert "Veel plezier! 🎉" in result
 
-    async def test_load_opening_message_file_exists_and_readable(self):
-        """Test that custom text is returned when file exists and is readable"""
-        custom_content = "  Custom Opening Message  \n"
-        mock_file = io.StringIO(custom_content)
+    async def test_load_opening_message_with_default_settings(self):
+        """Test message generation with default weekend settings"""
+        channel_id = 999888
 
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", return_value=mock_file
-        ):
-            result = _load_opening_message()
-            # Should return trimmed custom content
-            assert result == "Custom Opening Message"
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]), \
+             patch("apps.utils.poll_settings.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}), \
+             patch("apps.utils.poll_settings.is_notification_enabled", return_value=True):
 
-    async def test_load_opening_message_file_exists_empty(self):
-        """Test that empty file returns empty string (stripped)"""
-        mock_file = io.StringIO("   \n   ")
+            result = _load_opening_message(channel_id=channel_id)
 
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", return_value=mock_file
-        ):
-            result = _load_opening_message()
-            # Should return empty string after stripping
-            assert result == ""
+            assert "vrijdag, zaterdag en zondag" in result
+            assert "verborgen tot de deadline" in result
+            assert "<t:" in result  # HammerTime format
+            assert "Als je nog niet gestemd hebt" in result  # Reminder notification
+            assert "Heb je op 'misschien' gestemd" in result  # Misschien notification
 
-    async def test_load_opening_message_file_read_error_returns_default(self):
-        """Test that DEFAULT_MESSAGE is returned on read error"""
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", side_effect=IOError("Cannot read file")
-        ):
-            result = _load_opening_message()
-            # Should return default message on exception
-            assert "Welkom bij de Deaf Mario Kart-poll" in result
-            assert "@everyone" in result
+    async def test_load_opening_message_notifications_disabled(self):
+        """Test message generation with notifications disabled"""
+        channel_id = 999888
 
-    async def test_load_opening_message_permission_error_returns_default(self):
-        """Test that DEFAULT_MESSAGE is returned on permission error"""
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", side_effect=PermissionError("Access denied")
-        ):
-            result = _load_opening_message()
-            # Should return default message on exception
-            assert "Welkom bij de Deaf Mario Kart-poll" in result
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["vrijdag"]), \
+             patch("apps.utils.poll_settings.get_setting", return_value={"modus": "deadline", "tijd": "20:00"}), \
+             patch("apps.utils.poll_settings.is_notification_enabled", return_value=False):
 
-    async def test_load_opening_message_multiline_content(self):
-        """Test that multiline content is properly read and stripped"""
-        custom_content = "  Line 1\nLine 2\nLine 3  \n"
-        mock_file = io.StringIO(custom_content)
+            result = _load_opening_message(channel_id=channel_id)
 
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.open", return_value=mock_file
-        ):
-            result = _load_opening_message()
-            # Should preserve newlines but strip outer whitespace
-            assert result == "Line 1\nLine 2\nLine 3"
+            # Should not contain notification text
+            assert "Als je nog niet gestemd hebt" not in result
+            assert "Heb je op 'misschien' gestemd" not in result
+            # But should still have basic info
+            assert "vrijdag" in result
+            assert "verborgen tot de deadline" in result
+
+    async def test_load_opening_message_single_day(self):
+        """Test message formatting with single enabled day"""
+        channel_id = 999888
+
+        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["zondag"]), \
+             patch("apps.utils.poll_settings.get_setting", return_value={"modus": "deadline", "tijd": "18:00"}), \
+             patch("apps.utils.poll_settings.is_notification_enabled", return_value=False):
+
+            result = _load_opening_message(channel_id=channel_id)
+
+            # Should show just the single day (no "en")
+            assert "zondag" in result
+            assert " en " not in result or " en zondag" not in result
 
 
 if __name__ == "__main__":

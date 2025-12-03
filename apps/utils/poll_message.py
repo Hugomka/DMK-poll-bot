@@ -155,24 +155,52 @@ def clear_message_id(channel_id: int, key: str) -> None:
     _save(data)
 
 
-async def create_notification_message(channel: Any) -> Optional[Any]:
+async def create_notification_message(
+    channel: Any, activation_hammertime: str | None = None
+) -> Optional[Any]:
     """
     Creëer een vriendelijk notificatiebericht wanneer de bot wordt aangezet.
 
     Note: This is a persistent notification that should remain visible.
     Uses 'notification_persistent' key to avoid conflicts with temporary notifications.
+    Deletes any existing notification messages before creating the new one to ensure
+    there's always only ONE notification message in the channel.
+
+    Args:
+        channel: Het Discord kanaal
+        activation_hammertime: Optionele HammerTime string voor activatietijd (bijv. "<t:1234567890:t>")
 
     Returns:
         Het aangemaakte bericht, of None bij fout.
     """
-    content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+    cid = int(getattr(channel, "id", 0))
+
+    # STAP 1: Verwijder ALLE bestaande notificatieberichten (temp, persistent, legacy)
+    # om ervoor te zorgen dat er altijd maar één notificatiebericht is
+    notification_keys = ["notification_temp", "notification_persistent", "notification"]
+    for key in notification_keys:
+        old_msg_id = get_message_id(cid, key)
+        if old_msg_id:
+            try:
+                old_msg = await fetch_message_or_none(channel, old_msg_id)
+                if old_msg is not None:
+                    await safe_call(old_msg.delete)
+            except Exception:  # pragma: no cover
+                pass  # Bericht bestaat niet meer
+            clear_message_id(cid, key)
+
+    # STAP 2: Maak nieuw notificatiebericht aan
+    if activation_hammertime:
+        content = f":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet om {activation_hammertime}. Veel plezier met de stemmen! 🎮"
+    else:
+        content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+
     send = getattr(channel, "send", None)
     if send is None:
         return None
     try:
         msg = await safe_call(send, content=content, view=None)
         if msg is not None:
-            cid = int(getattr(channel, "id", 0))
             # Use persistent key since this is a bot activation message that should stay
             save_message_id(cid, "notification_persistent", msg.id)
         return msg

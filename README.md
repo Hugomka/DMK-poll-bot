@@ -53,10 +53,11 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 
 | Commando | Uitleg |
 |---|---|
-| **`/dmk-poll-on`** *(default: admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten, een openingsbericht met `@everyone`, de **🗳️ Stemmen**-knop en een notificatiebericht in het huidige kanaal. |
+| **`/dmk-poll-on`** *(default: admin/mod)* | Plaatst of vernieuwt de 3 dag-berichten, een openingsbericht met `@everyone`, de **🗳️ Stemmen**-knop en een notificatiebericht in het huidige kanaal. Ondersteunt ook scheduling parameters voor automatische activering. |
 | **`/dmk-poll-reset`** *(default: admin/mod)* | Archiveren (CSV) + **alle stemmen wissen** → klaar voor nieuwe week. |
 | **`/dmk-poll-pauze`** *(default: admin/mod)* | Pauzeer/hervat stemmen. Bij pauze is de Stemmen-knop uitgeschakeld. |
-| **`/dmk-poll-verwijderen`** *(default: admin/mod)* | Sluit en verwijder alle poll-berichten in het kanaal en zet dit kanaal uit voor de scheduler. Polls komen hier niet meer terug, tenzij je later **/dmk-poll-on** gebruikt om het kanaal opnieuw te activeren. |
+| **`/dmk-poll-off`** *(default: admin/mod)* | Sluit de poll TIJDELIJK: verwijder alle berichten maar laat automatisme actief. De poll wordt automatisch weer geopend op de ingestelde tijd. |
+| **`/dmk-poll-stopzetten`** *(default: admin/mod)* | Stop de poll PERMANENT: verwijder alle berichten en schakel automatisme uit. De bot moet handmatig weer gestart worden met **/dmk-poll-on**. |
 | **`/dmk-poll-instelling`** *(default: admin/mod)* | Open instellingen voor de poll. Kies tussen **Poll-opties** (toggle 14 dag/tijd combinaties: maandag t/m zondag, elk 19:00 en 20:30; standaard alleen weekend actief) of **Notificaties** (toggle 8 automatische notificaties: poll geopend/gereset/gesloten, herinneringen, doorgaan, felicitatie). Interactieve UI met groene/grijze knoppen per kanaal. ⚠️ Let op: bij activeren van maandag/dinsdag de gesloten periode aanpassen via `/dmk-poll-on`. |
 | **`/dmk-poll-stemmen`** *(default: admin/mod)* | Instelling per dag of alle dagen: **altijd zichtbaar** of **verborgen tot** `uu:mm` (standaard 18:00). |
 | **`/dmk-poll-archief`** *(default: admin/mod)* | Bekijk en beheer het CSV-archief: kies CSV-formaat (🇺🇸 Comma / 🇳🇱 Semicolon), download direct, of verwijder archief. |
@@ -269,7 +270,7 @@ DMK-poll-bot/
 │   ├── commands/           # Slash commando's (gemodulariseerd)
 │   │   ├── __init__.py             # Command utilities en helpers
 │   │   ├── dmk_poll.py             # Main entry point voor alle commando's
-│   │   ├── poll_lifecycle.py       # Lifecycle commando's (on/reset/pauze/verwijderen)
+│   │   ├── poll_lifecycle.py       # Lifecycle commando's (on/reset/pauze/off/stopzetten)
 │   │   ├── poll_config.py          # Poll configuratie commando (instelling)
 │   │   ├── poll_votes.py           # Stemzichtbaarheid commando's
 │   │   ├── poll_guests.py          # Gast-commando's (add/remove)
@@ -481,7 +482,7 @@ coverage xml
 ### Test-overzicht
 
 De tests dekken onder andere:
-- **Poll lifecycle** (on/reset/pauze/verwijderen commando's)
+- **Poll lifecycle** (on/reset/pauze/off/stopzetten commando's)
 - **Poll-opslag** (stemmen toevoegen/verwijderen/resetten, exception handling)
 - **Poll-settings** (pauze, zichtbaarheid, namen tonen, scheduling)
 - **Poll-opties settings** (logic + UI voor dag/tijd toggles, per-channel state)
@@ -746,7 +747,10 @@ cat .scheduler_state.json
 
 ### v2.0 - Code refactoring & test coverage verbetering
 
-**Command modularisatie** (PR #3):
+**Command restructurering en modularisatie**:
+- Nieuwe command structuur voor duidelijke scheiding tussen tijdelijk en permanent sluiten:
+  - `/dmk-poll-off`: Tijdelijk sluiten (berichten verwijderen, automatisme blijft aan)
+  - `/dmk-poll-stopzetten`: Permanent uitschakelen (berichten verwijderen, automatisme uit)
 - Grote `dmk_poll.py` (978 regels) opgesplitst in kleinere, gefocuste modules
 - Betere onderhoudbaarheid en leesbaarheid
 - Duidelijke scheiding van verantwoordelijkheden

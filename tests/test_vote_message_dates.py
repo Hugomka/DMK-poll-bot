@@ -94,7 +94,8 @@ class TestVoteMessageDates(BaseTestCase):
             # Voor elke dag: check dat stembericht dezelfde datum gebruikt als rolling window
             for day_info in dagen_info:
                 dag = day_info["dag"]
-                expected_datum_iso = day_info["datum_iso"]
+                # datum_iso is beschikbaar in day_info maar wordt niet gebruikt in deze test
+                # omdat we alleen het Hammertime format valideren, niet de exacte timestamp
 
                 # Haal stembericht legenda op
                 legenda = _get_timezone_legend(dag)
