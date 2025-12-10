@@ -61,40 +61,45 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                         with patch(
                             "apps.utils.poll_message.get_celebration_gif_url"
                         ) as mock_get_url:
-                            # Alle 3 dagen enabled
-                            mock_enabled_days.return_value = EXPECTED_DAYS
-                            # Geen niet-stemmers voor alle dagen
-                            mock_non_voters.return_value = (0, [])
-                            # Nog geen celebration messages
-                            mock_get_id.return_value = None
-                            # Mock Tenor URL selector
-                            mock_get_url.return_value = test_tenor_url
+                            with patch(
+                                "apps.utils.poll_storage.load_votes"
+                            ) as mock_load_votes:
+                                # Alle 3 dagen enabled
+                                mock_enabled_days.return_value = EXPECTED_DAYS
+                                # Geen niet-stemmers voor alle dagen
+                                mock_non_voters.return_value = (0, [])
+                                # Mock echte stemmen (user_id: votes)
+                                mock_load_votes.return_value = {"123": {"vrijdag": ["19:00"]}}
+                                # Nog geen celebration messages
+                                mock_get_id.return_value = None
+                                # Mock Tenor URL selector
+                                mock_get_url.return_value = test_tenor_url
 
-                            await check_all_voted_celebration(channel, 1, 100)
+                                await check_all_voted_celebration(channel, 1, 100)
 
-                            # Verifieer dat send 2x werd aangeroepen (embed + GIF URL)
-                            self.assertEqual(channel.send.call_count, 2)
+                                # Verifieer dat send 2x werd aangeroepen (embed + GIF URL)
+                                self.assertEqual(channel.send.call_count, 2)
 
-                            # Eerste call: embed met tekst
-                            first_call_kwargs = channel.send.call_args_list[0][1]
-                            self.assertIn("embed", first_call_kwargs)
-                            embed = first_call_kwargs["embed"]
-                            self.assertIsInstance(embed, discord.Embed)
-                            self.assertIn("🎉", embed.title)
-                            self.assertIn("Iedereen heeft gestemd", embed.title)
-                            self.assertEqual(embed.color, discord.Color.gold())
+                                # Eerste call: embed met tekst
+                                first_call_kwargs = channel.send.call_args_list[0][1]
+                                self.assertIn("embed", first_call_kwargs)
+                                embed = first_call_kwargs["embed"]
+                                self.assertIsInstance(embed, discord.Embed)
+                                self.assertIn("🎉", embed.title)
+                                self.assertIn("Iedereen heeft gestemd", embed.title)
+                                self.assertEqual(embed.color, discord.Color.gold())
 
-                            # Tweede call: los bericht met GIF URL
-                            second_call_kwargs = channel.send.call_args_list[1][1]
-                            self.assertIn("content", second_call_kwargs)
-                            self.assertEqual(
-                                second_call_kwargs["content"], test_tenor_url
-                            )
+                                # Tweede call: los bericht met GIF URL
+                                second_call_kwargs = channel.send.call_args_list[1][1]
+                                self.assertIn("content", second_call_kwargs)
+                                self.assertEqual(
+                                    second_call_kwargs["content"], test_tenor_url
+                                )
 
-                            # Verifieer dat BEIDE message IDs werden opgeslagen
-                            self.assertEqual(mock_save_id.call_count, 2)
-                            mock_save_id.assert_any_call(100, "celebration", 999)
-                            mock_save_id.assert_any_call(100, "celebration_gif", 1001)
+                                # Verifieer dat BEIDE message IDs werden opgeslagen
+                                self.assertEqual(mock_save_id.call_count, 2)
+                                mock_save_id.assert_any_call(100, "celebration", 999)
+                                mock_save_id.assert_any_call(100, "celebration_gif", 1001)
 
     async def test_does_not_send_celebration_when_already_exists(self):
         """Test dat celebration niet opnieuw wordt gestuurd als die al bestaat."""
@@ -300,41 +305,45 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                                 with patch(
                                     "apps.utils.poll_message.discord.File"
                                 ) as mock_file:
-                                    mock_non_voters.return_value = (0, [])
-                                    mock_get_id.return_value = None
-                                    mock_get_url.return_value = test_tenor_url
-                                    mock_exists.return_value = True
-                                    mock_file.return_value = MagicMock()
+                                    with patch(
+                                        "apps.utils.poll_storage.load_votes"
+                                    ) as mock_load_votes:
+                                        mock_non_voters.return_value = (0, [])
+                                        mock_load_votes.return_value = {"123": {"vrijdag": ["19:00"]}}
+                                        mock_get_id.return_value = None
+                                        mock_get_url.return_value = test_tenor_url
+                                        mock_exists.return_value = True
+                                        mock_file.return_value = MagicMock()
 
-                                    await check_all_voted_celebration(channel, 1, 100)
+                                        await check_all_voted_celebration(channel, 1, 100)
 
-                                    # Verifieer dat send 3x werd aangeroepen
-                                    self.assertEqual(channel.send.call_count, 3)
+                                        # Verifieer dat send 3x werd aangeroepen
+                                        self.assertEqual(channel.send.call_count, 3)
 
-                                    # Eerste call: embed
-                                    first_call = channel.send.call_args_list[0][1]
-                                    self.assertIn("embed", first_call)
+                                        # Eerste call: embed
+                                        first_call = channel.send.call_args_list[0][1]
+                                        self.assertIn("embed", first_call)
 
-                                    # Tweede call: Tenor URL
-                                    second_call = channel.send.call_args_list[1][1]
-                                    self.assertEqual(
-                                        second_call["content"], test_tenor_url
-                                    )
+                                        # Tweede call: Tenor URL
+                                        second_call = channel.send.call_args_list[1][1]
+                                        self.assertEqual(
+                                            second_call["content"], test_tenor_url
+                                        )
 
-                                    # Derde call: lokale afbeelding
-                                    third_call = channel.send.call_args_list[2][1]
-                                    self.assertIn("file", third_call)
-                                    # Verifieer dat discord.File werd aangeroepen
-                                    mock_file.assert_called_once()
+                                        # Derde call: lokale afbeelding
+                                        third_call = channel.send.call_args_list[2][1]
+                                        self.assertIn("file", third_call)
+                                        # Verifieer dat discord.File werd aangeroepen
+                                        mock_file.assert_called_once()
 
-                                    # Verifieer dat BEIDE message IDs werden opgeslagen
-                                    self.assertEqual(mock_save_id.call_count, 2)
-                                    mock_save_id.assert_any_call(
-                                        100, "celebration", 999
-                                    )
-                                    mock_save_id.assert_any_call(
-                                        100, "celebration_gif", 1000
-                                    )
+                                        # Verifieer dat BEIDE message IDs werden opgeslagen
+                                        self.assertEqual(mock_save_id.call_count, 2)
+                                        mock_save_id.assert_any_call(
+                                            100, "celebration", 999
+                                        )
+                                        mock_save_id.assert_any_call(
+                                            100, "celebration_gif", 1000
+                                        )
 
     async def test_does_not_send_local_image_when_tenor_succeeds(self):
         """Test dat lokale afbeelding NIET wordt gestuurd als Tenor URL werkt."""
@@ -363,14 +372,18 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                         with patch(
                             "apps.utils.poll_message.get_celebration_gif_url"
                         ) as mock_get_url:
-                            mock_non_voters.return_value = (0, [])
-                            mock_get_id.return_value = None
-                            mock_get_url.return_value = test_tenor_url
+                            with patch(
+                                "apps.utils.poll_storage.load_votes"
+                            ) as mock_load_votes:
+                                mock_non_voters.return_value = (0, [])
+                                mock_load_votes.return_value = {"123": {"vrijdag": ["19:00"]}}
+                                mock_get_id.return_value = None
+                                mock_get_url.return_value = test_tenor_url
 
-                            await check_all_voted_celebration(channel, 1, 100)
+                                await check_all_voted_celebration(channel, 1, 100)
 
-                            # Verifieer dat send ALLEEN 2x werd aangeroepen (geen fallback)
-                            self.assertEqual(channel.send.call_count, 2)
+                                # Verifieer dat send ALLEEN 2x werd aangeroepen (geen fallback)
+                                self.assertEqual(channel.send.call_count, 2)
 
     async def test_does_not_send_local_image_when_file_not_exists(self):
         """Test dat lokale afbeelding NIET wordt gestuurd als bestand niet bestaat."""
@@ -398,15 +411,19 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                             with patch(
                                 "apps.utils.poll_message.os.path.exists"
                             ) as mock_exists:
-                                mock_non_voters.return_value = (0, [])
-                                mock_get_id.return_value = None
-                                mock_get_url.return_value = test_tenor_url
-                                mock_exists.return_value = False  # Bestand bestaat niet
+                                with patch(
+                                    "apps.utils.poll_storage.load_votes"
+                                ) as mock_load_votes:
+                                    mock_non_voters.return_value = (0, [])
+                                    mock_load_votes.return_value = {"123": {"vrijdag": ["19:00"]}}
+                                    mock_get_id.return_value = None
+                                    mock_get_url.return_value = test_tenor_url
+                                    mock_exists.return_value = False  # Bestand bestaat niet
 
-                                await check_all_voted_celebration(channel, 1, 100)
+                                    await check_all_voted_celebration(channel, 1, 100)
 
-                                # Verifieer dat send ALLEEN 2x werd aangeroepen (geen fallback)
-                                self.assertEqual(channel.send.call_count, 2)
+                                    # Verifieer dat send ALLEEN 2x werd aangeroepen (geen fallback)
+                                    self.assertEqual(channel.send.call_count, 2)
 
 
 class TestRemoveCelebrationMessage(BaseTestCase):

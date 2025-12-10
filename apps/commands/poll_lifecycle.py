@@ -1029,6 +1029,7 @@ class PollLifecycle(commands.Cog):
             "notification_persistent",
             "notification",
             "celebration",
+            "celebration_gif",
         ]
         for key in message_keys:
             try:

@@ -1390,6 +1390,13 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                     # 3) Notificatieberichten verwijderen (temp, persistent en legacy)
                     await _clear_notification_messages(channel, cid)
 
+                    # 3b) Celebration berichten verwijderen (embed + GIF)
+                    try:
+                        from apps.utils.poll_message import remove_celebration_message
+                        await remove_celebration_message(channel, cid)
+                    except Exception:  # pragma: no cover
+                        pass
+
                     # 4) Archiveer huidige week's data voordat we deactiveren
                     try:
                         from apps.utils.archive import append_week_snapshot_scoped
@@ -1500,6 +1507,15 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     try:
                         from apps.utils.poll_settings import set_paused
                         set_paused(cid, False)
+                    except Exception:  # pragma: no cover
+                        pass
+
+                    # Reset votes voor schone start (Bug #3 fix)
+                    # Dit zorgt ervoor dat de poll altijd met 0 stemmen start,
+                    # ongeacht wanneer de activatie plaatsvindt (bijv. dinsdag 13:33)
+                    try:
+                        gid = getattr(guild, "id", 0)
+                        await reset_votes_scoped(gid, cid)
                     except Exception:  # pragma: no cover
                         pass
 

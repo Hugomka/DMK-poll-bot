@@ -249,7 +249,7 @@ class TestPollMessage(BaseTestCase):
         ) as save_id:
 
             async def fake_fetch(mid):
-                return None  # Forceer clear + create
+                return None  # Fetch faalt, maar GEEN recreatie meer (Bug #4 fix)
 
             async def fake_send(*, content=None, view=None):
                 return SimpleNamespace(id=99999, content=content)
@@ -259,8 +259,9 @@ class TestPollMessage(BaseTestCase):
 
             await poll_message.update_poll_message(ch, dag="zaterdag")
 
-            clear_id.assert_called_once_with(556, "zaterdag")
-            save_id.assert_called_once()  # Aangemaakt
+            # Bug #4 fix: NIET meer clear_id + save_id - vertrouw op message ID
+            clear_id.assert_not_called()
+            save_id.assert_not_called()
 
     # Update flow – NotFound → clear + create
     async def test_update_flow_fetch_raises_notfound_then_create(self):
@@ -288,8 +289,9 @@ class TestPollMessage(BaseTestCase):
             ch.send = fake_send
 
             await poll_message.update_poll_message(ch, dag="zondag")
-            clear_id.assert_called_once_with(557, "zondag")
-            save_id.assert_called_once()
+            # Bug #4 fix: NIET meer clear_id + save_id - vertrouw op message ID
+            clear_id.assert_not_called()
+            save_id.assert_not_called()
 
     # Update flow – HTTPException code 30046 → stil negeren
     async def test_update_flow_http_30046_is_ignored(self):

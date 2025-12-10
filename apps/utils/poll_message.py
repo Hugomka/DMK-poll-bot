@@ -365,15 +365,15 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                 content = content.rstrip() + ":arrow_up: " + decision + "\n\u200b"
 
             if mid:
+                # Bericht ID bestaat - probeer te updaten
                 msg = await fetch_message_or_none(channel, mid)
                 if msg is not None:
                     await safe_call(msg.edit, content=content, view=None)
-                    continue
-                else:
-                    # Bestond niet meer of niet op te halen → id opruimen en daarna aanmaken
-                    clear_message_id(cid_val, d)
+                # Als msg is None (fetch failed), NIET opnieuw aanmaken (Bug #4 fix)
+                # Vertrouw op message ID - tijdelijke Discord API fout is geen reden om te recreëren
+                continue
 
-            # Create-pad: geen mid óf net opgeschoond na NotFound → nieuw sturen
+            # Create-pad: alleen als er GEEN mid is (eerste keer)
             try:
                 send = getattr(channel, "send", None)
                 new_msg = (
@@ -410,10 +410,21 @@ async def check_all_voted_celebration(
                 all_voted = False
                 break
 
+        # Bug #2 fix: Check of er daadwerkelijk stemmen zijn (niet alleen "geen niet-stemmers")
+        # Dit voorkomt celebration op verse polls met slechts 1 stem
+        has_any_votes = False
+        if all_voted:
+            from apps.utils.poll_storage import load_votes, _is_non_voter_id
+            votes = await load_votes(str(guild_id), str(channel_id))
+            # Filter non-voter IDs eruit - alleen echte stemmen tellen
+            real_voter_ids = [uid for uid in votes.keys() if not _is_non_voter_id(uid)]
+            has_any_votes = len(real_voter_ids) > 0
+
         celebration_id = get_message_id(channel_id, "celebration")
         celebration_gif_id = get_message_id(channel_id, "celebration_gif")
 
-        if all_voted:
+        # Alleen celebration als iedereen heeft gestemd ÉN er daadwerkelijk stemmen zijn
+        if all_voted and has_any_votes:
             # Iedereen heeft gestemd! Stuur celebration als die nog niet bestaat
             if not celebration_id:
                 embed = create_celebration_embed()
