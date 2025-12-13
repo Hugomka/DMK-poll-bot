@@ -140,17 +140,21 @@ class TestMessageBuilder(BaseTestCase):
             monday_this_week = now - timedelta(days=days_since_monday)
             friday_this_week = monday_this_week + timedelta(days=4)  # Vrijdag = +4 dagen
             friday_date = friday_this_week.strftime("%Y-%m-%d")
+
             txt = await mb.build_poll_message_for_day_async(
                 "vrijdag", guild_id=1, channel_id=2, hide_counts=True, datum_iso=friday_date
             )
             # Normale tijdslots worden wel getoond met Hammertime
             assert "🟢 Om <t:" in txt  # Hammertime voor 19:00
-            assert ":t> uur (stemmen verborgen)" in txt
             assert "🔵 Om <t:" in txt  # Hammertime voor 20:30
+
+            # hide_counts=True betekent ALTIJD counts verbergen (ongeacht dag)
+            # De deadline-logica zit in should_hide_counts(), niet hier
+            assert ":t> uur (stemmen verborgen)" in txt
+            assert "❌ Niet meedoen (stemmen verborgen)" in txt
+
             # "Misschien" wordt NIET getoond in deadline-modus
             assert "Ⓜ️ Misschien" not in txt
-            # "Niet meedoen" wordt wel getoond
-            assert "❌ Niet meedoen (stemmen verborgen)" in txt
 
     async def test_build_message_hides_misschien_in_deadline_mode_counts_visible(self):
         """Misschien wordt NIET getoond in deadline-modus, ook niet wanneer counts zichtbaar zijn (toch altijd 0)."""
@@ -408,8 +412,8 @@ class TestMessageBuilder(BaseTestCase):
             # Niet-stemmers worden altijd getoond, ook bij verborgen counts (motivatie!)
             assert "👻 Niet gestemd (1 personen)" in txt
 
-    async def test_build_message_past_date_shows_counts_despite_hide_setting(self):
-        """Verleden datum overschrijft hide_counts=True en toont altijd counts."""
+    async def test_build_message_respects_hide_counts_parameter(self):
+        """hide_counts parameter wordt altijd gerespecteerd (ongeacht datum)."""
         options = [opt("maandag", "om 19:00 uur", "🟥")]
         counts = {"om 19:00 uur": 5}
 
@@ -424,12 +428,13 @@ class TestMessageBuilder(BaseTestCase):
                 "maandag",
                 guild_id=1,
                 channel_id=2,
-                hide_counts=True,  # Verborgen, maar wordt overschreven voor verleden
+                hide_counts=True,  # Moet altijd gerespecteerd worden
                 datum_iso=past_date,
             )
-            # Verleden datum moet counts tonen ondanks hide_counts=True
-            assert "(5 stemmen)" in txt
-            assert "(stemmen verborgen)" not in txt
+            # hide_counts=True betekent ALTIJD counts verbergen (ongeacht datum)
+            # De deadline-logica (18:00 check) zit in should_hide_counts()
+            assert "(stemmen verborgen)" in txt
+            assert "(5 stemmen)" not in txt
 
     async def test_build_message_invalid_datum_iso_falls_back_safely(self):
         """Invalid datum_iso veroorzaakt exception die wordt afgevangen."""

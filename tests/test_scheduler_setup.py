@@ -35,7 +35,7 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
 
         def fake_create_task(coro):
             # Sluit de coroutine om unawaited warning te voorkomen
-            if hasattr(coro, 'close'):
+            if hasattr(coro, "close"):
                 coro.close()
             created_tasks.append(coro)
             # Return een mock Task object
@@ -43,14 +43,10 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
             return task
 
         with (
-            patch.object(
-                scheduler.scheduler, "add_job", side_effect=fake_add_job
-            ),
+            patch.object(scheduler.scheduler, "add_job", side_effect=fake_add_job),
             patch.object(scheduler.scheduler, "start") as mock_start,
             patch("asyncio.create_task", side_effect=fake_create_task),
-            patch.object(
-                scheduler, "_run_catch_up_with_lock", new_callable=AsyncMock
-            ),
+            patch.object(scheduler, "_run_catch_up_with_lock", new_callable=AsyncMock),
         ):
             scheduler.setup_scheduler(bot)
 
@@ -64,9 +60,10 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         # 13-15. Convert Misschien (vr/za/zo)
         # 16. Scheduled poll activation check (elke minuut)
         # 17. Scheduled poll deactivation check (elke minuut)
-        # 18. Wekelijkse tenor sync (maandag 00:00)
-        # Totaal: 1 + 1 + 1 + 3 + 3 + 1 + 3 + 3 + 1 + 1 = 18
-        self.assertEqual(len(added_jobs), 18)
+        # 18. Retry failed conversions (elke minuut)
+        # 19. Wekelijkse tenor sync (maandag 00:00)
+        # Totaal: 1 + 1 + 1 + 3 + 3 + 1 + 3 + 3 + 1 + 1 + 1 = 19
+        self.assertEqual(len(added_jobs), 19)
 
         # Controleer dat juiste functies zijn geregistreerd
         job_funcs = [j["func"] for j in added_jobs]

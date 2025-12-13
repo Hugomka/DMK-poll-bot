@@ -136,43 +136,6 @@ def _get_next_weekday_date(dag: str) -> str:
     return target_date.strftime("%d-%m")
 
 
-def _get_next_weekday_date_iso(dag: str) -> str:
-    """
-    Bereken datum voor elke dag van de week van de huidige poll-periode in YYYY-MM-DD formaat.
-
-    Identiek aan _get_next_weekday_date, maar retourneert ISO formaat voor Hammertime conversie.
-    """
-    from apps.utils.constants import DAG_MAPPING
-
-    tz = pytz.timezone("Europe/Amsterdam")
-    now = datetime.now(tz)
-
-    target_weekday = DAG_MAPPING.get(dag.lower())
-    if target_weekday is None:
-        return ""
-
-    # Bereken de laatste dinsdag 20:00 (start van huidige poll-periode)
-    days_since_tuesday = (now.weekday() - 1) % 7  # 1 = dinsdag
-    last_tuesday = (now - timedelta(days=days_since_tuesday)).replace(
-        hour=20, minute=0, second=0, microsecond=0
-    )
-
-    # Als we nog niet voorbij dinsdag 20:00 zijn, gebruik de dinsdag van vorige week
-    if now < last_tuesday:
-        last_tuesday -= timedelta(days=7)
-
-    # Bereken de doeldag vanaf de laatste dinsdag 20:00
-    days_ahead = (target_weekday - last_tuesday.weekday()) % 7
-
-    # Als days_ahead 0 is, betekent dit dinsdag → vrijdag/zaterdag/zondag dezelfde week
-    if days_ahead == 0:
-        days_ahead = 7
-
-    target_date = last_tuesday + timedelta(days=days_ahead)
-
-    return target_date.strftime("%Y-%m-%d")
-
-
 async def build_poll_message_for_day_async(
     dag: str,
     guild_id: int | str,
@@ -206,9 +169,12 @@ async def build_poll_message_for_day_async(
             if day_info["dag"] == dag.lower():
                 datum_iso = day_info["datum"].strftime("%Y-%m-%d")
                 break
-        # Ultimate fallback als dag niet in rolling window (zou niet moeten gebeuren)
+        # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
         if datum_iso is None:
-            datum_iso = _get_next_weekday_date_iso(dag)
+            raise ValueError(
+                f"Dag '{dag}' niet gevonden in rolling window. "
+                f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
+            )
 
     datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
         datum_iso, "18:00", style="D"  # D = long date format (bijv. "28 november 2025")
@@ -218,23 +184,11 @@ async def build_poll_message_for_day_async(
         title += " **- _(Gepauzeerd)_**"
     message = f"{title}\n"
 
-    # Bepaal of deze dag in het verleden ligt
-    # Verleden dagen moeten ALTIJD counts tonen (negeer hide_counts parameter)
-    from datetime import date as date_class
-    try:
-        # Parse datum_iso als date object
-        year, month, day = datum_iso.split("-")
-        datum_date = date_class(int(year), int(month), int(day))
-        today = date_class.today()
-        is_past = datum_date < today
-    except (ValueError, AttributeError):
-        # Bij parse error: assume niet-verleden (safe default)
-        is_past = False
-
-    # Override hide_counts en hide_ghosts voor verleden dagen
-    # Verleden dagen tonen altijd counts én niet-stemmers
-    effective_hide_counts = False if is_past else hide_counts
-    effective_hide_ghosts = False if is_past else hide_ghosts
+    # Gebruik de hide_counts en hide_ghosts parameters direct
+    # De caller (poll_message.py) roept al should_hide_counts() aan
+    # die de deadline-tijd checkt (bijv. vrijdag 18:00)
+    effective_hide_counts = hide_counts
+    effective_hide_ghosts = hide_ghosts
 
     # Filter opties voor deze dag
     all_opties = [o for o in get_poll_options() if o.dag == dag]
@@ -272,9 +226,12 @@ async def build_poll_message_for_day_async(
             if day_info["dag"] == dag.lower():
                 datum_iso = day_info["datum"].strftime("%Y-%m-%d")
                 break
-        # Ultimate fallback als dag niet in rolling window
+        # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
         if datum_iso is None:
-            datum_iso = _get_next_weekday_date_iso(dag)
+            raise ValueError(
+                f"Dag '{dag}' niet gevonden in rolling window. "
+                f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
+            )
 
     for opt in opties:
         # Filter "misschien" uit resultaten in deadline-modus:

@@ -460,19 +460,21 @@ def create_poll_options_settings_embed(channel_id: int | None = None) -> discord
     """Maak embed voor poll-opties settings."""
     # Import voor Hammertime generatie
     from apps.utils.time_zone_helper import TimeZoneHelper
-    from apps.utils.message_builder import _get_next_weekday_date_iso, get_rolling_window_days
+    from apps.utils.message_builder import get_rolling_window_days
+    from apps.utils.poll_message import get_dag_als_vandaag
     from apps.entities.poll_option import get_poll_options
 
     # Genereer tijdzone legenda voor alle dagen met emoji's uit poll_options.json
     all_options = get_poll_options()
     dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
 
-    # Als channel_id beschikbaar is, gebruik rolling window voor datums
+    # Gebruik rolling window voor datums (alle 7 dagen)
+    # Respecteer channel-specifieke dag_als_vandaag setting
+    dag_als_vandaag = get_dag_als_vandaag(channel_id) if channel_id else None
+    dagen_info = get_rolling_window_days(dag_als_vandaag=dag_als_vandaag)
     datum_map = {}
-    if channel_id is not None:
-        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
-        for day_info in dagen_info:
-            datum_map[day_info["dag"]] = day_info["datum"].strftime("%Y-%m-%d")
+    for day_info in dagen_info:
+        datum_map[day_info["dag"]] = day_info["datum"].strftime("%Y-%m-%d")
 
     legenda_lines = []
     for dag in dagen:
@@ -486,10 +488,14 @@ def create_poll_options_settings_embed(channel_id: int | None = None) -> discord
             "🟠"
         )
 
-        # Gebruik rolling window datum als beschikbaar, anders fallback
+        # Gebruik rolling window datum als beschikbaar
         datum_iso = datum_map.get(dag.lower())
         if datum_iso is None:
-            datum_iso = _get_next_weekday_date_iso(dag)
+            # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
+            raise ValueError(
+                f"Dag '{dag}' niet gevonden in rolling window. "
+                f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
+            )
 
         tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
         tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")

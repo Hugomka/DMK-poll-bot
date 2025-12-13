@@ -149,6 +149,13 @@ class PollStatus(commands.Cog):
 
             # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
+            if scoped is None:
+                await interaction.followup.send(
+                    "⚠️ **Fout:** Kan stemmen niet laden uit opslag. "
+                    "Probeer het later opnieuw of neem contact op met de beheerder.",
+                    ephemeral=True
+                )
+                return
 
             # Gebruik rolling window voor chronologische volgorde met datums
             from apps.utils.poll_settings import get_enabled_rolling_window_days

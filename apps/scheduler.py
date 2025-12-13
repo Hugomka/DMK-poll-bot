@@ -542,6 +542,92 @@ async def _run_catch_up_with_lock(bot) -> None:  # pragma: no cover
             pass
 
 
+async def retry_failed_conversions(bot):
+    """
+    Probeer mislukte misschien conversies opnieuw.
+
+    - Runs every minute
+    - Retries pending conversions (binnen 2 uur)
+    - Sends error messages for expired conversions (>2 uur)
+    """
+    log_job("retry_conversions", status="started")
+
+    from apps.utils.retry_queue import (
+        get_expired_conversions,
+        get_pending_conversions,
+        increment_retry_count,
+        remove_from_queue,
+    )
+    from apps.utils.poll_storage import add_vote, remove_vote
+
+    # 1. Probeer pending conversions opnieuw
+    pending = get_pending_conversions()
+    for item in pending:
+        gid = item["guild_id"]
+        cid = item["channel_id"]
+        uid = item["user_id"]
+        dag = item["dag"]
+        key = item["key"]
+
+        try:
+            # Probeer conversie opnieuw
+            await remove_vote(uid, dag, "misschien", gid, cid)
+            await add_vote(uid, dag, "niet meedoen", gid, cid)
+
+            # Success - verwijder uit queue
+            remove_from_queue(key)
+            log_job("retry_conversions", status="success", user_id=uid, dag=dag)
+
+            # Update poll message
+            try:
+                # Haal channel op
+                all_channels = get_channels(bot)
+                channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
+                if channel:
+                    await schedule_poll_update(channel, dag, delay=0.0)
+            except Exception:  # pragma: no cover
+                pass
+
+        except Exception:  # pragma: no cover
+            # Nog steeds gefaald - verhoog retry count
+            increment_retry_count(key)
+            log_job("retry_conversions", status="retry_failed", user_id=uid, dag=dag)
+
+    # 2. Stuur error messages voor expired conversions (>2 uur)
+    expired = get_expired_conversions()
+    for item in expired:
+        gid = item["guild_id"]
+        cid = item["channel_id"]
+        uid = item["user_id"]
+        dag = item["dag"]
+        key = item["key"]
+        retry_count = item.get("retry_count", 0)
+
+        try:
+            # Haal channel op
+            all_channels = get_channels(bot)
+            channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
+
+            if channel:
+                # Stuur permanent error message (niet ephemeral)
+                send = getattr(channel, "send", None)
+                if send:
+                    await send(
+                        f"⚠️ **Fout bij misschien conversie:**\n"
+                        f"Kan stem van <@{uid}> voor **{dag}** niet converteren naar 'niet meedoen'.\n"
+                        f"Geprobeerd {retry_count + 1}x over 2 uur. Neem contact op met de beheerder.",
+                        delete_after=None  # Blijft staan
+                    )
+                    log_job("retry_conversions", status="timeout_error_sent", user_id=uid, dag=dag)
+        except Exception:  # pragma: no cover
+            log_job("retry_conversions", status="error_send_failed", user_id=uid, dag=dag)
+
+        # Verwijder uit queue (ook als error message faalt)
+        remove_from_queue(key)
+
+    log_job("retry_conversions", status=f"completed (pending={len(pending)}, expired={len(expired)})")
+
+
 def setup_scheduler(bot) -> None:  # pragma: no cover
     """
     Plan periodieke jobs en start de scheduler.
@@ -667,6 +753,13 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(minute="*"),
         args=[bot],
         name="Scheduled poll deactivation check",
+    )
+    # Retry failed misschien conversions (every minute)
+    scheduler.add_job(
+        retry_failed_conversions,
+        CronTrigger(minute="*"),
+        args=[bot],
+        name="Retry failed conversions",
     )
     scheduler.start()
     asyncio.create_task(_run_catch_up_with_lock(bot))
@@ -903,7 +996,6 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
 
     # Import TimeZoneHelper voor Hammertime conversie
     from apps.utils.time_zone_helper import TimeZoneHelper
-    from apps.utils.message_builder import _get_next_weekday_date_iso
 
     # DENY_CHANNEL_NAMES check
     deny_names = _get_deny_channel_names()
@@ -965,9 +1057,18 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
                 if day_info["dag"] == dag.lower():
                     datum_iso = day_info["datum_iso"]
                     break
-            # Ultimate fallback als dag niet in rolling window
+            # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
             if datum_iso is None:
-                datum_iso = _get_next_weekday_date_iso(dag)
+                # Stuur foutmelding naar kanaal (zichtbaar voor gebruikers)
+                try:
+                    await channel.send(
+                        f"⚠️ **Fout bij beslissing aankondiging:** Dag '{dag}' niet gevonden in rolling window. "
+                        f"Dit zou niet moeten gebeuren. Neem contact op met de beheerder.",
+                        delete_after=300
+                    )
+                except Exception:  # pragma: no cover
+                    pass
+                continue  # Skip deze dag, ga door met andere enabled dagen
 
             winnaar_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
                 datum_iso, winnaar_tijd_str, style="t"
@@ -1681,6 +1782,9 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
                         converted_any = True
                         misschien_count += 1
                     except Exception:  # pragma: no cover
+                        # Voeg toe aan retry queue voor 2 uur retry window
+                        from apps.utils.retry_queue import add_failed_conversion
+                        add_failed_conversion(str(gid), str(cid), str(uid), dag)
                         continue
 
             # Store the count of converted misschien votes

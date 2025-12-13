@@ -18,7 +18,6 @@ from apps.utils.poll_settings import (
 )
 from apps.utils.poll_storage import get_user_votes, toggle_vote
 from apps.utils.time_zone_helper import TimeZoneHelper
-from apps.utils.message_builder import _get_next_weekday_date_iso
 
 HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
 
@@ -47,9 +46,12 @@ def _get_timezone_legend(dag: str) -> str:
             datum_iso = day_info["datum"].strftime("%Y-%m-%d")
             break
 
-    # Fallback als dag niet gevonden (zou niet moeten gebeuren)
+    # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
     if datum_iso is None:
-        datum_iso = _get_next_weekday_date_iso(dag)
+        raise ValueError(
+            f"Dag '{dag}' niet gevonden in rolling window. "
+            f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
+        )
 
     tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
     tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
