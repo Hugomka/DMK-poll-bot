@@ -7,7 +7,6 @@ Slaat gefaalde conversies op en probeert ze opnieuw tot 2 uur is verstreken.
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional
 
 import pytz
 
