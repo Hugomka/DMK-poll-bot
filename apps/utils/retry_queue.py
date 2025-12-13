@@ -55,17 +55,45 @@ def add_failed_conversion(guild_id: str, channel_id: str, user_id: str, dag: str
     queue = _load_retry_queue()
 
     # Unieke key per conversie
-    key = f"{guild_id}:{channel_id}:{user_id}:{dag}"
+    key = f"conversion:{guild_id}:{channel_id}:{user_id}:{dag}"
 
     # Alleen toevoegen als nog niet in queue (voorkom duplicaten)
     if key not in queue:
         tz = pytz.timezone("Europe/Amsterdam")
         now = datetime.now(tz)
         queue[key] = {
+            "type": "conversion",
             "guild_id": guild_id,
             "channel_id": channel_id,
             "user_id": user_id,
             "dag": dag,
+            "first_attempt": now.isoformat(),
+            "retry_count": 0,
+        }
+        _save_retry_queue(queue)
+
+
+def add_failed_reset(guild_id: str, channel_id: str):
+    """
+    Voeg mislukte vote reset toe aan retry queue.
+
+    Args:
+        guild_id: Guild ID als string
+        channel_id: Channel ID als string
+    """
+    queue = _load_retry_queue()
+
+    # Unieke key per reset (geen user_id/dag want reset is voor hele kanaal)
+    key = f"reset:{guild_id}:{channel_id}"
+
+    # Alleen toevoegen als nog niet in queue (voorkom duplicaten)
+    if key not in queue:
+        tz = pytz.timezone("Europe/Amsterdam")
+        now = datetime.now(tz)
+        queue[key] = {
+            "type": "reset",
+            "guild_id": guild_id,
+            "channel_id": channel_id,
             "first_attempt": now.isoformat(),
             "retry_count": 0,
         }

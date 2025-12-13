@@ -542,15 +542,15 @@ async def _run_catch_up_with_lock(bot) -> None:  # pragma: no cover
             pass
 
 
-async def retry_failed_conversions(bot):
+async def retry_failed_operations(bot):
     """
-    Probeer mislukte misschien conversies opnieuw.
+    Probeer mislukte misschien conversies en vote resets opnieuw.
 
     - Runs every minute
-    - Retries pending conversions (binnen 2 uur)
-    - Sends error messages for expired conversions (>2 uur)
+    - Retries pending operations (binnen 2 uur)
+    - Sends error messages for expired operations (>2 uur)
     """
-    log_job("retry_conversions", status="started")
+    log_job("retry_operations", status="started")
 
     from apps.utils.retry_queue import (
         get_expired_conversions,
@@ -558,48 +558,56 @@ async def retry_failed_conversions(bot):
         increment_retry_count,
         remove_from_queue,
     )
-    from apps.utils.poll_storage import add_vote, remove_vote
+    from apps.utils.poll_storage import add_vote, remove_vote, reset_votes_scoped
 
-    # 1. Probeer pending conversions opnieuw
+    # 1. Probeer pending operations opnieuw
     pending = get_pending_conversions()
     for item in pending:
+        operation_type = item.get("type", "conversion")
         gid = item["guild_id"]
         cid = item["channel_id"]
-        uid = item["user_id"]
-        dag = item["dag"]
         key = item["key"]
 
         try:
-            # Probeer conversie opnieuw
-            await remove_vote(uid, dag, "misschien", gid, cid)
-            await add_vote(uid, dag, "niet meedoen", gid, cid)
+            if operation_type == "conversion":
+                # Misschien conversie
+                uid = item["user_id"]
+                dag = item["dag"]
+                await remove_vote(uid, dag, "misschien", gid, cid)
+                await add_vote(uid, dag, "niet meedoen", gid, cid)
 
-            # Success - verwijder uit queue
-            remove_from_queue(key)
-            log_job("retry_conversions", status="success", user_id=uid, dag=dag)
+                # Success - verwijder uit queue
+                remove_from_queue(key)
+                log_job("retry_operations", status=f"conversion_success: user={uid}, dag={dag}")
 
-            # Update poll message
-            try:
-                # Haal channel op
-                all_channels = get_channels(bot)
-                channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
-                if channel:
-                    await schedule_poll_update(channel, dag, delay=0.0)
-            except Exception:  # pragma: no cover
-                pass
+                # Update poll message
+                try:
+                    all_channels = get_channels(bot)
+                    channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
+                    if channel:
+                        await schedule_poll_update(channel, dag, delay=0.0)
+                except Exception:  # pragma: no cover
+                    pass
+
+            elif operation_type == "reset":
+                # Vote reset
+                await reset_votes_scoped(gid, cid)
+
+                # Success - verwijder uit queue
+                remove_from_queue(key)
+                log_job("retry_operations", status=f"reset_success: guild={gid}, channel={cid}")
 
         except Exception:  # pragma: no cover
             # Nog steeds gefaald - verhoog retry count
             increment_retry_count(key)
-            log_job("retry_conversions", status="retry_failed", user_id=uid, dag=dag)
+            log_job("retry_operations", status=f"retry_failed: type={operation_type}")
 
-    # 2. Stuur error messages voor expired conversions (>2 uur)
+    # 2. Stuur error messages voor expired operations (>2 uur)
     expired = get_expired_conversions()
     for item in expired:
+        operation_type = item.get("type", "conversion")
         gid = item["guild_id"]
         cid = item["channel_id"]
-        uid = item["user_id"]
-        dag = item["dag"]
         key = item["key"]
         retry_count = item.get("retry_count", 0)
 
@@ -609,23 +617,33 @@ async def retry_failed_conversions(bot):
             channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
 
             if channel:
-                # Stuur permanent error message (niet ephemeral)
                 send = getattr(channel, "send", None)
                 if send:
-                    await send(
-                        f"⚠️ **Fout bij misschien conversie:**\n"
-                        f"Kan stem van <@{uid}> voor **{dag}** niet converteren naar 'niet meedoen'.\n"
-                        f"Geprobeerd {retry_count + 1}x over 2 uur. Neem contact op met de beheerder.",
-                        delete_after=None  # Blijft staan
-                    )
-                    log_job("retry_conversions", status="timeout_error_sent", user_id=uid, dag=dag)
+                    if operation_type == "conversion":
+                        uid = item["user_id"]
+                        dag = item["dag"]
+                        await send(
+                            f"⚠️ **Fout bij misschien conversie:**\n"
+                            f"Kan stem van <@{uid}> voor **{dag}** niet converteren naar 'niet meedoen'.\n"
+                            f"Geprobeerd {retry_count + 1}x over 2 uur. Neem contact op met de beheerder.",
+                            delete_after=None
+                        )
+                    elif operation_type == "reset":
+                        await send(
+                            f"⚠️ **Fout bij vote reset:**\n"
+                            f"Kan stemmen niet resetten voor dit kanaal na poll sluiting.\n"
+                            f"Geprobeerd {retry_count + 1}x over 2 uur. Oude stemmen blijven mogelijk zichtbaar.\n"
+                            f"Neem contact op met de beheerder.",
+                            delete_after=None
+                        )
+                    log_job("retry_operations", status=f"timeout_error_sent: type={operation_type}")
         except Exception:  # pragma: no cover
-            log_job("retry_conversions", status="error_send_failed", user_id=uid, dag=dag)
+            log_job("retry_operations", status=f"error_send_failed: type={operation_type}")
 
         # Verwijder uit queue (ook als error message faalt)
         remove_from_queue(key)
 
-    log_job("retry_conversions", status=f"completed (pending={len(pending)}, expired={len(expired)})")
+    log_job("retry_operations", status=f"completed (pending={len(pending)}, expired={len(expired)})")
 
 
 def setup_scheduler(bot) -> None:  # pragma: no cover
@@ -754,12 +772,12 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         args=[bot],
         name="Scheduled poll deactivation check",
     )
-    # Retry failed misschien conversions (every minute)
+    # Retry failed operations (conversions + resets, every minute)
     scheduler.add_job(
-        retry_failed_conversions,
+        retry_failed_operations,
         CronTrigger(minute="*"),
         args=[bot],
-        name="Retry failed conversions",
+        name="Retry failed operations",
     )
     scheduler.start()
     asyncio.create_task(_run_catch_up_with_lock(bot))
@@ -1161,6 +1179,9 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
                     await save_votes_scoped(gid, cid, {})
                     any_reset = True
                 except Exception:  # pragma: no cover
+                    # Beide pogingen gefaald - voeg toe aan retry queue
+                    from apps.utils.retry_queue import add_failed_reset
+                    add_failed_reset(str(gid), str(cid))
                     pass
 
             # NIET: dag_als_vandaag opslaan in state
