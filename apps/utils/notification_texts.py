@@ -64,7 +64,11 @@ def _get_next_tuesday_hammertime() -> str:
 
 
 def _get_next_weekday_date(dag: str) -> str:
-    """Bereken datum voor volgende occurrence van een weekdag in YYYY-MM-DD formaat."""
+    """
+    Bereken datum voor volgende occurrence van een weekdag in YYYY-MM-DD formaat.
+    Als het vandaag de gevraagde dag is, return VANDAAG (niet volgende week).
+    Dit zorgt ervoor dat activation binnen 7 dagen na deactivation valt.
+    """
     from datetime import timedelta
     import pytz
 
@@ -79,8 +83,8 @@ def _get_next_weekday_date(dag: str) -> str:
 
     # Bereken dagen tot volgende occurrence
     days_ahead = (target_weekday - now.weekday()) % 7
-    if days_ahead == 0:
-        days_ahead = 7  # Volgende week
+    # Als days_ahead == 0, betekent het VANDAAG - return vandaag, niet volgende week!
+    # Dit zorgt ervoor dat activatie altijd binnen 7 dagen na deactivatie valt.
 
     target_date = now + timedelta(days=days_ahead)
     return target_date.strftime("%Y-%m-%d")
