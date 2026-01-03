@@ -42,6 +42,40 @@ class _FakeDateTime(datetime):
 class SchedulerCatchupTestCase(unittest.IsolatedAsyncioTestCase):
     """Tests voor catch-up en lock mechanismen."""
 
+    async def test_catchup_always_executes_daily_update_for_cleanup(self):
+        """Test dat dagelijkse update ALTIJD wordt uitgevoerd bij startup voor cleanup."""
+        # Zet tijd op vandaag 10:00 (voor 18:00 deadline)
+        # Met recente state (na gisteren 18:00) zodat should_run False is
+        now = TZ.localize(datetime(2024, 5, 27, 10, 0, 0))
+        last_update = TZ.localize(datetime(2024, 5, 26, 18, 5, 0))  # gisteren na 18:00
+        state = {"update_all_polls": last_update.isoformat()}
+
+        class Bot:
+            guilds = []
+
+        bot = Bot()
+
+        _FakeDateTime.set_now(now)
+        with (
+            patch.object(scheduler, "datetime", _FakeDateTime),
+            patch.object(scheduler, "_read_state", return_value=state),
+            patch.object(scheduler, "_write_state") as mock_write,
+            patch.object(
+                scheduler, "update_all_polls", new_callable=AsyncMock
+            ) as mock_update,
+            patch.object(scheduler, "log_job") as mock_log_job,
+            patch.object(scheduler, "log_startup"),
+        ):
+
+            await scheduler._run_catch_up(bot)
+
+        # Assert: update_all_polls is ALTIJD aangeroepen (zelfs als should_run False is)
+        mock_update.assert_awaited_once_with(bot)
+        # Assert: log_job is aangeroepen met executed_startup_cleanup (niet gemiste deadline)
+        mock_log_job.assert_any_call("update_all_polls", status="executed_startup_cleanup")
+        # Assert: state is geschreven
+        mock_write.assert_called_once()
+
     async def test_catchup_executes_daily_update(self):
         """Test dat dagelijkse update wordt uitgevoerd na 18:00."""
         # Zet tijd op vandaag 19:00 (na 18:00)
@@ -66,12 +100,49 @@ class SchedulerCatchupTestCase(unittest.IsolatedAsyncioTestCase):
 
             await scheduler._run_catch_up(bot)
 
-        # Assert: update_all_polls is aangeroepen
+        # Assert: update_all_polls is ALTIJD aangeroepen (voor cleanup oude berichten)
         mock_update.assert_awaited_once_with(bot)
-        # Assert: log_job is aangeroepen met executed
+        # Assert: log_job is aangeroepen met executed (gemiste deadline)
         mock_log_job.assert_any_call("update_all_polls", status="executed")
         # Assert: state is geschreven
         mock_write.assert_called_once()
+
+    async def test_catchup_update_after_week_offline(self):
+        """Test dat oude poll-berichten worden opgeruimd na week offline."""
+        # Bot was offline van 1 mei (dinsdag) tot 8 mei (volgende dinsdag)
+        # Laatste update was 30 april (maandag) om 18:00
+        # Nu is het 8 mei (dinsdag) om 10:00
+        now = TZ.localize(datetime(2024, 5, 8, 10, 0, 0))
+        last_update = TZ.localize(datetime(2024, 4, 30, 18, 0, 0))
+        state = {"update_all_polls": last_update.isoformat()}
+
+        class Bot:
+            guilds = []
+
+        bot = Bot()
+
+        _FakeDateTime.set_now(now)
+        with (
+            patch.object(scheduler, "datetime", _FakeDateTime),
+            patch.object(scheduler, "_read_state", return_value=state),
+            patch.object(scheduler, "_write_state") as mock_write,
+            patch.object(
+                scheduler, "update_all_polls", new_callable=AsyncMock
+            ) as mock_update,
+            patch.object(scheduler, "log_job"),
+            patch.object(scheduler, "log_startup") as mock_log_startup,
+        ):
+
+            await scheduler._run_catch_up(bot)
+
+        # Assert: update_all_polls is ALTIJD aangeroepen (oude berichten cleanup)
+        mock_update.assert_awaited_once_with(bot)
+        # Assert: update_all_polls is in missed list (gemiste deadline)
+        startup_call = mock_log_startup.call_args[0][0]
+        self.assertIn("update_all_polls", startup_call)
+        # Assert: state is bijgewerkt
+        call_args = mock_write.call_args[0][0]
+        self.assertIn("update_all_polls", call_args)
 
     async def test_catchup_executes_reset(self):
         """Test dat reset wordt uitgevoerd op dinsdag 20:01."""

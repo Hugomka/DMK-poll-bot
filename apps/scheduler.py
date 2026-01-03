@@ -402,26 +402,77 @@ def _within_reset_window(now: datetime, minutes: int = 5) -> bool:
     )
 
 
+async def _cleanup_outdated_poll_messages(bot) -> None:  # pragma: no cover
+    """
+    Verwijder ALLE poll-berichten en clear message IDs bij startup.
+
+    Dit zorgt ervoor dat na herstart alle berichten opnieuw worden aangemaakt
+    met correcte datums uit de huidige rolling window. Voorkomt situaties waarbij
+    oude berichten (bijv. "Zondag 7 december") naast nieuwe berichten ("Zondag 14
+    december") blijven staan na langdurige offline periode.
+    """
+    from apps.utils.constants import DAG_NAMEN
+    from apps.utils.discord_client import fetch_message_or_none, safe_call
+
+    for guild in getattr(bot, "guilds", []) or []:
+        for channel in get_channels(guild):
+            try:
+                cid = int(getattr(channel, "id", 0))
+            except Exception:  # pragma: no cover
+                continue
+
+            if is_channel_disabled(cid):
+                continue
+
+            # Verwijder alle dag-berichten en clear hun IDs
+            for dag_naam in DAG_NAMEN:
+                mid = get_message_id(cid, dag_naam)
+                if mid:
+                    msg = await fetch_message_or_none(channel, mid)
+                    if msg is not None:
+                        await safe_call(msg.delete)
+                    clear_message_id(cid, dag_naam)
+
+            # Clear ook het "stemmen" button bericht
+            stem_mid = get_message_id(cid, "stemmen")
+            if stem_mid:
+                msg = await fetch_message_or_none(channel, stem_mid)
+                if msg is not None:
+                    await safe_call(msg.delete)
+                clear_message_id(cid, "stemmen")
+
+
 async def _run_catch_up(bot) -> None:  # pragma: no cover
     """
     Catch-up na herstart: voer gemiste jobs maximaal één keer uit.
     Reset alleen in het nieuwe venster (dinsdag 20:00 - 20:05).
+
+    BELANGRIJK: cleanup_outdated_poll_messages wordt EERST uitgevoerd om oude
+    berichten te verwijderen. Daarna wordt update_all_polls ALTIJD uitgevoerd
+    om nieuwe berichten aan te maken met correcte datums uit rolling window.
     """
+    # STAP 1: Verwijder oude berichten en clear alle message IDs
+    await _cleanup_outdated_poll_messages(bot)
+
+    # STAP 2: Voer normale catch-up logica uit
     now = datetime.now(TZ)
     state = _read_state()
     missed: list[str] = []
 
     # Dagelijkse update (18:00)
+    # ALTIJD uitvoeren bij startup om oude berichten op te ruimen
     last_update = state.get("update_all_polls")
     today_18 = now.replace(hour=18, minute=0, second=0, microsecond=0)
     last_sched_update = today_18 if now >= today_18 else today_18 - timedelta(days=1)
+
+    # Altijd update_all_polls uitvoeren bij startup (niet alleen bij gemiste deadline)
+    await update_all_polls(bot)
+    state["update_all_polls"] = now.isoformat()
     if should_run(last_update, last_sched_update):
-        await update_all_polls(bot)
-        state["update_all_polls"] = now.isoformat()
         missed.append("update_all_polls")
         log_job("update_all_polls", status="executed")
     else:
-        log_job("update_all_polls", status="skipped")
+        log_job("update_all_polls", status="executed_startup_cleanup")
 
     # Wekelijkse reset (dinsdag 20:00)
     last_reset = state.get("reset_polls")

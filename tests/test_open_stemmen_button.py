@@ -96,6 +96,7 @@ class TestOpenStemmenButton(BaseTestCase):
         class DummyResponse:
             def __init__(self) -> None:
                 self.sent: list[tuple[str, dict[str, Any]]] = []
+                self.edited: list[dict[str, Any]] = []
 
             def is_done(self) -> bool:
                 return False
@@ -113,24 +114,34 @@ class TestOpenStemmenButton(BaseTestCase):
             followup=_types.SimpleNamespace(),
         )
 
+        async def edit_original_response(**kwargs: Any) -> None:
+            interaction.response.edited.append(kwargs)
+
+        interaction.edit_original_response = edit_original_response
+
         btn = OpenStemmenButton()
         with patch(f"{MODULE}.is_paused", return_value=False), patch(
             f"{MODULE}.create_poll_button_views_per_day",
             new_callable=AsyncMock,
             return_value=[],
-        ):
+        ), patch(f"{MODULE}._cleanup_outdated_messages_for_channel", new_callable=AsyncMock):
             await btn.callback(cast(Any, interaction))
 
+        # Eerste response: "Poll wordt bijgewerkt..."
         self.assertEqual(len(interaction.response.sent), 1)
-        msg, kw = interaction.response.sent[0]
-        self.assertIn("Stemmen is gesloten", msg)  # tekst uit code
-        self.assertTrue(kw.get("ephemeral", False))
+        msg, _ = interaction.response.sent[0]
+        self.assertIn("Poll wordt bijgewerkt", msg)
+
+        # Edit response: "Stemmen is gesloten..."
+        self.assertEqual(len(interaction.response.edited), 1)
+        self.assertIn("Stemmen is gesloten", interaction.response.edited[0]["content"])
 
     async def test_callback_happy_path_instruction_and_followups(self) -> None:
         # Eén instructiebericht + followup per dag
         class DummyResponse:
             def __init__(self) -> None:
                 self.sent: list[tuple[str, dict[str, Any]]] = []
+                self.edited: list[dict[str, Any]] = []
 
             def is_done(self) -> bool:
                 return False
@@ -164,19 +175,27 @@ class TestOpenStemmenButton(BaseTestCase):
             followup=DummyFollowup(),
         )
 
+        async def edit_original_response(**kwargs: Any) -> None:
+            interaction.response.edited.append(kwargs)
+
+        interaction.edit_original_response = edit_original_response
+
         btn = OpenStemmenButton()
         with patch(f"{MODULE}.is_paused", return_value=False), patch(
             f"{MODULE}.create_poll_button_views_per_day",
             new_callable=AsyncMock,
             return_value=views,
-        ):
+        ), patch(f"{MODULE}._cleanup_outdated_messages_for_channel", new_callable=AsyncMock):
             await btn.callback(cast(Any, interaction))
 
-        # 1 instructiebericht
+        # Eerste response: "Poll wordt bijgewerkt..."
         self.assertEqual(len(interaction.response.sent), 1)
-        msg, kw = interaction.response.sent[0]
-        self.assertIn("Kies jouw tijden hieronder", msg)
-        self.assertTrue(kw.get("ephemeral", False))
+        msg, _ = interaction.response.sent[0]
+        self.assertIn("Poll wordt bijgewerkt", msg)
+
+        # Edit response: "Kies jouw tijden hieronder..."
+        self.assertEqual(len(interaction.response.edited), 1)
+        self.assertIn("Kies jouw tijden hieronder", interaction.response.edited[0]["content"])
 
         # 2 followups, headers en juiste view object
         self.assertEqual(len(interaction.followup.sent), 2)

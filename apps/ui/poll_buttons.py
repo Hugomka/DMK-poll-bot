@@ -11,8 +11,14 @@ from discord.ui import Button, View
 
 from apps.entities.poll_option import get_poll_options
 from apps.logic.visibility import is_vote_button_visible
-from apps.utils.poll_message import check_all_voted_celebration, update_poll_message
+from apps.utils.discord_client import safe_call
+from apps.utils.poll_message import (
+    check_all_voted_celebration,
+    clear_message_id,
+    update_poll_message,
+)
 from apps.utils.poll_settings import (
+    get_enabled_rolling_window_days,
     get_poll_option_state,
     is_paused,
 )
@@ -20,6 +26,152 @@ from apps.utils.poll_storage import get_user_votes, toggle_vote
 from apps.utils.time_zone_helper import TimeZoneHelper
 
 HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
+
+
+async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> None:
+    """
+    Verwijder ALLE bot-berichten in kanaal en recreate alles opnieuw.
+
+    ALLEEN als er outdated berichten zijn! Als alles up-to-date is, skip cleanup.
+
+    Strategie: Check of er bot-berichten bestaan van vóór de laatste reset threshold.
+    - Reset threshold = zondag 20:30 (begin van nieuwe week)
+    - Als ALLE bot-berichten zijn van ná de threshold: skip cleanup
+    - Als ÉÉN of meer bot-berichten zijn van vóór de threshold: cleanup nodig
+    """
+    from datetime import datetime, timedelta
+    import pytz
+    from apps.utils.constants import DAG_NAMEN
+    from apps.utils.discord_client import fetch_message_or_none
+    from apps.utils.message_builder import build_poll_message_for_day_async
+    from apps.utils.poll_message import (
+        create_notification_message,
+        get_message_id,
+        save_message_id,
+    )
+
+    # STAP 0: Check of cleanup nodig is (vermijd onnodige deletes/recreates)
+    try:
+        # Bereken reset threshold (zondag 20:30 van huidige week)
+        TZ = pytz.timezone("Europe/Amsterdam")
+        now = datetime.now(TZ)
+        # 6 = zondag; bereken aantal dagen sinds zondag
+        days_since_sun = (now.weekday() - 6) % 7
+        last_sunday = now.replace(hour=20, minute=30, second=0, microsecond=0) - timedelta(days=days_since_sun)
+
+        # Als we vóór zondag 20:30 zitten, pak zondag van vorige week
+        if now < last_sunday:
+            last_sunday -= timedelta(days=7)
+
+        reset_threshold = last_sunday
+        print(f"🔍 Reset threshold (begin huidige week): {reset_threshold.strftime('%Y-%m-%d %H:%M')}")
+
+        # Check of alle opgeslagen poll-berichten van ná de threshold zijn
+        needs_cleanup = False
+        for dag_naam in DAG_NAMEN:
+            mid = get_message_id(channel_id, dag_naam)
+            if mid:
+                msg = await fetch_message_or_none(channel, mid)
+                if msg is None:
+                    # Bericht bestaat niet meer - cleanup nodig
+                    print(f"⚠️ Bericht voor {dag_naam} bestaat niet meer (ID: {mid})")
+                    needs_cleanup = True
+                    break
+                # Check of bericht van vóór reset threshold is
+                msg_created = msg.created_at
+                if msg_created < reset_threshold:
+                    # Outdated bericht gevonden
+                    print(f"⚠️ Outdated bericht voor {dag_naam}: {msg_created.strftime('%Y-%m-%d %H:%M')} < {reset_threshold.strftime('%Y-%m-%d %H:%M')}")
+                    needs_cleanup = True
+                    break
+
+        if not needs_cleanup:
+            print(f"⏭️  Cleanup overgeslagen: alle poll-berichten zijn van ná reset threshold in kanaal {channel_id}")
+            return
+
+        print(f"🔄 Cleanup nodig: outdated berichten gevonden in kanaal {channel_id}")
+
+    except Exception as e:
+        # Bij twijfel, voer cleanup uit
+        print(f"⚠️ Check mislukt, voer cleanup uit: {e}")
+        needs_cleanup = True
+
+    # STAP 1: Verwijder ALLE bot-berichten in kanaal (simpel en betrouwbaar)
+    try:
+        if not hasattr(channel, "history"):
+            return
+
+        bot_user = channel.guild.me if hasattr(channel, "guild") else None
+        if not bot_user:
+            return
+
+        # Verzamel ALLE berichten van de bot (geen markers checken)
+        messages_to_delete = []
+        async for message in channel.history(limit=100):  # type: ignore[attr-defined]
+            if message.author.id == bot_user.id:
+                messages_to_delete.append(message)
+
+        print(f"🔍 Cleanup: Gevonden {len(messages_to_delete)} bot-berichten om te verwijderen")
+
+        # Verwijder alle bot-berichten
+        for msg in messages_to_delete:
+            await safe_call(msg.delete)
+
+        # Clear alle opgeslagen message IDs
+        for dag_naam in DAG_NAMEN:
+            clear_message_id(channel_id, dag_naam)
+        clear_message_id(channel_id, "stemmen")
+        clear_message_id(channel_id, "opening")
+        clear_message_id(channel_id, "notification_persistent")
+        clear_message_id(channel_id, "notification")
+
+        print(f"✅ Cleanup voltooid: {len(messages_to_delete)} berichten verwijderd")
+
+    except Exception as e:
+        print(f"⚠️ Cleanup fout in kanaal {channel_id}: {e}")
+        import traceback
+        traceback.print_exc()  # Print volledige error voor debugging
+
+    # STAP 2: Recreate ALLE berichten (net zoals /dmk-poll-on)
+    try:
+        dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag=None)
+        guild = channel.guild if hasattr(channel, "guild") else None
+        gid_val = getattr(guild, "id", "0") if guild is not None else "0"
+
+        # 1. Opening message (Welkom bij de DMK-poll)
+        from apps.commands.poll_lifecycle import _load_opening_message
+
+        opening_text = _load_opening_message(channel_id=channel_id)
+        opening_msg = await safe_call(channel.send, content=opening_text)
+        if opening_msg is not None:
+            save_message_id(channel_id, "opening", opening_msg.id)
+
+        # 2. Day poll messages (DMK-poll voor Maandag, etc.)
+        for day_info in dagen_info:
+            dag = day_info["dag"]
+            datum_iso = day_info["datum_iso"]
+            content = await build_poll_message_for_day_async(
+                dag, gid_val, channel_id, guild=guild, channel=channel, datum_iso=datum_iso
+            )
+            msg = await safe_call(channel.send, content=content, view=None)
+            if msg is not None:
+                save_message_id(channel_id, dag, msg.id)
+
+        # 3. Stemmen button message
+        from apps.ui.poll_buttons import OneStemButtonView
+
+        tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+        paused = is_paused(channel_id)
+        view = OneStemButtonView(paused=paused)
+        s_msg = await safe_call(channel.send, content=tekst, view=view)
+        if s_msg is not None:
+            save_message_id(channel_id, "stemmen", s_msg.id)
+
+        # 4. Notification message (persistent)
+        await create_notification_message(channel, activation_hammertime=None)
+
+    except Exception as e:
+        print(f"⚠️ Fout bij recreaten berichten in kanaal {channel_id}: {e}")
 
 
 def _get_timezone_legend(dag: str) -> str:
@@ -296,21 +448,30 @@ class OpenStemmenButton(Button):
             )
             return
 
+        # EERST: Acknowledge interaction (binnen 3 sec) om timeout te voorkomen
+        await interaction.response.send_message(
+            "🔄 Poll wordt bijgewerkt... een moment geduld.",
+            ephemeral=True,
+        )
+
+        # TWEEDE: Cleanup oude poll-berichten in background (kan lang duren)
+        await _cleanup_outdated_messages_for_channel(interaction.channel, channel_id)
+
+        # DERDE: Toon voting interface
         user_id = str(interaction.user.id)
         views_per_dag = await create_poll_button_views_per_day(
             user_id, (interaction.guild_id or 0), channel_id
         )
 
         if not views_per_dag:
-            await interaction.response.send_message(
-                "Stemmen is gesloten voor alle dagen. Kom later terug.", ephemeral=True
+            await interaction.edit_original_response(
+                content="Stemmen is gesloten voor alle dagen. Kom later terug."
             )
             return
 
-        # ✅ Eén ephemere instructie en per dag één bericht (latere klikken bewerken *ditzelfde* bericht)
-        await interaction.response.send_message(
-            "Kies jouw tijden hieronder 👇 per dag (alleen jij ziet dit).",
-            ephemeral=True,
+        # Update bericht en toon voting knoppen
+        await interaction.edit_original_response(
+            content="Kies jouw tijden hieronder 👇 per dag (alleen jij ziet dit)."
         )
 
         for dag, header, view in views_per_dag:
