@@ -973,6 +973,10 @@ async def notify_non_voters(  # pragma: no cover
             if not channel and dag:  # Scheduler-modus met specifieke dag
                 if not _is_deadline_mode(int(cid) if cid != "0" else 0, dag):
                     continue
+                # Check of de dag enabled is voor dit kanaal
+                enabled_days = get_enabled_poll_days(int(cid) if cid != "0" else 0)
+                if dag not in enabled_days:
+                    continue
 
             # Alleen leden die toegang hebben tot dit specifieke kanaal
             members_src = getattr(ch, "members", [])

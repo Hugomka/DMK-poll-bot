@@ -1,4 +1,5 @@
 # tests/test_scheduler_nonvoters.py
+import unittest
 from unittest.mock import AsyncMock, patch
 
 from apps import scheduler
@@ -34,6 +35,8 @@ class FakeGuild:
             )
         ]
 
+
+class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
     async def test_notify_non_voters_met_leeg_en_guest_data(self):
         bot = type("B", (), {"guilds": [FakeGuild()]})()
 
@@ -52,36 +55,40 @@ class FakeGuild:
         ), patch.object(
             scheduler, "is_channel_disabled", return_value=False
         ), patch.object(
+            scheduler, "is_paused", return_value=False
+        ), patch.object(
+            scheduler, "is_notification_enabled", return_value=True
+        ), patch.object(
+            scheduler, "_is_deadline_mode", return_value=True
+        ), patch.object(
+            scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]
+        ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "safe_call", new_callable=AsyncMock
-        ) as mock_safe:
+            scheduler, "send_temporary_mention", new_callable=AsyncMock
+        ) as mock_mention:
 
             # --- VRIJDAG ---
             await scheduler.notify_non_voters(bot, "vrijdag")
 
-            mock_safe.assert_awaited()
-            texts = [
-                " ".join(str(a) for a in call.args)
-                for call in mock_safe.await_args_list
-            ]
-            text = " ".join(texts)
+            mock_mention.assert_awaited()
+            # Pak de mentions uit de eerste call
+            call_args = mock_mention.await_args_list[0]
+            mentions = call_args.kwargs.get("mentions", "")
 
-            assert "<@1>" in text
-            assert "<@3>" in text
+            assert "<@1>" in mentions
+            assert "<@3>" in mentions
 
             # --- ZATERDAG ---
-            mock_safe.reset_mock()
+            mock_mention.reset_mock()
             await scheduler.notify_non_voters(bot, "zaterdag")
 
-            texts = [
-                " ".join(str(a) for a in call.args)
-                for call in mock_safe.await_args_list
-            ]
-            text = " ".join(texts)
+            # Pak de mentions uit de tweede call
+            call_args = mock_mention.await_args_list[0]
+            mentions = call_args.kwargs.get("mentions", "")
 
-            assert "<@1>" in text
-            assert "<@3>" not in text
+            assert "<@1>" in mentions
+            assert "<@3>" not in mentions
 
     async def test_notify_non_voters_safe_call_niet_aangeroepen_bij_geen_nonvoters(
         self,
@@ -96,9 +103,48 @@ class FakeGuild:
         ), patch.object(
             scheduler, "is_channel_disabled", return_value=False
         ), patch.object(
+            scheduler, "is_paused", return_value=False
+        ), patch.object(
+            scheduler, "is_notification_enabled", return_value=True
+        ), patch.object(
+            scheduler, "_is_deadline_mode", return_value=True
+        ), patch.object(
+            scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]
+        ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "safe_call", new_callable=AsyncMock
-        ) as mock_safe:
+            scheduler, "send_temporary_mention", new_callable=AsyncMock
+        ) as mock_mention:
             await scheduler.notify_non_voters(bot, "vrijdag")
-            mock_safe.assert_not_awaited()
+            mock_mention.assert_not_awaited()
+
+    async def test_notify_non_voters_skip_disabled_dagen(self):
+        """Test dat notify_non_voters geen notificatie stuurt voor disabled dagen."""
+        bot = type("B", (), {"guilds": [FakeGuild(channel=FakeChannel())]})()
+
+        def fake_load_votes(guild_id, channel_id):
+            # User 1 heeft niet gestemd voor vrijdag
+            return {"1": {"vrijdag": []}}
+
+        with patch.object(
+            scheduler, "get_channels", side_effect=lambda g: g.text_channels
+        ), patch.object(
+            scheduler, "is_channel_disabled", return_value=False
+        ), patch.object(
+            scheduler, "is_paused", return_value=False
+        ), patch.object(
+            scheduler, "is_notification_enabled", return_value=True
+        ), patch.object(
+            scheduler, "_is_deadline_mode", return_value=True
+        ), patch.object(
+            scheduler, "get_enabled_poll_days", return_value=["zondag"]  # Alleen zondag enabled
+        ), patch.object(
+            scheduler, "load_votes", side_effect=fake_load_votes
+        ), patch.object(
+            scheduler, "send_temporary_mention", new_callable=AsyncMock
+        ) as mock_mention:
+            # Roep aan met vrijdag (die niet enabled is)
+            await scheduler.notify_non_voters(bot, "vrijdag")
+
+            # Notificatie mag NIET worden verstuurd omdat vrijdag disabled is
+            mock_mention.assert_not_awaited()
