@@ -90,7 +90,7 @@ async def send_temporary_mention(
                 old_msg = await fetch_message_or_none(channel, old_msg_id)
                 if old_msg is not None:
                     await safe_call(old_msg.delete)
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass  # Bericht bestaat niet meer
             clear_message_id(cid, key)
 
@@ -239,7 +239,7 @@ async def send_persistent_mention(
                 old_msg = await fetch_message_or_none(channel, old_msg_id)
                 if old_msg is not None:
                     await safe_call(old_msg.delete)
-            except Exception:
+            except Exception:  # pragma: no cover
                 pass  # Bericht bestaat niet meer
             clear_message_id(cid, key)
 

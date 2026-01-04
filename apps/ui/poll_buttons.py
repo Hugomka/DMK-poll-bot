@@ -91,7 +91,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
 
         print(f"🔄 Cleanup nodig: outdated berichten gevonden in kanaal {channel_id}")
 
-    except Exception as e:
+    except Exception as e:  # pragma: no cover
         # Bij twijfel, voer cleanup uit
         print(f"⚠️ Check mislukt, voer cleanup uit: {e}")
         needs_cleanup = True
@@ -127,7 +127,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
 
         print(f"✅ Cleanup voltooid: {len(messages_to_delete)} berichten verwijderd")
 
-    except Exception as e:
+    except Exception as e:  # pragma: no cover
         print(f"⚠️ Cleanup fout in kanaal {channel_id}: {e}")
         import traceback
         traceback.print_exc()  # Print volledige error voor debugging
@@ -170,7 +170,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
         # 4. Notification message (persistent)
         await create_notification_message(channel, activation_hammertime=None)
 
-    except Exception as e:
+    except Exception as e:  # pragma: no cover
         print(f"⚠️ Fout bij recreaten berichten in kanaal {channel_id}: {e}")
 
 

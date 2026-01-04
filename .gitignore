@@ -41,6 +41,8 @@ tenor-links.json
 .coverage.*
 htmlcov/
 coverage.xml
+coverage.json
+coverage_target.json
 
 # Backup- en tijdelijke bestanden
 backups/
