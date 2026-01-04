@@ -14,7 +14,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 from apps.utils.discord_client import fetch_message_or_none, get_channels, safe_call
 from apps.utils.logger import log_job, log_startup
-from apps.utils.mention_utils import send_persistent_mention, send_temporary_mention
+from apps.utils.mention_utils import (
+    send_non_voter_notification,
+    send_persistent_mention,
+    send_temporary_mention,
+)
 from apps.utils.message_builder import build_doorgaan_participant_list
 from apps.utils.poll_message import (
     clear_message_id,
@@ -1045,12 +1049,30 @@ async def notify_non_voters(  # pragma: no cover
                 header = f"📣 DMK-poll – herinnering\n{count_text}Als je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
             footer = ""
 
-            # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
             mentions_str = ", ".join(to_mention)
             text = f"{header}\n{footer}"
 
             try:
-                await send_temporary_mention(ch, mentions=mentions_str, text=text)
+                # Als dag-specifiek: gebruik dynamische non-voter notification met deadline awareness
+                if dag:
+                    from apps.utils.poll_settings import get_setting
+
+                    # Haal deadline tijd op voor deze dag
+                    channel_id_int = int(cid) if cid != "0" else 0
+                    setting = get_setting(channel_id_int, dag)
+                    deadline_time = setting.get("tijd", "18:00")
+
+                    await send_non_voter_notification(
+                        ch,
+                        dag=dag,
+                        mentions_str=mentions_str,
+                        text=header,
+                        deadline_time_str=deadline_time,
+                    )
+                else:
+                    # Weekend-breed (legacy): gebruik tijdelijke mentions (5 seconden zichtbaar)
+                    await send_temporary_mention(ch, mentions=mentions_str, text=text)
+
                 sent_any = True
             except Exception:  # pragma: no cover
                 pass

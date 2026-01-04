@@ -65,27 +65,29 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "send_temporary_mention", new_callable=AsyncMock
-        ) as mock_mention:
+            scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+        ), patch.object(
+            scheduler, "send_non_voter_notification", new_callable=AsyncMock
+        ) as mock_nonvoter_notification:
 
             # --- VRIJDAG ---
             await scheduler.notify_non_voters(bot, "vrijdag")
 
-            mock_mention.assert_awaited()
+            mock_nonvoter_notification.assert_awaited()
             # Pak de mentions uit de eerste call
-            call_args = mock_mention.await_args_list[0]
-            mentions = call_args.kwargs.get("mentions", "")
+            call_args = mock_nonvoter_notification.await_args_list[0]
+            mentions = call_args.kwargs.get("mentions_str", "")
 
             assert "<@1>" in mentions
             assert "<@3>" in mentions
 
             # --- ZATERDAG ---
-            mock_mention.reset_mock()
+            mock_nonvoter_notification.reset_mock()
             await scheduler.notify_non_voters(bot, "zaterdag")
 
             # Pak de mentions uit de tweede call
-            call_args = mock_mention.await_args_list[0]
-            mentions = call_args.kwargs.get("mentions", "")
+            call_args = mock_nonvoter_notification.await_args_list[0]
+            mentions = call_args.kwargs.get("mentions_str", "")
 
             assert "<@1>" in mentions
             assert "<@3>" not in mentions
@@ -113,10 +115,12 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "send_temporary_mention", new_callable=AsyncMock
-        ) as mock_mention:
+            scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+        ), patch.object(
+            scheduler, "send_non_voter_notification", new_callable=AsyncMock
+        ) as mock_nonvoter_notification:
             await scheduler.notify_non_voters(bot, "vrijdag")
-            mock_mention.assert_not_awaited()
+            mock_nonvoter_notification.assert_not_awaited()
 
     async def test_notify_non_voters_skip_disabled_dagen(self):
         """Test dat notify_non_voters geen notificatie stuurt voor disabled dagen."""
@@ -141,10 +145,12 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "send_temporary_mention", new_callable=AsyncMock
-        ) as mock_mention:
+            scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+        ), patch.object(
+            scheduler, "send_non_voter_notification", new_callable=AsyncMock
+        ) as mock_nonvoter_notification:
             # Roep aan met vrijdag (die niet enabled is)
             await scheduler.notify_non_voters(bot, "vrijdag")
 
             # Notificatie mag NIET worden verstuurd omdat vrijdag disabled is
-            mock_mention.assert_not_awaited()
+            mock_nonvoter_notification.assert_not_awaited()

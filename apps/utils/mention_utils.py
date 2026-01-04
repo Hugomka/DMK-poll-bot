@@ -3,12 +3,19 @@
 # Helpers voor privacy-vriendelijke mentions in notificaties.
 # - Tijdelijke mentions (5 seconden zichtbaar, dan auto-delete na 1 uur)
 # - Persistente mentions (auto-delete na 5 uur)
+# - Dynamische non-voter mentions (real-time updates wanneer iemand stemt)
 
 import asyncio
+from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from apps.utils.discord_client import safe_call
 from apps.utils.poll_message import clear_message_id, get_message_id, save_message_id
+
+# Storage voor non-voter notification metadata (per kanaal)
+# Format: {channel_id: {"dag": str, "deadline_time": str, "message_id": int}}
+_NON_VOTER_NOTIFICATION_META: dict[int, dict] = {}
 
 
 def render_notification_content(
@@ -122,7 +129,9 @@ async def send_temporary_mention(
 
         # Stap 4: Plan auto-delete (na delete_after_hours)
         delete_seconds = delete_after_hours * 3600
-        asyncio.create_task(_delete_message_after_delay(msg, delete_seconds, cid, message_key))
+        asyncio.create_task(
+            _delete_message_after_delay(msg, delete_seconds, cid, message_key)
+        )
 
     except Exception as e:  # pragma: no cover
         print(f"❌ Fout bij versturen temporary mention: {e}")
@@ -154,13 +163,20 @@ async def _remove_mentions_after_delay(
 
         # Edit het bericht: verwijder mentions, behoud tekst en knop
         if hasattr(message, "edit"):
-            await safe_call(message.edit, content=content, view=view if show_button else None)
+            await safe_call(
+                message.edit, content=content, view=view if show_button else None
+            )
     except Exception:  # pragma: no cover
         # Stil falen (bericht kan verwijderd zijn, bot heeft geen rechten, etc.)
         pass
 
 
-async def _delete_message_after_delay(message: Any, delay_seconds: float, channel_id: int, message_key: str = "notification_temp") -> None:
+async def _delete_message_after_delay(
+    message: Any,
+    delay_seconds: float,
+    channel_id: int,
+    message_key: str = "notification_temp",
+) -> None:
     """
     Interne helper: verwijder een bericht na delay_seconds en clear de message ID.
 
@@ -252,7 +268,9 @@ async def send_persistent_mention(
 
             # Stap 4: Plan auto-delete (na 5 uur)
             delete_seconds = 5 * 3600
-            asyncio.create_task(_delete_message_after_delay(msg, delete_seconds, cid, message_key))
+            asyncio.create_task(
+                _delete_message_after_delay(msg, delete_seconds, cid, message_key)
+            )
 
         return msg
     except Exception as e:  # pragma: no cover
@@ -260,3 +278,250 @@ async def send_persistent_mention(
         return None
 
 
+# ========================================================================
+# Dynamische Non-Voter Notifications (Real-time Mention Updates)
+# ========================================================================
+
+
+async def send_non_voter_notification(
+    channel: Any,
+    dag: str,
+    mentions_str: str,
+    text: str,
+    deadline_time_str: str,
+) -> None:
+    """
+    Stuur een non-voter notification met dynamische mention updates.
+
+    Flow:
+    1. Stuur notificatie met mentions
+    2. Mentions blijven zichtbaar (NIET verwijderd na 5 seconden!)
+    3. Wanneer iemand stemt: update mentions real-time (zie update_non_voter_notification)
+    4. 5 minuten voor deadline: verwijder ALLE mentions (maar behoud namen zonder @)
+    5. Na 1 uur: verwijder het hele bericht
+
+    Args:
+        channel: Het Discord kanaal object
+        dag: De dag waarvoor deze notificatie is (bijv. 'vrijdag')
+        mentions_str: Mentions string (bijv. "@user1, @user2")
+        text: De body tekst (bijv. "2 leden hebben nog niet gestemd...")
+        deadline_time_str: Deadline tijd voor deze dag (bijv. "18:00")
+    """
+    cid = getattr(channel, "id", 0)
+
+    # Stap 1: Verwijder oude non-voter notification (als die bestaat)
+    notification_keys = [
+        "notification_nonvoter",
+        "notification_temp",
+        "notification_persistent",
+        "notification",
+    ]
+    for key in notification_keys:
+        old_msg_id = get_message_id(cid, key)
+        if old_msg_id:
+            try:
+                from apps.utils.discord_client import fetch_message_or_none
+
+                old_msg = await fetch_message_or_none(channel, old_msg_id)
+                if old_msg is not None:
+                    await safe_call(old_msg.delete)
+            except Exception:
+                pass
+            clear_message_id(cid, key)
+
+    # Stap 2: Stuur nieuw bericht
+    send_func = getattr(channel, "send", None)
+    if send_func is None:
+        return
+
+    content = render_notification_content(
+        heading=":mega: Notificatie:",
+        mentions=mentions_str,
+        text=text,
+        footer=None,
+    )
+
+    try:
+        msg = await safe_call(send_func, content=content)
+        if msg is None:
+            return
+
+        # Sla message ID op
+        save_message_id(cid, "notification_nonvoter", msg.id)
+
+        # Stap 3: Sla metadata op voor real-time updates
+        _NON_VOTER_NOTIFICATION_META[cid] = {
+            "dag": dag,
+            "deadline_time": deadline_time_str,
+            "message_id": msg.id,
+        }
+
+        # Stap 4: Plan mention removal 5 minuten voor deadline
+        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+        try:
+            uur, minuut = map(int, deadline_time_str.split(":"))
+            deadline_datetime = now.replace(
+                hour=uur, minute=minuut, second=0, microsecond=0
+            )
+
+            # Als deadline al voorbij is vandaag, skip (zou niet moeten gebeuren)
+            if deadline_datetime <= now:
+                print(
+                    f"⚠️ Deadline {deadline_time_str} is al voorbij, skip mention removal scheduling"
+                )
+            else:
+                # Bereken delay tot 5 minuten voor deadline
+                removal_time = deadline_datetime.replace(minute=max(0, minuut - 5))
+                delay_seconds = (removal_time - now).total_seconds()
+
+                if delay_seconds > 0:
+                    asyncio.create_task(
+                        _remove_all_mentions_before_deadline(
+                            msg, delay_seconds, text, cid
+                        )
+                    )
+                else:
+                    # Minder dan 5 minuten tot deadline, verwijder meteen
+                    asyncio.create_task(
+                        _remove_all_mentions_before_deadline(msg, 0, text, cid)
+                    )
+
+        except Exception as e:  # pragma: no cover
+            print(f"⚠️ Kon deadline parsing niet doen voor {deadline_time_str}: {e}")
+
+        # Stap 5: Plan auto-delete na 1 uur
+        delete_seconds = 1 * 3600
+        asyncio.create_task(
+            _delete_message_after_delay(
+                msg, delete_seconds, cid, "notification_nonvoter"
+            )
+        )
+
+    except Exception as e:  # pragma: no cover
+        print(f"❌ Fout bij versturen non-voter notification: {e}")
+
+
+async def _remove_all_mentions_before_deadline(
+    message: Any, delay_seconds: float, text: str, channel_id: int
+) -> None:
+    """
+    Verwijder ALLE mentions 5 minuten voor deadline (behoud namen zonder @).
+
+    Args:
+        message: Het Discord message object
+        delay_seconds: Hoeveel seconden te wachten
+        text: De tekst om te behouden (zonder mentions)
+        channel_id: Het kanaal ID
+    """
+    try:
+        if delay_seconds > 0:
+            await asyncio.sleep(delay_seconds)
+
+        # Build content zonder mentions
+        content = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions=None,  # Verwijder mentions
+            text=text,
+            footer=None,
+        )
+
+        # Edit het bericht
+        if hasattr(message, "edit"):
+            await safe_call(message.edit, content=content)
+
+        # Clear metadata (notificatie is niet meer dynamisch updatable)
+        if channel_id in _NON_VOTER_NOTIFICATION_META:
+            del _NON_VOTER_NOTIFICATION_META[channel_id]
+
+    except Exception:  # pragma: no cover
+        pass
+
+
+async def update_non_voter_notification(channel: Any, dag: str, guild_id: int) -> None:
+    """
+    Update de non-voter notification real-time wanneer iemand stemt.
+
+    Deze functie wordt aangeroepen vanuit de vote callback (poll_buttons.py).
+    Het haalt de huidige niet-stemmers op en update de notificatie message.
+
+    Args:
+        channel: Het Discord kanaal object
+        dag: De dag waarvoor de stem was (bijv. 'vrijdag')
+        guild_id: Het guild ID
+    """
+    cid = getattr(channel, "id", 0)
+
+    # Check of er een actieve non-voter notification is voor deze dag
+    if cid not in _NON_VOTER_NOTIFICATION_META:
+        return
+
+    meta = _NON_VOTER_NOTIFICATION_META[cid]
+    if meta["dag"] != dag:
+        # Notificatie is voor een andere dag, skip
+        return
+
+    try:
+        # Haal bericht op
+        from apps.utils.discord_client import fetch_message_or_none
+
+        message = await fetch_message_or_none(channel, meta["message_id"])
+        if message is None:
+            # Bericht bestaat niet meer, cleanup metadata
+            del _NON_VOTER_NOTIFICATION_META[cid]
+            return
+
+        # Haal huidige niet-stemmers op
+        from apps.utils.poll_storage import get_non_voters_for_day
+
+        count, non_voter_ids = await get_non_voters_for_day(dag, guild_id, cid)
+
+        if count == 0:
+            # Iedereen heeft gestemd! Delete deze notificatie (celebration neemt over)
+            await safe_call(message.delete)
+            clear_message_id(cid, "notification_nonvoter")
+            del _NON_VOTER_NOTIFICATION_META[cid]
+            return
+
+        # Build nieuwe mentions lijst
+        guild = getattr(channel, "guild", None)
+        if guild is None:
+            return
+
+        mentions_list = []
+        for uid in non_voter_ids:
+            try:
+                user_id_int = int(uid)
+                member = guild.get_member(user_id_int)
+                if member:
+                    mentions_list.append(
+                        getattr(member, "mention", f"<@{user_id_int}>")
+                    )
+                else:
+                    mentions_list.append(f"<@{user_id_int}>")
+            except Exception:  # pragma: no cover
+                continue
+
+        if not mentions_list:
+            # Geen mentions meer, delete notificatie
+            await safe_call(message.delete)
+            clear_message_id(cid, "notification_nonvoter")
+            del _NON_VOTER_NOTIFICATION_META[cid]
+            return
+
+        # Build tekst met correcte Nederlandse grammatica
+        mentions_str = ", ".join(mentions_list)
+        count_text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd. "
+        header = f"📣 DMK-poll – **{dag}**\n{count_text}Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
+
+        # Update bericht
+        content = render_notification_content(
+            heading=":mega: Notificatie:",
+            mentions=mentions_str,
+            text=header,
+            footer=None,
+        )
+
+        await safe_call(message.edit, content=content)
+
+    except Exception as e:  # pragma: no cover
+        print(f"⚠️ Fout bij updaten non-voter notification: {e}")

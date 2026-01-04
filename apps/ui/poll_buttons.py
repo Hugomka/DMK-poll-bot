@@ -315,6 +315,13 @@ class PollButton(Button):
             # ✅ Update publieke poll (achtergrond, alleen deze dag)
             if interaction.channel is not None:
                 asyncio.create_task(update_poll_message(interaction.channel, self.dag))
+
+                # ✅ Update non-voter notification real-time (als die actief is)
+                from apps.utils.mention_utils import update_non_voter_notification
+                asyncio.create_task(
+                    update_non_voter_notification(interaction.channel, self.dag, guild_id)
+                )
+
                 # Check celebration (iedereen gestemd?)
                 asyncio.create_task(
                     check_all_voted_celebration(

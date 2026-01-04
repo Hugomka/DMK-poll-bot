@@ -188,8 +188,8 @@ class TestSchedulerDeadlineMode(BaseTestCase):
                 scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
             ),
             patch.object(
-                scheduler, "send_temporary_mention", new_callable=AsyncMock
-            ) as mock_mention,
+                scheduler, "send_non_voter_notification", new_callable=AsyncMock
+            ) as mock_nonvoter_notification,
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
@@ -197,8 +197,8 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             # Scheduler-modus: geen channel parameter
             result = await scheduler.notify_non_voters(bot, dag="vrijdag")
 
-        # Assert: send_temporary_mention WEL aangeroepen (deadline modus)
-        mock_mention.assert_awaited_once()
+        # Assert: send_non_voter_notification WEL aangeroepen (dag-specifiek met deadline)
+        mock_nonvoter_notification.assert_awaited_once()
         self.assertTrue(result)
 
     async def test_notify_misschien_voters_skips_altijd_mode(self):
