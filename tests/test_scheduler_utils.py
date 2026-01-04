@@ -64,6 +64,7 @@ class TestLoadPollConfig(BaseTestCase):
         original_early_reminder_day = scheduler.EARLY_REMINDER_DAY
         original_reminder_days = scheduler.REMINDER_DAYS.copy()
 
+        config_file = None
         try:
             # Create temp config file
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8') as f:
@@ -95,10 +96,11 @@ class TestLoadPollConfig(BaseTestCase):
                 assert scheduler.REMINDER_DAYS["zondag"] == 6
         finally:
             # Clean up temp file
-            try:
-                os.unlink(config_file)
-            except Exception:
-                pass
+            if config_file is not None:
+                try:
+                    os.unlink(config_file)
+                except Exception:
+                    pass
             # Restore original values
             scheduler.REMINDER_HOUR = original_reminder_hour
             scheduler.RESET_DAY_OF_WEEK = original_reset_day
@@ -115,6 +117,7 @@ class TestLoadPollConfig(BaseTestCase):
         original_reminder_hour = scheduler.REMINDER_HOUR
         original_reset_day = scheduler.RESET_DAY_OF_WEEK
 
+        config_file = None
         try:
             # Create temp config file with partial values
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8') as f:
@@ -136,10 +139,11 @@ class TestLoadPollConfig(BaseTestCase):
                 assert scheduler.RESET_HOUR == 20
         finally:
             # Clean up temp file
-            try:
-                os.unlink(config_file)
-            except Exception:
-                pass
+            if config_file is not None:
+                try:
+                    os.unlink(config_file)
+                except Exception:
+                    pass
             # Restore original values
             scheduler.REMINDER_HOUR = original_reminder_hour
             scheduler.RESET_DAY_OF_WEEK = original_reset_day
@@ -150,6 +154,7 @@ class TestLoadPollConfig(BaseTestCase):
         # Save original value
         original_reminder_hour = scheduler.REMINDER_HOUR
 
+        config_file = None
         try:
             # Set known value first
             scheduler.REMINDER_HOUR = 16
@@ -167,10 +172,11 @@ class TestLoadPollConfig(BaseTestCase):
                 assert scheduler.REMINDER_HOUR == 16
         finally:
             # Clean up temp file
-            try:
-                os.unlink(config_file)
-            except Exception:
-                pass
+            if config_file is not None:
+                try:
+                    os.unlink(config_file)
+                except Exception:
+                    pass
             # Restore original value
             scheduler.REMINDER_HOUR = original_reminder_hour
 

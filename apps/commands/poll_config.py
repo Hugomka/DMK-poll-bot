@@ -71,11 +71,11 @@ async def poll_instelling(
             votes_per_option: dict[str, int] = {}
             for dag in WEEK_DAYS:
                 for tijd_key in ["om 19:00 uur", "om 20:30 uur"]:
+                    optie_key = f"{dag}_{tijd_key}"
                     try:
                         stemmen = await get_votes_for_option(
                             dag, tijd_key, guild_id, channel_id
                         )
-                        optie_key = f"{dag}_{tijd_key}"
                         votes_per_option[optie_key] = stemmen
                     except Exception:  # pragma: no cover
                         votes_per_option[optie_key] = 0
