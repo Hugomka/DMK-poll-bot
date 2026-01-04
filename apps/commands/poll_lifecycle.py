@@ -34,6 +34,7 @@ from apps.utils.poll_settings import (
     should_hide_counts,
     toggle_paused,
 )
+from apps.utils.time_zone_helper import TimeZoneHelper
 from apps.utils.poll_storage import reset_votes, reset_votes_scoped
 
 
@@ -1055,34 +1056,30 @@ class PollLifecycle(commands.Cog):
 
             channel_id = getattr(channel, "id", 0)
             schedule, _is_default = get_effective_activation(channel_id)
-            closing_time = "dinsdag om 20:00 uur"  # Standaard fallback
+
+            # Standaard fallback: dinsdag om 20:00 uur
+            now = datetime.now(ZoneInfo("Europe/Amsterdam"))
+            current_date_obj = now.date()
+            hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
+                current_date_obj.strftime("%Y-%m-%d"), "20:00", style="F"
+            )
 
             if schedule:
                 tijd = schedule.get("tijd", "20:00")
                 if schedule.get("type") == "wekelijks":
-                    dag_naam = schedule.get("dag", "dinsdag")
-                    closing_time = f"{dag_naam} om {tijd} uur"
+                    # Voor wekelijkse activatie: gebruik vandaag als datum voor hammertime
+                    hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
+                        current_date_obj.strftime("%Y-%m-%d"), tijd, style="F"
+                    )
                 elif schedule.get("type") == "datum":
                     datum = schedule.get("datum", "")
                     if datum:
-                        from datetime import datetime
-
-                        # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
-                        datum_obj = datetime.strptime(datum, "%Y-%m-%d")
-                        datum_display = datum_obj.strftime("%d-%m-%Y")
-                        dag_naam = [
-                            "maandag",
-                            "dinsdag",
-                            "woensdag",
-                            "donderdag",
-                            "vrijdag",
-                            "zaterdag",
-                            "zondag",
-                        ][datum_obj.weekday()]
-                        closing_time = f"{dag_naam} {datum_display} om {tijd} uur"
+                        hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
+                            datum, tijd, style="F"
+                        )
 
             sluitingsbericht = (
-                f"Deze poll is tijdelijk gesloten en gaat automatisch weer open op **{closing_time}**. "
+                f"Deze poll is tijdelijk gesloten en gaat automatisch weer open op {hammertime_str}. "
                 "Dank voor je deelname."
             )
 
@@ -1098,7 +1095,7 @@ class PollLifecycle(commands.Cog):
 
             # 4) Terugkoppeling
             await interaction.followup.send(
-                f"✅ Alle bot-berichten zijn verwijderd. De scheduler blijft actief en zal de polls automatisch weer activeren op {closing_time}.",
+                f"✅ Alle bot-berichten zijn verwijderd. De scheduler blijft actief en zal de polls automatisch weer activeren op {hammertime_str}.",
                 ephemeral=True,
             )
 
