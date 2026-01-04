@@ -1513,6 +1513,15 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
             if is_channel_disabled(cid):
                 continue
 
+            # KRITIEK: Skip channels die nooit geactiveerd zijn geweest
+            # Een channel is alleen "actief" als het minimaal 1 poll message heeft
+            # Dit voorkomt dat de scheduler leaked naar kanalen waar de bot nooit is aangezet
+            dagen = get_enabled_poll_days(cid)
+            has_any_poll_message = any(get_message_id(cid, dag) for dag in dagen)
+            if not has_any_poll_message:
+                # Channel heeft geen poll messages, dus is nooit geactiveerd
+                continue
+
             # Haal effective deactivation schedule op (met fallback naar default)
             schedule, _is_default = get_effective_deactivation(cid)
             if not schedule:
@@ -1660,6 +1669,15 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
             # Skip disabled channels (handmatig uitgeschakeld met /dmk-poll-off)
             # Automatische deactivatie disabled het kanaal NIET, dus dit is veilig
             if is_channel_disabled(cid):
+                continue
+
+            # KRITIEK: Skip channels die nooit geactiveerd zijn geweest
+            # Een channel is alleen "actief" als het minimaal 1 poll message heeft
+            # Dit voorkomt dat de scheduler leaked naar kanalen waar de bot nooit is aangezet
+            dagen = get_enabled_poll_days(cid)
+            has_any_poll_message = any(get_message_id(cid, dag) for dag in dagen)
+            if not has_any_poll_message:
+                # Channel heeft geen poll messages, dus is nooit geactiveerd
                 continue
 
             # Haal effective schedule op (met fallback naar default)
