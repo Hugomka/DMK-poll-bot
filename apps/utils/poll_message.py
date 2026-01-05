@@ -35,49 +35,51 @@ _pending_tasks: dict[tuple[int, str], asyncio.Task] = {}
 
 def is_channel_disabled(channel_id: int) -> bool:
     """
-    Controleer of dit kanaal uitgeschakeld is voor polls.
+    Controleer of dit kanaal permanent uitgeschakeld is voor polls.
 
-    We gebruiken strings als keys, net zoals bij per_channel.
-    Als het kanaal in de lijst staat, worden polls niet opnieuw aangemaakt.
+    Dit wordt ALLEEN gebruikt voor /dmk-poll-stopzetten (permanent shutdown).
+    /dmk-poll-off (tijdelijk sluiten) gebruikt deze functie NIET.
 
     Args:
         channel_id: Het numerieke ID van het kanaal.
 
     Returns:
-        True als het kanaal uitgeschakeld is, anders False.
+        True als het kanaal permanent uitgeschakeld is, anders False.
     """
     data = _load()
-    disabled = data.get("disabled_channels", [])
+    # Backwards compatibility: check beide oude en nieuwe key
+    shutdown_channels = data.get("permanently_shutdown_channels", [])
+    if not shutdown_channels:
+        shutdown_channels = data.get("disabled_channels", [])
     # Ondersteun zowel string- als int-representaties in de lijst
     cid_str = str(channel_id)
-    return cid_str in disabled or channel_id in disabled
+    return cid_str in shutdown_channels or channel_id in shutdown_channels
 
 
 def set_channel_disabled(channel_id: int, disabled: bool) -> None:
     """
-    Zet of verwijder de uitgeschakelde status voor een kanaal.
+    Zet of verwijder de permanent uitgeschakelde status voor een kanaal.
 
-    Wanneer `disabled` True is, voegen we het kanaal toe aan de lijst.
-    Wanneer `disabled` False is, verwijderen we het kanaal uit de lijst.
-    De lijst wordt opgeslagen in hetzelfde JSON-bestand als de berichten-IDs.
+    Dit wordt ALLEEN gebruikt voor /dmk-poll-stopzetten (permanent shutdown).
+    /dmk-poll-off (tijdelijk sluiten) gebruikt deze functie NIET.
 
     Args:
         channel_id: Het numerieke ID van het kanaal.
-        disabled: True om uit te schakelen, False om weer in te schakelen.
+        disabled: True om permanent uit te schakelen, False om weer in te schakelen.
     """
     data = _load()
-    disabled_channels = data.get("disabled_channels", [])
+    shutdown_channels = data.get("permanently_shutdown_channels", [])
     cid_str = str(channel_id)
     # Normaliseer naar strings voor opslag
     if disabled:
-        if cid_str not in disabled_channels:
-            disabled_channels.append(cid_str)
+        if cid_str not in shutdown_channels:
+            shutdown_channels.append(cid_str)
     else:
         # Verwijder zowel string- als int-representaties als ze bestaan
-        disabled_channels = [
-            c for c in disabled_channels if c != cid_str and c != channel_id
+        shutdown_channels = [
+            c for c in shutdown_channels if c != cid_str and c != channel_id
         ]
-    data["disabled_channels"] = disabled_channels
+    data["permanently_shutdown_channels"] = shutdown_channels
     _save(data)
 
 

@@ -1644,8 +1644,13 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
     """
     Activeer polls die volgens het schema geactiveerd moeten worden.
     Dit wordt elke minuut uitgevoerd en controleert:
-    1. Datum-gebaseerde schedules (eenmalig)
-    2. Wekelijkse schedules
+    1. Datum-gebaseerde schedules (eenmalig) - activeer als tijd >= scheduled tijd
+    2. Wekelijkse schedules - activeer exact of catch-up als gemist
+
+    Catch-up gedrag:
+    - Wekelijks: Als scheduled tijd vandaag al voorbij is EN geen poll messages bestaan,
+      dan activeer alsnog (bijv. bot was down tijdens scheduled tijd)
+    - Datum: Als scheduled datetime in verleden ligt, activeer direct
 
     Prioriteit: handmatig > datum > wekelijks
     (Handmatige activatie wordt afgehandeld door /dmk-poll-on zelf)
@@ -1653,7 +1658,6 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
     from apps.utils.poll_settings import clear_scheduled_activation, get_effective_activation
 
     now = datetime.now(TZ)
-    current_date = now.date().isoformat()  # YYYY-MM-DD
     current_time = now.strftime("%H:%M")
     current_weekday = now.weekday()
     weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
@@ -1666,18 +1670,10 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
         for channel in get_channels(guild):
             cid = getattr(channel, "id", 0)
 
-            # Skip disabled channels (handmatig uitgeschakeld met /dmk-poll-off)
-            # Automatische deactivatie disabled het kanaal NIET, dus dit is veilig
+            # Skip disabled channels (permanent uitgeschakeld met /dmk-poll-stopzetten)
+            # Let op: /dmk-poll-off (tijdelijk sluiten) zet disabled NIET op True,
+            # dus die channels worden hier NIET geskipt en kunnen automatisch heropenen
             if is_channel_disabled(cid):
-                continue
-
-            # KRITIEK: Skip channels die nooit geactiveerd zijn geweest
-            # Een channel is alleen "actief" als het minimaal 1 poll message heeft
-            # Dit voorkomt dat de scheduler leaked naar kanalen waar de bot nooit is aangezet
-            dagen = get_enabled_poll_days(cid)
-            has_any_poll_message = any(get_message_id(cid, dag) for dag in dagen)
-            if not has_any_poll_message:
-                # Channel heeft geen poll messages, dus is nooit geactiveerd
                 continue
 
             # Haal effective schedule op (met fallback naar default)
@@ -1694,19 +1690,41 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
             if activation_type == "datum":
                 # Eenmalige activatie op specifieke datum
                 scheduled_date = schedule.get("datum")
-                if scheduled_date == current_date and scheduled_time == current_time:
-                    should_activate = True
-                    # Na activatie: wis de eenmalige schedule
-                    try:
-                        clear_scheduled_activation(cid)
-                    except Exception:  # pragma: no cover
-                        pass
+
+                # Parse scheduled datetime voor vergelijking
+                try:
+                    scheduled_datetime_str = f"{scheduled_date} {scheduled_time}"
+                    scheduled_dt = datetime.strptime(scheduled_datetime_str, "%Y-%m-%d %H:%M")
+                    scheduled_dt = scheduled_dt.replace(tzinfo=TZ)
+
+                    # Check of scheduled tijd in het verleden ligt (gemist)
+                    if now >= scheduled_dt:
+                        should_activate = True
+                        # Na activatie: wis de eenmalige schedule
+                        try:
+                            clear_scheduled_activation(cid)
+                        except Exception:  # pragma: no cover
+                            pass
+                except (ValueError, TypeError):  # pragma: no cover
+                    # Invalid date format, skip
+                    pass
 
             elif activation_type == "wekelijks":
                 # Wekelijkse activatie op specifieke dag
                 scheduled_dag = schedule.get("dag")
+
+                # Exact match: activeer op de juiste tijd
                 if scheduled_dag == current_dag and scheduled_time == current_time:
                     should_activate = True
+                # Catch-up: scheduled dag is vandaag maar tijd is al geweest
+                # EN het kanaal heeft geen actieve poll messages (anders zou het al actief zijn)
+                elif scheduled_dag == current_dag and scheduled_time < current_time:
+                    # Check of kanaal poll messages heeft (dan is het al actief)
+                    dagen = get_enabled_poll_days(cid)
+                    has_any_poll_message = any(get_message_id(cid, dag) for dag in dagen)
+                    if not has_any_poll_message:
+                        # Geen poll messages: poll is niet actief, dus activeer nu (catch-up)
+                        should_activate = True
 
             if should_activate:
                 # Activeer de polls via een mock interaction
