@@ -92,7 +92,7 @@ class TestCleanupOutdatedMessages(unittest.IsolatedAsyncioTestCase):
             patch("apps.ui.poll_buttons.safe_call", new_callable=AsyncMock) as mock_safe_call,
             patch("apps.ui.poll_buttons.clear_message_id") as mock_clear,
             patch("apps.utils.poll_message.save_message_id"),
-            patch("apps.utils.poll_settings.get_enabled_rolling_window_days", return_value=[]),
+            patch("apps.utils.poll_settings.get_enabled_period_days", return_value=[]),
             patch("apps.commands.poll_lifecycle._load_opening_message", return_value="Welcome"),
             patch("apps.utils.poll_message.create_notification_message", new_callable=AsyncMock),
         ):
@@ -134,7 +134,7 @@ class TestCleanupOutdatedMessages(unittest.IsolatedAsyncioTestCase):
             patch("apps.ui.poll_buttons.safe_call", new_callable=AsyncMock),
             patch("apps.ui.poll_buttons.clear_message_id") as mock_clear,
             patch("apps.utils.poll_message.save_message_id"),
-            patch("apps.utils.poll_settings.get_enabled_rolling_window_days", return_value=[]),
+            patch("apps.utils.poll_settings.get_enabled_period_days", return_value=[]),
             patch("apps.commands.poll_lifecycle._load_opening_message", return_value="Welcome"),
             patch("apps.utils.poll_message.create_notification_message", new_callable=AsyncMock),
         ):
@@ -168,7 +168,7 @@ class TestCleanupOutdatedMessages(unittest.IsolatedAsyncioTestCase):
             patch("apps.utils.poll_message.get_message_id", side_effect=Exception("Test error")),
             patch("apps.ui.poll_buttons.clear_message_id"),
             patch("apps.utils.poll_message.save_message_id"),
-            patch("apps.utils.poll_settings.get_enabled_rolling_window_days", return_value=[]),
+            patch("apps.utils.poll_settings.get_enabled_period_days", return_value=[]),
             patch("apps.commands.poll_lifecycle._load_opening_message", return_value="Welcome"),
             patch("apps.utils.poll_message.create_notification_message", new_callable=AsyncMock),
         ):
@@ -246,7 +246,7 @@ class TestCleanupOutdatedMessages(unittest.IsolatedAsyncioTestCase):
             patch("apps.ui.poll_buttons.safe_call", new_callable=AsyncMock),
             patch("apps.ui.poll_buttons.clear_message_id"),
             patch("apps.utils.poll_message.save_message_id") as mock_save,
-            patch("apps.utils.poll_settings.get_enabled_rolling_window_days", return_value=dagen_info),
+            patch("apps.utils.poll_settings.get_enabled_period_days", return_value=dagen_info),
             patch("apps.commands.poll_lifecycle._load_opening_message", return_value="Welcome to DMK-poll"),
             patch("apps.utils.message_builder.build_poll_message_for_day_async", new_callable=AsyncMock, return_value="Poll content"),
             patch("apps.utils.poll_settings.is_paused", return_value=False),
@@ -290,7 +290,7 @@ class TestCleanupOutdatedMessages(unittest.IsolatedAsyncioTestCase):
             patch("apps.ui.poll_buttons.safe_call", new_callable=AsyncMock),
             patch("apps.ui.poll_buttons.clear_message_id"),
             patch("apps.utils.poll_message.save_message_id"),
-            patch("apps.utils.poll_settings.get_enabled_rolling_window_days", side_effect=Exception("Recreation error")),
+            patch("apps.utils.poll_settings.get_enabled_period_days", side_effect=Exception("Recreation error")),
         ):
             mock_dt.now.return_value = now
             mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs) if args else now

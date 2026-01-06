@@ -503,13 +503,13 @@ class PollLifecycle(commands.Cog):
             interaction: Discord interaction
             channel: Het kanaal waar polls geplaatst worden
             schedule_message: Optioneel schedule bericht
-            dag_als_vandaag: Optioneel, welke dag als "vandaag" beschouwen voor rolling window
+            dag_als_vandaag: (Deprecated) Niet meer gebruikt in period-based system
         """
-        # Gebruik enabled dagen op basis van rolling window + poll-opties settings
-        from apps.utils.poll_settings import get_enabled_rolling_window_days
+        # Gebruik enabled dagen op basis van period-based system + poll-opties settings
+        from apps.utils.poll_settings import get_enabled_period_days
 
         channel_id = getattr(channel, "id", 0)
-        dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag)
+        dagen_info = get_enabled_period_days(channel_id, reference_date=None)
 
         try:
             # Kanaal opnieuw activeren voor de scheduler

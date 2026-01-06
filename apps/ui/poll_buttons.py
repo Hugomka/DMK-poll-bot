@@ -18,7 +18,7 @@ from apps.utils.poll_message import (
     update_poll_message,
 )
 from apps.utils.poll_settings import (
-    get_enabled_rolling_window_days,
+    get_enabled_period_days,
     get_poll_option_state,
     is_paused,
 )
@@ -134,7 +134,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
 
     # STAP 2: Recreate ALLE berichten (net zoals /dmk-poll-on)
     try:
-        dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag=None)
+        dagen_info = get_enabled_period_days(channel_id, reference_date=None)
         guild = channel.guild if hasattr(channel, "guild") else None
         gid_val = getattr(guild, "id", "0") if guild is not None else "0"
 
@@ -401,21 +401,24 @@ async def create_poll_button_view(
 async def create_poll_button_views_per_day(
     user_id: str, guild_id: int, channel_id: int
 ) -> list[tuple[str, str, PollButtonView]]:
-    from apps.utils.poll_settings import get_enabled_rolling_window_days
+    from apps.utils.poll_settings import get_enabled_period_days
 
     votes = await get_user_votes(user_id, guild_id, channel_id)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
     views: list[tuple[str, str, PollButtonView]] = []
 
-    # Gebruik rolling window om alleen future + today dagen beschikbaar te maken
-    dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag=None)
+    # Gebruik period-based system om alleen future + today dagen beschikbaar te maken
+    dagen_info = get_enabled_period_days(channel_id, reference_date=None)
 
     for day_info in dagen_info:
         dag = day_info["dag"]
-        is_past = day_info["is_past"]
+        datum_iso = day_info["datum_iso"]
 
-        # Skip dagen in het verleden - die zijn alleen zichtbaar, niet stembaar
-        if is_past:
+        # Check if date is in the past
+        from datetime import datetime as dt_class
+        dag_datum = dt_class.strptime(datum_iso, "%Y-%m-%d").replace(tzinfo=now.tzinfo)
+        if dag_datum.date() < now.date():
+            # Skip dagen in het verleden - die zijn alleen zichtbaar, niet stembaar
             continue
 
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)

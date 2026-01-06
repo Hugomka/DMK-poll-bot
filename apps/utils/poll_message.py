@@ -304,21 +304,21 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
     """
     cid_val_temp = int(getattr(channel, "id", 0))
 
-    # Gebruik rolling window om correcte datums te krijgen
-    from apps.utils.poll_settings import get_enabled_rolling_window_days
-    dagen_info = get_enabled_rolling_window_days(cid_val_temp, dag_als_vandaag=None)
+    # Gebruik period-based system om correcte datums te krijgen
+    from apps.utils.poll_settings import get_enabled_period_days
+    dagen_info = get_enabled_period_days(cid_val_temp, reference_date=None)
 
     # Maak een mapping van dag naar datum
     dag_naar_datum = {day_info["dag"]: day_info["datum_iso"] for day_info in dagen_info}
 
     if dag:
-        # Filter alleen de gevraagde dag (als die in de rolling window zit)
+        # Filter alleen de gevraagde dag (als die in de enabled periods zit)
         if dag not in dag_naar_datum:
-            # Dag zit niet in rolling window, negeer
+            # Dag zit niet in enabled periods, negeer
             return
         keys = [dag]
     else:
-        # Alle enabled dagen uit rolling window
+        # Alle enabled dagen uit periods
         keys = [day_info["dag"] for day_info in dagen_info]
 
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))

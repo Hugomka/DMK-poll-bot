@@ -1,124 +1,130 @@
 # tests/test_rolling_window_integration.py
-"""Integratie tests voor rolling window met dmk-poll-on command."""
+"""Integratie tests voor period-based system met dmk-poll-on command."""
 
 from datetime import datetime
-from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from apps.utils.poll_settings import get_enabled_rolling_window_days
-from apps.utils.poll_message import set_dag_als_vandaag, get_dag_als_vandaag
+from apps.utils.poll_settings import get_enabled_period_days
 from tests.base import BaseTestCase
 
 
-class TestRollingWindowIntegration(BaseTestCase):
-    """Test rolling window integratie met dmk-poll-on."""
+class TestPeriodSystemIntegration(BaseTestCase):
+    """Test period-based system integratie met dmk-poll-on."""
 
-    def test_dmk_poll_on_without_parameter_uses_current_day(self):
-        """Test dat /dmk-poll-on zonder parameter de huidige dag gebruikt."""
+    def test_period_system_returns_correct_days_for_vr_zo_period(self):
+        """Test dat period system correcte dagen retourneert voor vr-zo periode."""
         # Dinsdag 2 december 2025, 07:15
         tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
-
-        with patch("apps.utils.message_builder.datetime") as mock_dt:
-            mock_dt.now.return_value = tuesday
-
-            # Simuleer: /dmk-poll-on wordt uitgevoerd zonder parameters
-            # Dit moet de huidige dag (dinsdag) opslaan
-            channel_id = 12345
-
-            # Enable alle dagen voor deze test
-            from apps.utils.poll_settings import set_poll_option_state
-            for dag in ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]:
-                set_poll_option_state(channel_id, dag, "om 19:00 uur", True)
-                set_poll_option_state(channel_id, dag, "om 20:30 uur", True)
-
-            # Bepaal effective_dag_als_vandaag zoals de on command doet
-            from apps.utils.constants import DAG_NAMEN
-            effective_dag_als_vandaag = DAG_NAMEN[tuesday.weekday()]  # dinsdag
-
-            # Sla op
-            set_dag_als_vandaag(channel_id, effective_dag_als_vandaag)
-
-            # Haal rolling window op
-            dagen_info = get_enabled_rolling_window_days(channel_id, effective_dag_als_vandaag)
-
-            # Verwacht: chronologische volgorde met correcte datums
-            # -1: maandag 1 dec
-            # 0: dinsdag 2 dec (today)
-            # +1: woensdag 3 dec
-            # +2: donderdag 4 dec
-            # +3: vrijdag 5 dec
-            # +4: zaterdag 6 dec
-            # +5: zondag 7 dec
-
-            self.assertEqual(len(dagen_info), 7)
-
-            # Check maandag
-            maandag = dagen_info[0]
-            self.assertEqual(maandag["dag"], "maandag")
-            self.assertEqual(maandag["datum_iso"], "2025-12-01")
-            self.assertTrue(maandag["is_past"])
-
-            # Check dinsdag (today)
-            dinsdag = dagen_info[1]
-            self.assertEqual(dinsdag["dag"], "dinsdag")
-            self.assertEqual(dinsdag["datum_iso"], "2025-12-02")
-            self.assertTrue(dinsdag["is_today"])
-
-            # Check woensdag
-            woensdag = dagen_info[2]
-            self.assertEqual(woensdag["dag"], "woensdag")
-            self.assertEqual(woensdag["datum_iso"], "2025-12-03")
-            self.assertTrue(woensdag["is_future"])
-
-            # Check donderdag - NIET 27 november!
-            donderdag = dagen_info[3]
-            self.assertEqual(donderdag["dag"], "donderdag")
-            self.assertEqual(donderdag["datum_iso"], "2025-12-04")
-            self.assertTrue(donderdag["is_future"])
-
-            # Check zondag - NIET 30 november!
-            zondag = dagen_info[6]
-            self.assertEqual(zondag["dag"], "zondag")
-            self.assertEqual(zondag["datum_iso"], "2025-12-07")
-            self.assertTrue(zondag["is_future"])
-
-    def test_dmk_poll_on_respects_old_saved_dag_als_vandaag(self):
-        """Test dat oude opgeslagen dag_als_vandaag NIET wordt gebruikt als we nieuwe /dmk-poll-on doen."""
-        # Dinsdag 2 december 2025, 07:15
-        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
-
         channel_id = 12345
 
-        # Enable alle dagen voor deze test
-        from apps.utils.poll_settings import set_poll_option_state
+        # Setup: Enable vr-zo period with all days
+        from apps.utils.poll_settings import set_poll_option_state, set_period_settings
+
+        for dag in ["vrijdag", "zaterdag", "zondag"]:
+            set_poll_option_state(channel_id, dag, "om 19:00 uur", True)
+            set_poll_option_state(channel_id, dag, "om 20:30 uur", True)
+
+        # Enable vr-zo period (default enabled)
+        set_period_settings(channel_id, "vr-zo", enabled=True)
+        set_period_settings(channel_id, "ma-do", enabled=False)
+
+        # Get enabled days
+        dagen_info = get_enabled_period_days(channel_id, reference_date=tuesday)
+
+        # Should return 3 days (vr, za, zo) from this week
+        self.assertEqual(len(dagen_info), 3)
+
+        dag_namen = [d["dag"] for d in dagen_info]
+        self.assertIn("vrijdag", dag_namen)
+        self.assertIn("zaterdag", dag_namen)
+        self.assertIn("zondag", dag_namen)
+
+        # Check dates are from this week (Nov 30 - Dec 2, week starting Nov 30)
+        # ISO week 48: Nov 30 - Dec 6, Monday = Nov 30
+        vrijdag = next(d for d in dagen_info if d["dag"] == "vrijdag")
+        self.assertEqual(vrijdag["datum_iso"], "2025-12-05")  # Friday of this ISO week
+
+    def test_period_system_returns_correct_days_for_ma_do_period(self):
+        """Test dat period system correcte dagen retourneert voor ma-do periode."""
+        # Dinsdag 2 december 2025
+        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        channel_id = 12345
+
+        # Setup: Enable ma-do period with all days
+        from apps.utils.poll_settings import set_poll_option_state, set_period_settings
+
+        for dag in ["maandag", "dinsdag", "woensdag", "donderdag"]:
+            set_poll_option_state(channel_id, dag, "om 19:00 uur", True)
+            set_poll_option_state(channel_id, dag, "om 20:30 uur", True)
+
+        # Enable ma-do period
+        set_period_settings(channel_id, "vr-zo", enabled=False)
+        set_period_settings(channel_id, "ma-do", enabled=True)
+
+        # Get enabled days
+        dagen_info = get_enabled_period_days(channel_id, reference_date=tuesday)
+
+        # Should return 4 days (ma, di, wo, do) from this week (since we're on Tuesday)
+        self.assertEqual(len(dagen_info), 4)
+
+        dag_namen = [d["dag"] for d in dagen_info]
+        self.assertIn("maandag", dag_namen)
+        self.assertIn("dinsdag", dag_namen)
+        self.assertIn("woensdag", dag_namen)
+        self.assertIn("donderdag", dag_namen)
+
+    def test_period_system_with_both_periods_enabled(self):
+        """Test dat beide periodes tegelijk kunnen werken."""
+        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        channel_id = 12345
+
+        # Setup: Enable both periods with all days
+        from apps.utils.poll_settings import set_poll_option_state, set_period_settings
+
         for dag in ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]:
             set_poll_option_state(channel_id, dag, "om 19:00 uur", True)
             set_poll_option_state(channel_id, dag, "om 20:30 uur", True)
 
-        # Simuleer: er staat een oude waarde in de state (bijv. "donderdag")
-        set_dag_als_vandaag(channel_id, "donderdag")
+        # Enable both periods
+        set_period_settings(channel_id, "vr-zo", enabled=True)
+        set_period_settings(channel_id, "ma-do", enabled=True)
 
-        with patch("apps.utils.message_builder.datetime") as mock_dt:
-            mock_dt.now.return_value = tuesday
+        # Get enabled days
+        dagen_info = get_enabled_period_days(channel_id, reference_date=tuesday)
 
-            # Nu doen we /dmk-poll-on zonder parameters
-            # Dit moet de oude waarde OVERSCHRIJVEN met de huidige dag
-            from apps.utils.constants import DAG_NAMEN
-            effective_dag_als_vandaag = DAG_NAMEN[tuesday.weekday()]  # dinsdag
+        # Should return all 7 days
+        self.assertEqual(len(dagen_info), 7)
 
-            # Sla nieuwe waarde op (zoals de on command doet)
-            set_dag_als_vandaag(channel_id, effective_dag_als_vandaag)
+    def test_period_system_skips_disabled_days(self):
+        """Test dat disabled dagen binnen een periode worden geskipt."""
+        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        channel_id = 12345
 
-            # Haal opgeslagen waarde op
-            saved_dag = get_dag_als_vandaag(channel_id)
-            self.assertEqual(saved_dag, "dinsdag")  # NIET "donderdag"!
+        # Setup: Enable vr-zo period but disable zaterdag
+        from apps.utils.poll_settings import set_poll_option_state, set_period_settings
 
-            # Haal rolling window op met de nieuwe waarde
-            dagen_info = get_enabled_rolling_window_days(channel_id, effective_dag_als_vandaag)
+        set_poll_option_state(channel_id, "vrijdag", "om 19:00 uur", True)
+        set_poll_option_state(channel_id, "vrijdag", "om 20:30 uur", True)
+        set_poll_option_state(channel_id, "zaterdag", "om 19:00 uur", False)
+        set_poll_option_state(channel_id, "zaterdag", "om 20:30 uur", False)
+        set_poll_option_state(channel_id, "zondag", "om 19:00 uur", True)
+        set_poll_option_state(channel_id, "zondag", "om 20:30 uur", True)
 
-            # Check dat donderdag 4 december is (niet 27 november)
-            donderdag = next((d for d in dagen_info if d["dag"] == "donderdag"), None)
-            self.assertIsNotNone(donderdag)
-            assert donderdag is not None  # Type narrowing
-            self.assertEqual(donderdag["datum_iso"], "2025-12-04")
-            self.assertTrue(donderdag["is_future"])
+        set_period_settings(channel_id, "vr-zo", enabled=True)
+        set_period_settings(channel_id, "ma-do", enabled=False)
+
+        # Get enabled days
+        dagen_info = get_enabled_period_days(channel_id, reference_date=tuesday)
+
+        # Should return only vrijdag and zondag (zaterdag is disabled)
+        self.assertEqual(len(dagen_info), 2)
+
+        dag_namen = [d["dag"] for d in dagen_info]
+        self.assertIn("vrijdag", dag_namen)
+        self.assertIn("zondag", dag_namen)
+        self.assertNotIn("zaterdag", dag_namen)
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main()

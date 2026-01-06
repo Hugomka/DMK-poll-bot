@@ -87,11 +87,11 @@ class TestVoteMessageDates(BaseTestCase):
             mock_dt_buttons.now.return_value = tuesday
             mock_dt_builder.now.return_value = tuesday
 
-            # Haal rolling window dagen op
-            from apps.utils.poll_settings import get_enabled_rolling_window_days
-            dagen_info = get_enabled_rolling_window_days(channel_id, dag_als_vandaag=None)
+            # Haal period dagen op
+            from apps.utils.poll_settings import get_enabled_period_days
+            dagen_info = get_enabled_period_days(channel_id, reference_date=None)
 
-            # Voor elke dag: check dat stembericht dezelfde datum gebruikt als rolling window
+            # Voor elke dag: check dat stembericht dezelfde datum gebruikt
             for day_info in dagen_info:
                 dag = day_info["dag"]
                 # datum_iso is beschikbaar in day_info maar wordt niet gebruikt in deze test

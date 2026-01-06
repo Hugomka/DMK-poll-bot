@@ -157,12 +157,12 @@ class PollStatus(commands.Cog):
                 )
                 return
 
-            # Gebruik rolling window voor chronologische volgorde met datums
-            from apps.utils.poll_settings import get_enabled_rolling_window_days
+            # Gebruik period-based system voor chronologische volgorde met datums
+            from apps.utils.poll_settings import get_enabled_period_days
             from apps.utils.time_zone_helper import TimeZoneHelper
 
             # Gebruik altijd de huidige dag (niet opgeslagen waarde)
-            dagen_info = get_enabled_rolling_window_days(cid_val, dag_als_vandaag=None)
+            dagen_info = get_enabled_period_days(cid_val, reference_date=None)
 
             for day_info in dagen_info:
                 dag = day_info["dag"]

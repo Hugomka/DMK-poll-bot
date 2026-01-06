@@ -788,42 +788,287 @@ def get_enabled_poll_days(channel_id: int) -> list[str]:
     return [dag for dag in WEEK_DAYS if not is_day_completely_disabled(channel_id, dag)]
 
 
-def get_enabled_rolling_window_days(
-    channel_id: int, dag_als_vandaag: str | None = None
+def get_enabled_period_days(
+    channel_id: int, reference_date: datetime | None = None
 ) -> list[dict[str, str]]:
     """
-    Geef lijst van enabled dagen terug binnen rolling window (1 terug + vandaag + 5 vooruit).
+    Geef lijst van enabled dagen terug voor alle enabled periodes.
 
     Args:
         channel_id: Het kanaal ID
-        dag_als_vandaag: Optioneel, welke dag als "vandaag" beschouwen
+        reference_date: Optionele referentiedatum (defaults to now)
 
     Returns:
-        Lijst van dicts met 'dag' (naam) en 'datum_iso' (YYYY-MM-DD) voor enabled dagen binnen window
+        Lijst van dicts met 'dag' (naam) en 'datum_iso' (YYYY-MM-DD) voor enabled dagen
 
     Voorbeeld: [
-        {'dag': 'zondag', 'datum_iso': '2024-11-30', 'is_past': True, 'is_today': False, 'is_future': False},
-        {'dag': 'maandag', 'datum_iso': '2024-12-01', 'is_past': False, 'is_today': True, 'is_future': False},
-        {'dag': 'dinsdag', 'datum_iso': '2024-12-02', 'is_past': False, 'is_today': False, 'is_future': True},
-        ...
+        {'dag': 'vrijdag', 'datum_iso': '2026-01-09'},
+        {'dag': 'zaterdag', 'datum_iso': '2026-01-10'},
+        {'dag': 'zondag', 'datum_iso': '2026-01-11'},
     ]
     """
-    from apps.utils.message_builder import get_rolling_window_days
+    from apps.utils.period_dates import get_period_days
 
-    # Haal rolling window op
-    window = get_rolling_window_days(dag_als_vandaag)
-
-    # Filter op enabled dagen (volgens poll option settings)
     enabled_days = []
-    for day_info in window:
-        dag = day_info["dag"]
-        if not is_day_completely_disabled(channel_id, dag):
-            enabled_days.append({
-                "dag": dag,
-                "datum_iso": day_info["datum"].strftime("%Y-%m-%d"),
-                "is_past": day_info["is_past"],
-                "is_today": day_info["is_today"],
-                "is_future": day_info["is_future"],
-            })
+
+    # Check beide periodes
+    for period in ["vr-zo", "ma-do"]:
+        settings = get_period_settings(channel_id, period)
+        if not settings.get("enabled", False):
+            continue  # Skip disabled periods
+
+        # Haal datums voor deze periode op
+        period_dates = get_period_days(period, reference_date)
+
+        # Filter op enabled dagen (volgens poll option settings)
+        for dag, datum_iso in period_dates.items():
+            if not is_day_completely_disabled(channel_id, dag):
+                enabled_days.append({
+                    "dag": dag,
+                    "datum_iso": datum_iso,
+                })
 
     return enabled_days
+
+
+# ========================================================================
+# Period Settings (Two-Period Poll System)
+# ========================================================================
+
+
+def get_period_settings(channel_id: int, period: str) -> dict:
+    """
+    Haal de period-instellingen op voor een kanaal.
+
+    Args:
+        channel_id: Het kanaal ID
+        period: "vr-zo" of "ma-do"
+
+    Returns:
+        Dict met keys: enabled, close_day, close_time, open_day, open_time
+        Default voor vr-zo: {enabled: True, close_day: "maandag", close_time: "00:00", open_day: "dinsdag", open_time: "20:00"}
+        Default voor ma-do: {enabled: False, close_day: "vrijdag", close_time: "00:00", open_day: "vrijdag", open_time: "20:00"}
+    """
+    if period not in ["vr-zo", "ma-do"]:
+        raise ValueError(f"Ongeldige periode: {period}. Gebruik 'vr-zo' of 'ma-do'.")
+
+    data = _load_data()
+    ch_data = data.get(str(channel_id), {})
+    period_settings = ch_data.get("__period_settings__", {})
+
+    # Defaults per periode
+    defaults = {
+        "vr-zo": {
+            "enabled": True,
+            "close_day": "maandag",
+            "close_time": "00:00",
+            "open_day": "dinsdag",
+            "open_time": "20:00",
+        },
+        "ma-do": {
+            "enabled": False,
+            "close_day": "vrijdag",
+            "close_time": "00:00",
+            "open_day": "vrijdag",
+            "open_time": "20:00",
+        },
+    }
+
+    return period_settings.get(period, defaults[period]).copy()
+
+
+def set_period_settings(
+    channel_id: int,
+    period: str,
+    enabled: bool | None = None,
+    close_day: str | None = None,
+    close_time: str | None = None,
+    open_day: str | None = None,
+    open_time: str | None = None,
+) -> dict:
+    """
+    Stel de period-instellingen in voor een kanaal.
+
+    Args:
+        channel_id: Het kanaal ID
+        period: "vr-zo" of "ma-do"
+        enabled: Optioneel, of deze periode enabled is
+        close_day: Optioneel, dag waarop poll sluit/reset
+        close_time: Optioneel, tijd waarop poll sluit/reset (HH:MM)
+        open_day: Optioneel, dag waarop poll opent
+        open_time: Optioneel, tijd waarop poll opent (HH:MM)
+
+    Returns:
+        De bijgewerkte period settings
+
+    Raises:
+        ValueError: Als validatie faalt
+    """
+    if period not in ["vr-zo", "ma-do"]:
+        raise ValueError(f"Ongeldige periode: {period}. Gebruik 'vr-zo' of 'ma-do'.")
+
+    # Haal huidige settings op
+    current_settings = get_period_settings(channel_id, period)
+
+    # Update alleen opgegeven velden
+    if enabled is not None:
+        current_settings["enabled"] = enabled
+    if close_day is not None:
+        current_settings["close_day"] = close_day.lower()
+    if close_time is not None:
+        current_settings["close_time"] = close_time
+    if open_day is not None:
+        current_settings["open_day"] = open_day.lower()
+    if open_time is not None:
+        current_settings["open_time"] = open_time
+
+    # Validatie: close_time moet vóór open_time zijn (op dezelfde dag)
+    if current_settings["close_day"] == current_settings["open_day"]:
+        try:
+            close_h, close_m = map(int, current_settings["close_time"].split(":"))
+            open_h, open_m = map(int, current_settings["open_time"].split(":"))
+            close_minutes = close_h * 60 + close_m
+            open_minutes = open_h * 60 + open_m
+
+            if close_minutes >= open_minutes:
+                raise ValueError(
+                    f"Sluitingstijd ({current_settings['close_time']}) moet vóór openingstijd ({current_settings['open_time']}) zijn op dezelfde dag."
+                )
+        except (ValueError, AttributeError) as e:
+            if "invalid literal" in str(e) or "split" in str(e):
+                raise ValueError("Ongeldige tijdnotatie. Gebruik HH:MM formaat.")
+            raise
+
+    # Sla op
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+    period_settings = ch.setdefault("__period_settings__", {})
+    period_settings[period] = current_settings
+
+    _save_data(data)
+    return current_settings.copy()
+
+
+def get_enabled_periods(channel_id: int) -> list[str]:
+    """
+    Haal lijst van enabled periodes op.
+
+    Args:
+        channel_id: Het kanaal ID
+
+    Returns:
+        Lijst van enabled periodes, bijv: ["vr-zo"] of ["ma-do"] of ["vr-zo", "ma-do"]
+    """
+    enabled = []
+
+    for period in ["vr-zo", "ma-do"]:
+        settings = get_period_settings(channel_id, period)
+        if settings.get("enabled", False):
+            enabled.append(period)
+
+    return enabled
+
+
+def migrate_channel_to_periods(channel_id: int) -> bool:
+    """
+    Migreer een kanaal van oude activation/deactivation settings naar nieuwe period settings.
+    
+    Args:
+        channel_id: Het kanaal ID
+        
+    Returns:
+        True als migratie succesvol was, False als al gemigreerd of geen oude settings
+    """
+    data = _load_data()
+    ch_key = str(channel_id)
+    
+    if ch_key not in data:
+        return False
+    
+    ch = data[ch_key]
+    
+    # Check of al gemigreerd
+    if "__period_settings__" in ch:
+        return False  # Al gemigreerd
+    
+    # Bepaal welke periodes enabled moeten zijn op basis van enabled dagen
+    poll_options = ch.get("__poll_options__", {})
+    
+    vr_zo_days = ["vrijdag", "zaterdag", "zondag"]
+    ma_do_days = ["maandag", "dinsdag", "woensdag", "donderdag"]
+    
+    vr_zo_enabled = any(
+        poll_options.get(f"{dag}_{tijd}", False)
+        for dag in vr_zo_days
+        for tijd in ["19:00", "20:30"]
+    )
+    
+    ma_do_enabled = any(
+        poll_options.get(f"{dag}_{tijd}", False)
+        for dag in ma_do_days
+        for tijd in ["19:00", "20:30"]
+    )
+    
+    # Als geen enkele dag enabled is, zet vr-zo enabled (default)
+    if not vr_zo_enabled and not ma_do_enabled:
+        vr_zo_enabled = True
+    
+    # Migreer oude activation/deactivation settings naar vr-zo periode
+    old_activation = ch.get("__scheduled_activation__", {})
+    old_deactivation = ch.get("__scheduled_deactivation__", {})
+    
+    # Creëer nieuwe period settings
+    ch["__period_settings__"] = {
+        "vr-zo": {
+            "enabled": vr_zo_enabled,
+            "close_day": old_deactivation.get("dag", "maandag"),
+            "close_time": old_deactivation.get("tijd", "00:00"),
+            "open_day": old_activation.get("dag", "dinsdag"),
+            "open_time": old_activation.get("tijd", "20:00"),
+        },
+        "ma-do": {
+            "enabled": ma_do_enabled,
+            "close_day": "vrijdag",
+            "close_time": "00:00",
+            "open_day": "vrijdag",
+            "open_time": "20:00",
+        }
+    }
+    
+    # Verwijder oude settings
+    ch.pop("__scheduled_activation__", None)
+    ch.pop("__scheduled_deactivation__", None)
+    
+    data[ch_key] = ch
+    _save_data(data)
+    
+    return True
+
+
+def migrate_all_channels_to_periods() -> dict[str, int]:
+    """
+    Migreer alle kanalen naar het nieuwe period systeem.
+    
+    Returns:
+        Dict met statistieken: {"migrated": aantal, "already_migrated": aantal, "total": aantal}
+    """
+    data = _load_data()
+    stats = {"migrated": 0, "already_migrated": 0, "total": 0}
+    
+    for ch_key in data.keys():
+        if ch_key == "defaults":
+            continue
+            
+        try:
+            channel_id = int(ch_key)
+            stats["total"] += 1
+            
+            if migrate_channel_to_periods(channel_id):
+                stats["migrated"] += 1
+            else:
+                stats["already_migrated"] += 1
+        except (ValueError, TypeError):
+            # Skip invalid channel IDs
+            continue
+    
+    return stats

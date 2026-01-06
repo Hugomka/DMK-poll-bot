@@ -7,6 +7,7 @@ import discord
 import pytz
 
 from apps.entities.poll_option import get_poll_options
+from apps.utils.period_dates import get_period_days, get_period_for_day
 from apps.utils.poll_settings import get_setting
 from apps.utils.poll_storage import (
     get_counts_for_day,
@@ -96,6 +97,40 @@ def _get_weekday_date_for_rolling_window(dag: str, dag_als_vandaag: str | None =
     return ""
 
 
+def get_weekday_date_for_period(dag: str, reference_date: datetime | None = None) -> str:
+    """
+    Bereken datum voor een specifieke dag binnen zijn periode in YYYY-MM-DD formaat.
+
+    Gebruikt het nieuwe twee-periode systeem:
+    - ma-do dagen: gebruik ma-do periode datums
+    - vr-zo dagen: gebruik vr-zo periode datums
+
+    Args:
+        dag: De weekdag naam (bijv. "vrijdag", "maandag")
+        reference_date: Optionele referentiedatum (defaults to now in Amsterdam timezone)
+
+    Returns:
+        ISO datum string (YYYY-MM-DD)
+
+    Raises:
+        ValueError: Als de dag ongeldig is
+    """
+    # Als geen reference_date gegeven, gebruik datetime.now() uit deze module
+    # Dit zorgt ervoor dat test mocks correct werken
+    if reference_date is None:
+        tz = pytz.timezone("Europe/Amsterdam")
+        reference_date = datetime.now(tz)
+
+    # Bepaal tot welke periode deze dag behoort
+    period = get_period_for_day(dag)
+
+    # Haal alle datums voor deze periode op
+    period_dates = get_period_days(period, reference_date)
+
+    # Return de datum voor deze specifieke dag
+    return period_dates[dag.lower()]
+
+
 def _get_next_weekday_date(dag: str) -> str:
     """
     Bereken datum voor elke dag van de week van de huidige poll-periode in DD-MM formaat.
@@ -163,18 +198,8 @@ async def build_poll_message_for_day_async(
     """
     # Genereer Hammertime voor de datum (18:00 = deadline tijd)
     if datum_iso is None:
-        # Fallback: gebruik rolling window om correcte datum te krijgen
-        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
-        for day_info in dagen_info:
-            if day_info["dag"] == dag.lower():
-                datum_iso = day_info["datum"].strftime("%Y-%m-%d")
-                break
-        # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
-        if datum_iso is None:
-            raise ValueError(
-                f"Dag '{dag}' niet gevonden in rolling window. "
-                f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
-            )
+        # Gebruik period-based date calculation om correcte datum te krijgen
+        datum_iso = get_weekday_date_for_period(dag, reference_date=None)
 
     datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
         datum_iso, "18:00", style="D"  # D = long date format (bijv. "28 november 2025")
@@ -219,19 +244,9 @@ async def build_poll_message_for_day_async(
     is_deadline_mode = isinstance(setting, dict) and setting.get("modus") == "deadline"
 
     # Bereken datum voor Hammertime conversie (gebruik datum_iso parameter als beschikbaar)
-    # Als niet beschikbaar, haal op uit rolling window
+    # Als niet beschikbaar, gebruik period-based calculation (should not happen due to earlier check)
     if datum_iso is None:
-        dagen_info = get_rolling_window_days(dag_als_vandaag=None)
-        for day_info in dagen_info:
-            if day_info["dag"] == dag.lower():
-                datum_iso = day_info["datum"].strftime("%Y-%m-%d")
-                break
-        # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
-        if datum_iso is None:
-            raise ValueError(
-                f"Dag '{dag}' niet gevonden in rolling window. "
-                f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
-            )
+        datum_iso = get_weekday_date_for_period(dag, reference_date=None)
 
     for opt in opties:
         # Filter "misschien" uit resultaten in deadline-modus:

@@ -517,10 +517,14 @@ class TestStatusCommand(BaseTestCase):
 
     async def test_status_shows_all_days_when_all_enabled(self):
         """Test dat status alle 7 dagen toont als ze allemaal enabled zijn"""
-        from apps.utils.poll_settings import set_poll_option_state
+        from apps.utils.poll_settings import set_poll_option_state, set_period_settings
         from apps.entities.poll_option import get_poll_options
 
         kanaal_id = 890123
+
+        # Enable both periods
+        set_period_settings(kanaal_id, "vr-zo", enabled=True)
+        set_period_settings(kanaal_id, "ma-do", enabled=True)
 
         # Stel alle opties in als enabled
         for opt in get_poll_options():
@@ -575,10 +579,14 @@ class TestStatusCommand(BaseTestCase):
 
     async def test_status_shows_only_weekdays_when_enabled(self):
         """Test dat status alleen weekdagen toont als alleen die zijn enabled"""
-        from apps.utils.poll_settings import set_poll_option_state
+        from apps.utils.poll_settings import set_poll_option_state, set_period_settings
         from apps.entities.poll_option import get_poll_options
 
         kanaal_id = 901234
+
+        # Enable ma-do period, disable vr-zo
+        set_period_settings(kanaal_id, "ma-do", enabled=True)
+        set_period_settings(kanaal_id, "vr-zo", enabled=False)
 
         # Stel alleen weekdagen in als enabled
         for opt in get_poll_options():

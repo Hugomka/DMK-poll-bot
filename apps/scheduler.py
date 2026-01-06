@@ -31,6 +31,7 @@ from apps.utils.poll_message import (
 )
 from apps.utils.poll_settings import (
     get_enabled_poll_days,
+    get_period_settings,
     get_setting,
     is_notification_enabled,
     is_paused,
@@ -140,6 +141,13 @@ def should_run(last_run: Union[str, datetime, None], occurrence: datetime) -> bo
 
     # gelijk → NIET runnen; alleen draaien als last_dt < occurrence
     return last_dt < occurrence
+
+
+def _get_current_dutch_day() -> str:
+    """Haal de huidige dag op in het Nederlands."""
+    now = datetime.now(TZ)
+    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+    return weekday_names[now.weekday()]
 
 
 def _is_deadline_mode(channel_id: int, dag: str) -> bool:
@@ -884,12 +892,12 @@ async def update_all_polls(bot) -> None:  # pragma: no cover
             if allow_from_per_channel_only and not has_poll:
                 continue
 
-            # Gebruik rolling window logica (altijd huidige dag)
-            from apps.utils.poll_settings import get_enabled_rolling_window_days
+            # Gebruik period-based logica (altijd huidige dag)
+            from apps.utils.poll_settings import get_enabled_period_days
 
-            dagen_info = get_enabled_rolling_window_days(cid, dag_als_vandaag=None)
+            dagen_info = get_enabled_period_days(cid, reference_date=None)
 
-            # Verwijder oude dag-berichten die niet meer in de rolling window zitten
+            # Verwijder oude dag-berichten die niet meer in de enabled periods zitten
             from apps.utils.constants import DAG_NAMEN
             from apps.utils.discord_client import fetch_message_or_none, safe_call
 
@@ -903,7 +911,7 @@ async def update_all_polls(bot) -> None:  # pragma: no cover
                             await safe_call(msg.delete)
                         clear_message_id(cid, dag_naam)
 
-            # Update poll-berichten voor dagen in rolling window
+            # Update poll-berichten voor dagen in enabled periods
             for day_info in dagen_info:
                 dag = day_info["dag"]
                 tasks.append(schedule_poll_update(channel, dag, delay=0.0))
@@ -1144,20 +1152,20 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
                 winnaar_key = KEY_19
 
             # Bereken datum en converteer naar Hammertime
-            # Gebruik rolling window om correcte datum te krijgen
-            from apps.utils.poll_settings import get_enabled_rolling_window_days
-            dagen_info = get_enabled_rolling_window_days(cid, dag_als_vandaag=None)
+            # Gebruik period-based system om correcte datum te krijgen
+            from apps.utils.poll_settings import get_enabled_period_days
+            dagen_info = get_enabled_period_days(cid, reference_date=None)
             datum_iso = None
             for day_info in dagen_info:
                 if day_info["dag"] == dag.lower():
                     datum_iso = day_info["datum_iso"]
                     break
-            # Dag moet altijd in rolling window zitten - als niet, dan is er een bug
+            # Dag moet altijd in enabled periods zitten - als niet, dan is er een bug
             if datum_iso is None:
                 # Stuur foutmelding naar kanaal (zichtbaar voor gebruikers)
                 try:
                     await channel.send(
-                        f"⚠️ **Fout bij beslissing aankondiging:** Dag '{dag}' niet gevonden in rolling window. "
+                        f"⚠️ **Fout bij beslissing aankondiging:** Dag '{dag}' niet gevonden in enabled periods. "
                         f"Dit zou niet moeten gebeuren. Neem contact op met de beheerder.",
                         delete_after=300
                     )
@@ -1482,25 +1490,16 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
 
 async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
     """
-    Deactiveer polls die volgens het schema gedeactiveerd moeten worden.
-    Dit wordt elke minuut uitgevoerd en controleert:
-    1. Datum-gebaseerde schedules (eenmalig)
-    2. Wekelijkse schedules
+    Deactiveer polls die volgens het period schema gedeactiveerd moeten worden.
+    Dit wordt elke minuut uitgevoerd en controleert beide periodes:
+    - vr-zo: sluit op close_day/close_time (default: maandag 00:00)
+    - ma-do: sluit op close_day/close_time (default: vrijdag 00:00)
 
-    Dit is de tegenhanger van activate_scheduled_polls voor /dmk-poll-off.
+    BELANGRIJK: Reset = Close (reset gebeurt op hetzelfde moment als sluiten)
     """
-    from apps.utils.poll_settings import (
-        clear_scheduled_deactivation,
-        get_effective_activation,
-        get_effective_deactivation,
-    )
-
     now = datetime.now(TZ)
-    current_date = now.date().isoformat()  # YYYY-MM-DD
     current_time = now.strftime("%H:%M")
-    current_weekday = now.weekday()
-    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
-    current_dag = weekday_names[current_weekday]
+    current_dag = _get_current_dutch_day()
 
     log_job("deactivate_scheduled_polls", status="executed")
 
@@ -1522,146 +1521,87 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                 # Channel heeft geen poll messages, dus is nooit geactiveerd
                 continue
 
-            # Haal effective deactivation schedule op (met fallback naar default)
-            schedule, _is_default = get_effective_deactivation(cid)
-            if not schedule:
-                continue
+            # Check beide periodes voor sluiting
+            # vr-zo: default sluit maandag 00:00
+            # ma-do: default sluit vrijdag 00:00
+            periods_to_close = []
+            for period in ["vr-zo", "ma-do"]:
+                settings = get_period_settings(cid, period)
+                if not settings.get("enabled", False):
+                    continue  # Skip disabled periods
 
-            activation_type = schedule.get("type")
-            scheduled_time = schedule.get("tijd", "00:00")
+                close_day = settings.get("close_day", "maandag" if period == "vr-zo" else "vrijdag")
+                close_time = settings.get("close_time", "00:00")
 
-            # Check of het tijd is om te deactiveren
-            should_deactivate = False
+                # Check of het tijd is om deze periode te sluiten
+                if close_day == current_dag and close_time == current_time:
+                    periods_to_close.append(period)
 
-            if activation_type == "datum":
-                # Eenmalige deactivatie op specifieke datum
-                scheduled_date = schedule.get("datum")
-                if scheduled_date == current_date and scheduled_time == current_time:
-                    should_deactivate = True
-                    # Na deactivatie: wis de eenmalige schedule
-                    try:
-                        clear_scheduled_deactivation(cid)
-                    except Exception:  # pragma: no cover
-                        pass
-
-            elif activation_type == "wekelijks":
-                # Wekelijkse deactivatie op specifieke dag
-                scheduled_dag = schedule.get("dag")
-                if scheduled_dag == current_dag and scheduled_time == current_time:
-                    should_deactivate = True
-
-            if should_deactivate:
-                # Deactiveer de polls: kanaal leegmaken + scheduler uitschakelen
+            if periods_to_close:
+                # Sluit EN reset de periode(s) (Reset = Close)
                 try:
-                    dagen = get_enabled_poll_days(cid)
+                    gid = getattr(guild, "id", 0)
 
-                    # 0) Opening bericht verwijderen
-                    opening_mid = get_message_id(cid, "opening")
-                    if opening_mid:
-                        opening_msg = await fetch_message_or_none(channel, opening_mid)
-                        if opening_msg is not None:
+                    # RESET: Voor elke periode die sluit, reset de stemmen
+                    for period in periods_to_close:
+                        try:
+                            await reset_votes_scoped(gid, cid)
+                            log_job("reset_period", status=f"executed_{period}")
+                        except Exception:  # pragma: no cover
+                            # Fallback naar lege votes
                             try:
-                                await safe_call(opening_msg.delete)
+                                from apps.utils.poll_storage import save_votes_scoped
+                                await save_votes_scoped(gid, cid, {})
                             except Exception:  # pragma: no cover
-                                await safe_call(
-                                    opening_msg.edit, content="📴 Poll gesloten.", view=None
-                                )
-                        clear_message_id(cid, "opening")
+                                from apps.utils.retry_queue import add_failed_reset
+                                add_failed_reset(str(gid), str(cid))
 
-                    # 1) Dag-berichten verwijderen
-                    for dag in dagen:
-                        mid = get_message_id(cid, dag)
-                        if not mid:
-                            continue
-                        msg = await fetch_message_or_none(channel, mid)
-                        if msg is not None:
-                            try:
-                                await safe_call(msg.delete)
-                            except Exception:  # pragma: no cover
-                                afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
-                                await safe_call(msg.edit, content=afsluit_tekst, view=None)
-                        clear_message_id(cid, dag)
-
-                    # 2) Stemmen-bericht verwijderen
-                    s_mid = get_message_id(cid, "stemmen")
-                    if s_mid:
-                        s_msg = await fetch_message_or_none(channel, s_mid)
-                        if s_msg is not None:
-                            try:
-                                await safe_call(s_msg.delete)
-                            except Exception:  # pragma: no cover
-                                await safe_call(
-                                    s_msg.edit, content="📴 Stemmen gesloten.", view=None
-                                )
-                        clear_message_id(cid, "stemmen")
-
-                    # 3) Notificatieberichten verwijderen (temp, persistent en legacy)
-                    await _clear_notification_messages(channel, cid)
-
-                    # 3b) Celebration berichten verwijderen (embed + GIF)
+                    # Wis celebration message
                     try:
                         from apps.utils.poll_message import remove_celebration_message
                         await remove_celebration_message(channel, cid)
                     except Exception:  # pragma: no cover
                         pass
 
-                    # 4) Archiveer huidige week's data voordat we deactiveren
-                    try:
-                        from apps.utils.archive import append_week_snapshot_scoped
-                        gid = getattr(guild, "id", 0)
-                        await append_week_snapshot_scoped(gid, cid, channel=channel)
-                    except Exception as e:  # pragma: no cover
-                        print(f"⚠️ Archiveren bij deactivatie mislukt: {e}")
+                    # Wis bekende message IDs (alle weekdagen + stemmen)
+                    from apps.utils.constants import DAG_NAMEN
+                    for key in [*DAG_NAMEN, "stemmen", "opening"]:
+                        try:
+                            clear_message_id(cid, key)
+                        except Exception:  # pragma: no cover
+                            pass
 
-                    # 5) Post sluitingsbericht met heropening tijd
+                    # Stuur resetbericht voor de periode(s) die gesloten zijn
+                    period_names = " en ".join(periods_to_close)
                     try:
-                        from apps.utils.notification_texts import (
-                            format_opening_time_from_schedule,
-                            get_text_poll_gesloten,
+                        await send_temporary_mention(
+                            channel,
+                            mentions="@everyone",
+                            text=f"De poll voor periode {period_names} is zojuist gereset. Je kunt weer stemmen. Veel plezier!",
                         )
+                    except Exception:  # pragma: no cover
+                        pass
 
-                        act_schedule, _ = get_effective_activation(cid)
-                        opening_time = format_opening_time_from_schedule(act_schedule)
-                        sluitingsbericht = get_text_poll_gesloten(opening_time)
-
-                        send = getattr(channel, "send", None)
-                        if send:
-                            await safe_call(send, content=sluitingsbericht)
-                    except Exception as e:  # pragma: no cover
-                        print(f"⚠️ Sluitingsbericht versturen mislukt: {e}")
-
-                    # BELANGRIJK: Kanaal NIET disablen bij automatische deactivatie!
-                    # Het kanaal moet automatisch weer geopend kunnen worden op de geplande tijd.
-                    # Alleen handmatige /dmk-poll-stopzetten mag het kanaal permanent disablen.
-
-                    print(f"✅ Automatisch gedeactiveerd: kanaal {cid} volgens schedule")
+                    print(f"✅ Automatisch gesloten en gereset: kanaal {cid}, periodes: {periods_to_close}")
 
                 except Exception as e:  # pragma: no cover
-                    print(f"❌ Fout bij automatische deactivatie voor kanaal {cid}: {e}")
+                    print(f"❌ Fout bij automatische sluiting/reset voor kanaal {cid}: {e}")
 
 
 async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
     """
-    Activeer polls die volgens het schema geactiveerd moeten worden.
-    Dit wordt elke minuut uitgevoerd en controleert:
-    1. Datum-gebaseerde schedules (eenmalig) - activeer als tijd >= scheduled tijd
-    2. Wekelijkse schedules - activeer exact of catch-up als gemist
+    Activeer polls die volgens het period schema geactiveerd moeten worden.
+    Dit wordt elke minuut uitgevoerd en controleert beide periodes:
+    - vr-zo: opent op open_day/open_time (default: dinsdag 20:00)
+    - ma-do: opent op open_day/open_time (default: vrijdag 20:00)
 
     Catch-up gedrag:
-    - Wekelijks: Als scheduled tijd vandaag al voorbij is EN geen poll messages bestaan,
+    - Als open tijd vandaag al voorbij is EN geen poll messages bestaan,
       dan activeer alsnog (bijv. bot was down tijdens scheduled tijd)
-    - Datum: Als scheduled datetime in verleden ligt, activeer direct
-
-    Prioriteit: handmatig > datum > wekelijks
-    (Handmatige activatie wordt afgehandeld door /dmk-poll-on zelf)
     """
-    from apps.utils.poll_settings import clear_scheduled_activation, get_effective_activation
-
     now = datetime.now(TZ)
     current_time = now.strftime("%H:%M")
-    current_weekday = now.weekday()
-    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
-    current_dag = weekday_names[current_weekday]
+    current_dag = _get_current_dutch_day()
 
     log_job("activate_scheduled_polls", status="executed")
 
@@ -1671,62 +1611,33 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
             cid = getattr(channel, "id", 0)
 
             # Skip disabled channels (permanent uitgeschakeld met /dmk-poll-stopzetten)
-            # Let op: /dmk-poll-off (tijdelijk sluiten) zet disabled NIET op True,
-            # dus die channels worden hier NIET geskipt en kunnen automatisch heropenen
             if is_channel_disabled(cid):
                 continue
 
-            # Haal effective schedule op (met fallback naar default)
-            schedule, _is_default = get_effective_activation(cid)
-            if not schedule:
-                continue
+            # Check beide periodes voor opening
+            # vr-zo: default opent dinsdag 20:00
+            # ma-do: default opent vrijdag 20:00
+            periods_to_open = []
+            for period in ["vr-zo", "ma-do"]:
+                settings = get_period_settings(cid, period)
+                if not settings.get("enabled", False):
+                    continue  # Skip disabled periods
 
-            activation_type = schedule.get("type")
-            scheduled_time = schedule.get("tijd", "20:00")
+                open_day = settings.get("open_day", "dinsdag" if period == "vr-zo" else "vrijdag")
+                open_time = settings.get("open_time", "20:00")
 
-            # Check of het tijd is om te activeren
-            should_activate = False
-
-            if activation_type == "datum":
-                # Eenmalige activatie op specifieke datum
-                scheduled_date = schedule.get("datum")
-
-                # Parse scheduled datetime voor vergelijking
-                try:
-                    scheduled_datetime_str = f"{scheduled_date} {scheduled_time}"
-                    scheduled_dt = datetime.strptime(scheduled_datetime_str, "%Y-%m-%d %H:%M")
-                    scheduled_dt = scheduled_dt.replace(tzinfo=TZ)
-
-                    # Check of scheduled tijd in het verleden ligt (gemist)
-                    if now >= scheduled_dt:
-                        should_activate = True
-                        # Na activatie: wis de eenmalige schedule
-                        try:
-                            clear_scheduled_activation(cid)
-                        except Exception:  # pragma: no cover
-                            pass
-                except (ValueError, TypeError):  # pragma: no cover
-                    # Invalid date format, skip
-                    pass
-
-            elif activation_type == "wekelijks":
-                # Wekelijkse activatie op specifieke dag
-                scheduled_dag = schedule.get("dag")
-
-                # Exact match: activeer op de juiste tijd
-                if scheduled_dag == current_dag and scheduled_time == current_time:
-                    should_activate = True
-                # Catch-up: scheduled dag is vandaag maar tijd is al geweest
-                # EN het kanaal heeft geen actieve poll messages (anders zou het al actief zijn)
-                elif scheduled_dag == current_dag and scheduled_time < current_time:
-                    # Check of kanaal poll messages heeft (dan is het al actief)
+                # Exact match: open op de juiste tijd
+                if open_day == current_dag and open_time == current_time:
+                    periods_to_open.append(period)
+                # Catch-up: open dag is vandaag maar tijd is al geweest
+                # EN het kanaal heeft geen actieve poll messages
+                elif open_day == current_dag and open_time < current_time:
                     dagen = get_enabled_poll_days(cid)
                     has_any_poll_message = any(get_message_id(cid, dag) for dag in dagen)
                     if not has_any_poll_message:
-                        # Geen poll messages: poll is niet actief, dus activeer nu (catch-up)
-                        should_activate = True
+                        periods_to_open.append(period)
 
-            if should_activate:
+            if periods_to_open:
                 # Activeer de polls via een mock interaction
                 # We kunnen niet de normale _plaats_polls gebruiken zonder interaction,
                 # dus we moeten de activatie-logica hier dupliceren of een helper maken
@@ -1808,22 +1719,12 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
 
                     # STAP 5: Bereken HammerTime voor de activatietijd (voor notificatie en mention)
                     from apps.utils.time_zone_helper import TimeZoneHelper
-                    from zoneinfo import ZoneInfo
 
-                    hammertime_str = ""
-                    if activation_type == "datum":
-                        scheduled_date = schedule.get("datum")
-                        if scheduled_date:
-                            hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
-                                scheduled_date, scheduled_time, style="t"
-                            )
-                    elif activation_type == "wekelijks":
-                        # Voor wekelijkse activatie: gebruik vandaag als datum
-                        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
-                        current_date_obj = now.date()
-                        hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
-                            current_date_obj.strftime("%Y-%m-%d"), scheduled_time, style="t"
-                        )
+                    # Gebruik current dag/tijd voor HammerTime
+                    current_date_obj = now.date()
+                    hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
+                        current_date_obj.strftime("%Y-%m-%d"), current_time, style="t"
+                    )
 
                     # STAP 6: Notificatiebericht met HammerTime (altijd nieuw aanmaken na cleanup)
                     # Dit voorkomt dubbele notificatieberichten (Bug 4)
@@ -1831,14 +1732,15 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         channel, activation_hammertime=hammertime_str if hammertime_str else None
                     )
 
-                    # STAP 7: Openingsmentions versturen met HammerTime
+                    # STAP 7: Openingsmentions versturen met HammerTime en periode info
                     try:
                         from apps.utils.mention_utils import send_temporary_mention
 
+                        period_names = " en ".join(periods_to_open)
                         if hammertime_str:
-                            opening_notification = f"De DMK-poll-bot is zojuist aangezet om {hammertime_str}. Veel plezier met de stemmen! 🎮"
+                            opening_notification = f"De DMK-poll-bot is zojuist aangezet om {hammertime_str} voor periode {period_names}. Veel plezier met de stemmen! 🎮"
                         else:
-                            opening_notification = "De DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+                            opening_notification = f"De DMK-poll-bot is zojuist aangezet voor periode {period_names}. Veel plezier met de stemmen! 🎮"
 
                         await send_temporary_mention(
                             channel, mentions="@everyone", text=opening_notification
@@ -1846,7 +1748,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     except Exception as e:  # pragma: no cover
                         print(f"⚠️ Openingsbericht versturen mislukt: {e}")
 
-                    print(f"✅ Automatisch geactiveerd: kanaal {cid} volgens schedule")
+                    print(f"✅ Automatisch geactiveerd: kanaal {cid}, periodes: {periods_to_open}")
 
                 except Exception as e:  # pragma: no cover
                     print(f"❌ Fout bij automatische activatie voor kanaal {cid}: {e}")
