@@ -94,9 +94,12 @@ def get_period_days(period: str, reference_date: datetime | None = None) -> dict
         }
 
     elif period == "ma-do":
-        # Reset happens at Friday 00:00
-        # - From Monday-Thursday: show THIS week's Monday-Thursday
-        # - From Friday-Sunday: show NEXT week's Monday-Thursday
+        # Ma-do period shows dates based on when the poll is ACTIVE (voting period):
+        # - Voting period is Friday-Sunday (when you vote FOR ma-do events)
+        # - Reset happens at Friday 00:00
+        # - During Monday-Thursday: show THIS week's dates (the events are happening/happened)
+        # - During Friday-Sunday: show NEXT week's dates (voting for upcoming events)
+        #
         # maandag = weekday 0, vrijdag = weekday 4
         current_weekday = reference_date.weekday()
 
@@ -104,11 +107,13 @@ def get_period_days(period: str, reference_date: datetime | None = None) -> dict
         days_since_monday = current_weekday
         this_week_monday = reference_date - timedelta(days=days_since_monday)
 
+        # Ma (0) t/m do (3): toon DEZE week (de events zijn nu/waren recent)
+        # Vr (4), za (5), zo (6): toon VOLGENDE week (voting voor toekomstige events)
         if current_weekday >= 4:
-            # Vrijdag (4), zaterdag (5), zondag (6): toon VOLGENDE week
+            # Vrijdag, zaterdag, zondag: toon VOLGENDE week
             monday = this_week_monday + timedelta(days=7)
         else:
-            # Maandag (0) t/m donderdag (3): toon DEZE week
+            # Maandag t/m donderdag: toon DEZE week
             monday = this_week_monday
 
         return {
