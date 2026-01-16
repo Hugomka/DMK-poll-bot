@@ -170,15 +170,23 @@ class TestNotificationSettingsUI(BaseTestCase):
         """Test button callback toggle van disabled naar enabled."""
         channel_id = 123
         view = NotificationSettingsView(channel_id)
-        button = view.children[3]  # reminders (default disabled)
+        # Gebruik poll_opened button (index 0) in plaats van reminders (die nu modal opent)
+        button = view.children[0]  # poll_opened (default enabled)
         assert isinstance(button, NotificationButton)
+
+        # Zet eerst disabled voor deze test
+        poll_settings.toggle_notification_setting(channel_id, "poll_opened")
+
+        # Herlaad view om disabled state te krijgen
+        view = NotificationSettingsView(channel_id)
+        button = view.children[0]
 
         # Mock interaction
         interaction = MagicMock()
         interaction.channel_id = channel_id
         interaction.response = AsyncMock()
 
-        # Initial: disabled (default voor reminders)
+        # Initial: disabled
         self.assertFalse(button.enabled)
         self.assertEqual(button.style, discord.ButtonStyle.secondary)
 
@@ -190,7 +198,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         self.assertEqual(button.style, discord.ButtonStyle.success)
 
         # Check dat state opgeslagen is
-        self.assertTrue(poll_settings.is_notification_enabled(channel_id, "reminders"))
+        self.assertTrue(poll_settings.is_notification_enabled(channel_id, "poll_opened"))
 
     async def test_notification_button_callback_no_channel_id(self):
         """Test dat error getoond wordt als geen channel ID."""
@@ -285,3 +293,32 @@ class TestNotificationSettingsUI(BaseTestCase):
         for notif_type in NOTIFICATION_TYPES:
             self.assertIn(notif_type["label"], embed.description or "")
             self.assertIn(notif_type["emoji"], embed.description or "")
+
+    async def test_reminders_button_opens_modal(self):
+        """Test dat reminders button een modal opent in plaats van togglen."""
+        channel_id = 123
+        view = NotificationSettingsView(channel_id)
+
+        # Vind de reminders button
+        reminders_button = None
+        for child in view.children:
+            if isinstance(child, NotificationButton) and child.key == "reminders":
+                reminders_button = child
+                break
+
+        self.assertIsNotNone(reminders_button, "Reminders button niet gevonden")
+
+        # Mock interaction
+        interaction = MagicMock()
+        interaction.channel_id = channel_id
+        interaction.response = AsyncMock()
+
+        # Click reminders button
+        await reminders_button.callback(interaction)
+
+        # Check dat send_modal called is (niet edit_message)
+        interaction.response.send_modal.assert_called_once()
+        interaction.response.edit_message.assert_not_called()
+
+    # NOTE: ReminderTimeModal tests zijn complex vanwege readonly TextInput.value property
+    # De modal validatie logica wordt gedekt door de poll_settings tests (get/set_reminder_time)

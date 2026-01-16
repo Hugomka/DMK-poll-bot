@@ -1,7 +1,7 @@
 import os
 import unittest
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
@@ -103,6 +103,11 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         def fake_get_message_id(cid, key):
             return 999  # Polls bestaan
 
+        # Mock datetime om tijd check te laten passen
+        from datetime import datetime
+        fake_now = datetime.now()
+        fake_now = fake_now.replace(hour=16)  # Match default reminder tijd
+
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
             patch.object(
@@ -112,12 +117,16 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
+            patch.object(scheduler, "get_reminder_time", return_value="16:00"),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
+            patch.object(scheduler.TZ, "localize", return_value=fake_now),
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
         ):
-            result = await scheduler.notify_non_voters(bot, dag=None)
+            with patch("datetime.datetime") as mock_dt:
+                mock_dt.now.return_value = fake_now
+                result = await scheduler.notify_non_voters(bot, dag=None)
 
         self.assertTrue(result)
         mock_mention.assert_awaited_once()
