@@ -70,7 +70,12 @@ def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
 
 
 def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
-    """Bepaalt of stemaantallen verborgen moeten worden."""
+    """
+    Bepaalt of stemaantallen verborgen moeten worden.
+
+    Gebruikt period-based date calculation om te bepalen of de deadline is gepasseerd.
+    Counts worden verborgen vóór de deadline en getoond na de deadline.
+    """
     instelling = get_setting(channel_id, dag)
     if instelling["modus"] == "altijd":
         return False
@@ -83,26 +88,64 @@ def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     except ValueError:  # pragma: no cover
         uur, minuut = 18, 0
 
-    target_idx = DAYS_INDEX.get(dag)
-    if target_idx is None:
-        return False  # Onbekende dag
+    # Haal de datum op voor deze dag vanuit het period systeem
+    from apps.utils.period_dates import get_period_for_day, get_period_days
 
-    huidige_idx = now.weekday()
+    try:
+        period = get_period_for_day(dag)
+        period_dates = get_period_days(period, now)
+        datum_iso = period_dates.get(dag.lower())
 
-    # Vóór de dag → verbergen
-    if huidige_idx < target_idx:
-        return True
-    # Na de dag → tonen
-    if huidige_idx > target_idx:
-        return False
+        if datum_iso is None:
+            # Fallback naar oude logica als datum niet gevonden
+            target_idx = DAYS_INDEX.get(dag)
+            if target_idx is None:
+                return False
+            huidige_idx = now.weekday()
+            if huidige_idx < target_idx:
+                return True
+            if huidige_idx > target_idx:
+                return False
+            deadline = time(uur, minuut)
+            return now.time() < deadline
 
-    # Zelfde dag: verbergen tot de deadline-tijd
-    deadline = time(uur, minuut)
-    return now.time() < deadline
+        # Parse de datum
+        from datetime import datetime as dt_class
+        dag_date = dt_class.strptime(datum_iso, "%Y-%m-%d").date()
+        now_date = now.date()
+
+        # Vóór de dag → verbergen (deadline nog niet gepasseerd)
+        if now_date < dag_date:
+            return True
+        # Na de dag → tonen (deadline gepasseerd)
+        if now_date > dag_date:
+            return False
+
+        # Zelfde dag: verbergen tot deadline, tonen na deadline
+        deadline = time(uur, minuut)
+        return now.time() < deadline
+
+    except Exception:  # pragma: no cover
+        # Fallback naar oude weekday-based logica bij fouten
+        target_idx = DAYS_INDEX.get(dag)
+        if target_idx is None:
+            return False
+        huidige_idx = now.weekday()
+        if huidige_idx < target_idx:
+            return True
+        if huidige_idx > target_idx:
+            return False
+        deadline = time(uur, minuut)
+        return now.time() < deadline
 
 
 def should_hide_ghosts(channel_id: int, dag: str, now: datetime) -> bool:
-    """Bepaalt of ghostaantallen (niet gestemd) verborgen moeten worden."""
+    """
+    Bepaalt of ghostaantallen (niet gestemd) verborgen moeten worden.
+
+    Gebruikt period-based date calculation om te bepalen of de deadline is gepasseerd.
+    Ghosts worden verborgen vóór de deadline en getoond na de deadline.
+    """
     instelling = get_setting(channel_id, dag)
 
     # 'altijd': alles zichtbaar → ghosts tonen
@@ -121,22 +164,55 @@ def should_hide_ghosts(channel_id: int, dag: str, now: datetime) -> bool:
     except ValueError:  # pragma: no cover
         uur, minuut = 18, 0
 
-    target_idx = DAYS_INDEX.get(dag)
-    if target_idx is None:
-        return False  # Onbekende dag
+    # Haal de datum op voor deze dag vanuit het period systeem
+    from apps.utils.period_dates import get_period_for_day, get_period_days
 
-    huidige_idx = now.weekday()
+    try:
+        period = get_period_for_day(dag)
+        period_dates = get_period_days(period, now)
+        datum_iso = period_dates.get(dag.lower())
 
-    # Vóór de dag → verbergen
-    if huidige_idx < target_idx:
-        return True
-    # Na de dag → tonen
-    if huidige_idx > target_idx:
-        return False
+        if datum_iso is None:
+            # Fallback naar oude logica als datum niet gevonden
+            target_idx = DAYS_INDEX.get(dag)
+            if target_idx is None:
+                return False
+            huidige_idx = now.weekday()
+            if huidige_idx < target_idx:
+                return True
+            if huidige_idx > target_idx:
+                return False
+            deadline = time(uur, minuut)
+            return now.time() < deadline
 
-    # Zelfde dag: verbergen tot de deadline-tijd
-    deadline = time(uur, minuut)
-    return now.time() < deadline
+        # Parse de datum
+        from datetime import datetime as dt_class
+        dag_date = dt_class.strptime(datum_iso, "%Y-%m-%d").date()
+        now_date = now.date()
+
+        # Vóór de dag → verbergen (deadline nog niet gepasseerd)
+        if now_date < dag_date:
+            return True
+        # Na de dag → tonen (deadline gepasseerd)
+        if now_date > dag_date:
+            return False
+
+        # Zelfde dag: verbergen tot deadline, tonen na deadline
+        deadline = time(uur, minuut)
+        return now.time() < deadline
+
+    except Exception:  # pragma: no cover
+        # Fallback naar oude weekday-based logica bij fouten
+        target_idx = DAYS_INDEX.get(dag)
+        if target_idx is None:
+            return False
+        huidige_idx = now.weekday()
+        if huidige_idx < target_idx:
+            return True
+        if huidige_idx > target_idx:
+            return False
+        deadline = time(uur, minuut)
+        return now.time() < deadline
 
 
 def is_paused(channel_id: int) -> bool:
@@ -827,6 +903,9 @@ def get_enabled_period_days(
                     "dag": dag,
                     "datum_iso": datum_iso,
                 })
+
+    # Sorteer op datum (chronologisch) zodat de polls in de juiste volgorde verschijnen
+    enabled_days.sort(key=lambda x: x["datum_iso"])
 
     return enabled_days
 
