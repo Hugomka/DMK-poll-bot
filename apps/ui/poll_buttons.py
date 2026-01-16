@@ -64,7 +64,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
             last_sunday -= timedelta(days=7)
 
         reset_threshold = last_sunday
-        print(f"🔍 Reset threshold (begin huidige week): {reset_threshold.strftime('%Y-%m-%d %H:%M')}")
+        print(f"Reset threshold (begin huidige week): {reset_threshold.strftime('%Y-%m-%d %H:%M')}", flush=True)
 
         # Check of alle opgeslagen poll-berichten van ná de threshold zijn
         needs_cleanup = False
@@ -74,26 +74,26 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
                 msg = await fetch_message_or_none(channel, mid)
                 if msg is None:
                     # Bericht bestaat niet meer - cleanup nodig
-                    print(f"⚠️ Bericht voor {dag_naam} bestaat niet meer (ID: {mid})")
+                    print(f"WARNING: Bericht voor {dag_naam} bestaat niet meer (ID: {mid})")
                     needs_cleanup = True
                     break
                 # Check of bericht van vóór reset threshold is
                 msg_created = msg.created_at
                 if msg_created < reset_threshold:
                     # Outdated bericht gevonden
-                    print(f"⚠️ Outdated bericht voor {dag_naam}: {msg_created.strftime('%Y-%m-%d %H:%M')} < {reset_threshold.strftime('%Y-%m-%d %H:%M')}")
+                    print(f"WARNING: Outdated bericht voor {dag_naam}: {msg_created.strftime('%Y-%m-%d %H:%M')} < {reset_threshold.strftime('%Y-%m-%d %H:%M')}")
                     needs_cleanup = True
                     break
 
         if not needs_cleanup:
-            print(f"⏭️  Cleanup overgeslagen: alle poll-berichten zijn van ná reset threshold in kanaal {channel_id}")
+            print(f"INFO: Cleanup overgeslagen: alle poll-berichten zijn van na reset threshold in kanaal {channel_id}")
             return
 
-        print(f"🔄 Cleanup nodig: outdated berichten gevonden in kanaal {channel_id}")
+        print(f"INFO: Cleanup nodig: outdated berichten gevonden in kanaal {channel_id}")
 
     except Exception as e:  # pragma: no cover
         # Bij twijfel, voer cleanup uit
-        print(f"⚠️ Check mislukt, voer cleanup uit: {e}")
+        print(f"WARNING: Check mislukt, voer cleanup uit: {e}")
         needs_cleanup = True
 
     # STAP 1: Verwijder ALLE bot-berichten in kanaal (simpel en betrouwbaar)
@@ -111,7 +111,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
             if message.author.id == bot_user.id:
                 messages_to_delete.append(message)
 
-        print(f"🔍 Cleanup: Gevonden {len(messages_to_delete)} bot-berichten om te verwijderen")
+        print(f"INFO: Cleanup: Gevonden {len(messages_to_delete)} bot-berichten om te verwijderen")
 
         # Verwijder alle bot-berichten
         for msg in messages_to_delete:
@@ -125,10 +125,10 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
         clear_message_id(channel_id, "notification_persistent")
         clear_message_id(channel_id, "notification")
 
-        print(f"✅ Cleanup voltooid: {len(messages_to_delete)} berichten verwijderd")
+        print(f"INFO: Cleanup voltooid: {len(messages_to_delete)} berichten verwijderd")
 
     except Exception as e:  # pragma: no cover
-        print(f"⚠️ Cleanup fout in kanaal {channel_id}: {e}")
+        print(f"WARNING: Cleanup fout in kanaal {channel_id}: {e}")
         import traceback
         traceback.print_exc()  # Print volledige error voor debugging
 
@@ -171,7 +171,7 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
         await create_notification_message(channel, activation_hammertime=None)
 
     except Exception as e:  # pragma: no cover
-        print(f"⚠️ Fout bij recreaten berichten in kanaal {channel_id}: {e}")
+        print(f"WARNING: Fout bij recreaten berichten in kanaal {channel_id}: {e}")
 
 
 def _get_timezone_legend(dag: str) -> str:

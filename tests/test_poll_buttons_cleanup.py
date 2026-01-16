@@ -35,15 +35,18 @@ class TestCleanupOutdatedMessages(unittest.IsolatedAsyncioTestCase):
         mock_channel.id = 123
         mock_channel.guild.me.id = 999
 
+        # The function imports datetime/timedelta locally, so we need to patch datetime.datetime.now
+        # but still allow datetime() constructor and replace() to work
         with (
-            patch("apps.ui.poll_buttons.datetime") as mock_dt,
+            patch("datetime.datetime") as mock_dt_class,
             patch("apps.utils.poll_message.get_message_id", return_value=456),
             patch("apps.utils.discord_client.fetch_message_or_none", new_callable=AsyncMock, return_value=mock_message),
             patch("apps.ui.poll_buttons.safe_call", new_callable=AsyncMock) as mock_safe_call,
         ):
-            # Mock datetime.now() to return our test time
-            mock_dt.now.return_value = now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs) if args else now
+            # Mock datetime.now() to return our test time, but keep the class itself functional
+            mock_dt_class.now.return_value = now
+            # Allow datetime() constructor calls to work
+            mock_dt_class.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs) if args else None
 
             # Execute
             await _cleanup_outdated_messages_for_channel(mock_channel, 123)
