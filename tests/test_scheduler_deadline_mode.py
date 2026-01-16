@@ -176,11 +176,17 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             # Retourneer 'deadline' modus
             return {"modus": "deadline", "tijd": "18:00"}
 
+        # Mock datetime om tijd check te laten passen
+        from datetime import datetime
+        fake_now = datetime.now().replace(hour=16)
+
         with (
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
+            patch.object(scheduler, "get_reminder_time", return_value="16:00"),
+            patch.object(scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]),
             patch.object(scheduler, "get_message_id", return_value=999),
             patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
@@ -194,8 +200,10 @@ class TestSchedulerDeadlineMode(BaseTestCase):
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
         ):
-            # Scheduler-modus: geen channel parameter
-            result = await scheduler.notify_non_voters(bot, dag="vrijdag")
+            with patch("datetime.datetime") as mock_dt:
+                mock_dt.now.return_value = fake_now
+                # Scheduler-modus: geen channel parameter
+                result = await scheduler.notify_non_voters(bot, dag="vrijdag")
 
         # Assert: send_non_voter_notification WEL aangeroepen (dag-specifiek met deadline)
         mock_nonvoter_notification.assert_awaited_once()

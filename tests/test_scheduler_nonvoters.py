@@ -50,6 +50,10 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
                 "3_guest::77": {"zaterdag": ["21:00"]},
             }
 
+        # Mock datetime om tijd check te laten passen
+        from datetime import datetime
+        fake_now = datetime.now().replace(hour=16)
+
         with patch.object(
             scheduler, "get_channels", side_effect=lambda g: g.text_channels
         ), patch.object(
@@ -58,6 +62,8 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
             scheduler, "is_paused", return_value=False
         ), patch.object(
             scheduler, "is_notification_enabled", return_value=True
+        ), patch.object(
+            scheduler, "get_reminder_time", return_value="16:00"
         ), patch.object(
             scheduler, "_is_deadline_mode", return_value=True
         ), patch.object(
@@ -68,8 +74,9 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
             scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
         ), patch.object(
             scheduler, "send_non_voter_notification", new_callable=AsyncMock
-        ) as mock_nonvoter_notification:
+        ) as mock_nonvoter_notification, patch("datetime.datetime") as mock_dt:
 
+            mock_dt.now.return_value = fake_now
             # --- VRIJDAG ---
             await scheduler.notify_non_voters(bot, "vrijdag")
 
