@@ -180,6 +180,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         # Herlaad view om disabled state te krijgen
         view = NotificationSettingsView(channel_id)
         button = view.children[0]
+        assert isinstance(button, NotificationButton)
 
         # Mock interaction
         interaction = MagicMock()
@@ -307,6 +308,7 @@ class TestNotificationSettingsUI(BaseTestCase):
                 break
 
         self.assertIsNotNone(reminders_button, "Reminders button niet gevonden")
+        assert reminders_button is not None  # Type narrowing for Pyright
 
         # Mock interaction
         interaction = MagicMock()
