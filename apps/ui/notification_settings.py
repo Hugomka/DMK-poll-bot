@@ -7,6 +7,7 @@ import discord
 from apps.utils.poll_settings import (
     get_all_notification_states,
     get_reminder_time,
+    set_notification_setting,
     set_reminder_time,
     toggle_notification_setting,
 )
@@ -72,6 +73,43 @@ NOTIFICATION_TYPES = [
 ]
 
 
+# ========================================================================
+# Helper functies voor reminder tijd formatting
+# ========================================================================
+
+
+def _get_default_deadline_hour() -> int:
+    """Haal standaard deadline uur op (18:00)."""
+    return 18
+
+
+def _format_minutes_before(minuten: int) -> str:
+    """Format minuten naar leesbare tekst (bijv. '2 uur' of '30 minuten')."""
+    if minuten >= 60:
+        uren = minuten // 60
+        rest_minuten = minuten % 60
+        if rest_minuten == 0:
+            return f"{uren} uur"
+        return f"{uren} uur en {rest_minuten} min"
+    return f"{minuten} min"
+
+
+def _calculate_reminder_time(deadline_uur: int, minuten_voor: int) -> str:
+    """Bereken de absolute tijd gegeven deadline en minuten ervoor."""
+    # Totaal minuten vanaf middernacht voor deadline
+    deadline_minuten = deadline_uur * 60
+    # Trek minuten_voor af
+    reminder_minuten = deadline_minuten - minuten_voor
+
+    # Zorg dat we niet negatief gaan (wrap naar vorige dag niet ondersteund)
+    if reminder_minuten < 0:
+        reminder_minuten = 0
+
+    uur = reminder_minuten // 60
+    minuut = reminder_minuten % 60
+    return f"{uur:02d}:{minuut:02d}"
+
+
 class NotificationSettingsView(discord.ui.View):
     """View met 8 toggle buttons voor notificatie instellingen."""
 
@@ -82,17 +120,21 @@ class NotificationSettingsView(discord.ui.View):
         # Haal huidige status op
         states = get_all_notification_states(channel_id)
 
-        # Haal reminder tijd op (voor "reminders" button)
-        reminder_time = get_reminder_time(channel_id)
+        # Haal reminder minuten op (voor "reminders" button)
+        reminder_value = get_reminder_time(channel_id)
 
         # Voeg buttons toe (2 per rij, 4 rijen totaal)
         for notif_type in NOTIFICATION_TYPES:
             key = notif_type["key"]
             enabled = states.get(key, notif_type["default"])
 
-            # Voor "reminders": toon de ingestelde tijd in plaats van standaard tijd
+            # Voor "reminders": toon minuten vóór deadline
             if key == "reminders":
-                tijd_display = reminder_time
+                try:
+                    minuten = int(reminder_value)
+                    tijd_display = f"{_format_minutes_before(minuten)} vóór"
+                except ValueError:
+                    tijd_display = "2 uur vóór"  # Default display
             else:
                 tijd_display = notif_type["tijd"]
 
@@ -143,12 +185,30 @@ class NotificationButton(discord.ui.Button):
             return
 
         try:
-            # Speciale behandeling voor "reminders": open tijd modal
+            # Speciale behandeling voor "reminders":
+            # - Als UIT: open modal om tijd in te stellen (schakelt automatisch in)
+            # - Als AAN: toggle naar UIT
             if self.key == "reminders":
-                current_time = get_reminder_time(channel_id)
-                modal = ReminderTimeModal(channel_id, current_time)
-                await interaction.response.send_modal(modal)
-                return
+                if self.enabled:
+                    # Is AAN -> zet UIT (toggle gedrag)
+                    nieuwe_status = toggle_notification_setting(channel_id, self.key)
+                    self.enabled = nieuwe_status
+                    self.style = discord.ButtonStyle.secondary
+
+                    # Update view
+                    await interaction.response.edit_message(view=self.view)
+                    return
+                else:
+                    # Is UIT -> open modal om tijd in te stellen
+                    current_value = get_reminder_time(channel_id)
+                    # Converteer naar int (minuten), default 120 (2 uur)
+                    try:
+                        current_minutes = int(current_value)
+                    except ValueError:
+                        current_minutes = 120  # Default: 2 uur vóór deadline
+                    modal = ReminderTimeModal(channel_id, current_minutes)
+                    await interaction.response.send_modal(modal)
+                    return
 
             # Voor andere notificaties: gewoon togglen
             nieuwe_status = toggle_notification_setting(channel_id, self.key)
@@ -173,17 +233,24 @@ class NotificationButton(discord.ui.Button):
 
 def create_notification_settings_embed(channel_id: int | None = None) -> discord.Embed:
     """Maak embed voor notificatie instellingen."""
-    # Haal reminder tijd op voor dynamische display
-    reminder_time = "16:00"  # Default
+    # Haal reminder minuten op voor dynamische display
+    reminder_display = "2 uur vóór deadline"  # Default
     if channel_id is not None:
-        reminder_time = get_reminder_time(channel_id)
+        reminder_value = get_reminder_time(channel_id)
+        try:
+            minuten = int(reminder_value)
+            deadline_uur = _get_default_deadline_hour()
+            tijd_str = _calculate_reminder_time(deadline_uur, minuten)
+            reminder_display = f"{_format_minutes_before(minuten)} vóór deadline ({tijd_str})"
+        except ValueError:
+            pass  # Gebruik default
 
     # Voeg legenda toe voor elke notificatie
     legend_lines = []
     for notif in NOTIFICATION_TYPES:
-        # Voor "reminders": toon de ingestelde tijd
-        if notif["key"] == "reminders" and channel_id is not None:
-            tijd_display = reminder_time
+        # Voor "reminders": toon minuten vóór deadline
+        if notif["key"] == "reminders":
+            tijd_display = reminder_display
         else:
             tijd_display = notif["tijd"]
         legend_lines.append(f"{notif['emoji']} **{notif['label']}**: {tijd_display}")
@@ -213,79 +280,65 @@ def create_notification_settings_embed(channel_id: int | None = None) -> discord
 # ========================================================================
 
 
-class ReminderTimeModal(discord.ui.Modal, title="⏰ Herinnering Tijd Instellen"):
+class ReminderTimeModal(discord.ui.Modal, title="⏰ Herinnering Instellen"):
     """Modal voor het instellen van de reminder tijd voor ghost notifications."""
 
-    def __init__(self, channel_id: int, current_time: str):
+    def __init__(self, channel_id: int, current_minutes_before: int):
         super().__init__()
         self.channel_id = channel_id
+        self.deadline_uur = _get_default_deadline_hour()
 
-        # Parse huidige tijd
-        try:
-            uur, minuut = current_time.split(":")
-            uur_int = int(uur)
-            minuut_int = int(minuut)
-        except (ValueError, IndexError):
-            uur_int = 16
-            minuut_int = 0
-
-        # Uur input (0-23)
-        self.uur_input = discord.ui.TextInput(
-            label="Uur (0-23)",
-            placeholder="16",
-            default=str(uur_int),
+        # Input voor minuten vóór deadline
+        self.minuten_input = discord.ui.TextInput(
+            label=f"Minuten vóór deadline ({self.deadline_uur}:00)",
+            placeholder="120",
+            default=str(current_minutes_before),
             min_length=1,
-            max_length=2,
+            max_length=4,
             required=True,
         )
-        self.add_item(self.uur_input)
-
-        # Minuut input (0-59)
-        self.minuut_input = discord.ui.TextInput(
-            label="Minuut (0, 15, 30, 45)",
-            placeholder="0",
-            default=str(minuut_int),
-            min_length=1,
-            max_length=2,
-            required=True,
-        )
-        self.add_item(self.minuut_input)
+        self.add_item(self.minuten_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        """Verwerk de tijd input en sla op."""
+        """Verwerk de input en sla op."""
         try:
-            # Valideer uur
-            uur = int(self.uur_input.value)
-            if uur < 0 or uur > 23:
+            # Valideer input
+            minuten_voor = int(self.minuten_input.value)
+            if minuten_voor < 1:
                 await interaction.response.send_message(
-                    "❌ Uur moet tussen 0 en 23 zijn.", ephemeral=True
+                    "❌ Moet minimaal 1 minuut vóór deadline zijn.", ephemeral=True
                 )
                 return
 
-            # Valideer minuut
-            minuut = int(self.minuut_input.value)
-            if minuut < 0 or minuut > 59:
+            # Max is deadline_uur * 60 (hele dag)
+            max_minuten = self.deadline_uur * 60
+            if minuten_voor > max_minuten:
                 await interaction.response.send_message(
-                    "❌ Minuut moet tussen 0 en 59 zijn.", ephemeral=True
+                    f"❌ Maximum is {max_minuten} minuten ({self.deadline_uur} uur) vóór deadline.",
+                    ephemeral=True,
                 )
                 return
 
-            # Suggestie: gebruik alleen 0, 15, 30, 45 voor minuten (maar accepteer alle waarden)
-            if minuut not in [0, 15, 30, 45]:
-                await interaction.response.send_message(
-                    f"⚠️ Tijd ingesteld op **{uur:02d}:{minuut:02d}**\n"
-                    f"💡 Tip: Het is handiger om minuten als 0, 15, 30 of 45 te gebruiken.",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.response.send_message(
-                    f"✅ Herinnering tijd ingesteld op **{uur:02d}:{minuut:02d}**",
-                    ephemeral=True,
-                )
+            # Sla op als minuten (niet als tijd string)
+            set_reminder_time(self.channel_id, str(minuten_voor))
 
-            # Sla tijd op
-            tijd_str = f"{uur:02d}:{minuut:02d}"
-            set_reminder_time(self.channel_id, tijd_str)
+            # Zet de notificatie AAN
+            set_notification_setting(self.channel_id, "reminders", True)
+
+            # Bereken de resulterende tijd voor feedback
+            tijd_str = _calculate_reminder_time(self.deadline_uur, minuten_voor)
+            tijd_beschrijving = _format_minutes_before(minuten_voor)
+
+            # Update het originele bericht met vernieuwde embed en view
+            new_embed = create_notification_settings_embed(self.channel_id)
+            new_view = NotificationSettingsView(self.channel_id)
+
+            await interaction.response.edit_message(
+                content=f"✅ Herinnering ingesteld op **{tijd_beschrijving}** vóór deadline "
+                f"(om **{tijd_str}**)",
+                embed=new_embed,
+                view=new_view,
+            )
 
         except ValueError:
             await interaction.response.send_message(

@@ -975,14 +975,22 @@ async def notify_non_voters(  # pragma: no cover
                     continue
 
                 # Check of het de juiste tijd is voor dit kanaal (per-channel reminder tijd)
+                # Reminder is opgeslagen als minuten vóór deadline (bijv. "120" = 2 uur vóór)
                 channel_id_int = int(cid) if cid != "0" else 0
-                reminder_time_str = get_reminder_time(channel_id_int)
+                reminder_minuten_str = get_reminder_time(channel_id_int)
 
-                # Parse de reminder tijd (alleen uur gebruiken, minuut negeren)
+                # Parse de reminder minuten en bereken het gewenste uur
                 try:
-                    reminder_uur, _ = map(int, reminder_time_str.split(":"))
+                    minuten_voor_deadline = int(reminder_minuten_str)
                 except (ValueError, AttributeError):
-                    reminder_uur = 16  # Fallback naar default
+                    minuten_voor_deadline = 120  # Fallback: 2 uur vóór deadline
+
+                # Deadline is standaard 18:00
+                deadline_uur = 18
+                # Bereken reminder uur: deadline_uur - (minuten / 60)
+                reminder_uur = deadline_uur - (minuten_voor_deadline // 60)
+                if reminder_uur < 0:
+                    reminder_uur = 0
 
                 # Haal huidige tijd op in NL timezone
                 from datetime import datetime

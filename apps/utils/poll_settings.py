@@ -512,6 +512,38 @@ def toggle_notification_setting(channel_id: int, key: str) -> bool:
     return new_status
 
 
+def set_notification_setting(channel_id: int, key: str, enabled: bool) -> None:
+    """
+    Zet een specifieke notificatie instelling aan of uit.
+
+    Args:
+        channel_id: Het kanaal ID
+        key: poll_opened | poll_reset | poll_closed | reminders |
+             thursday_reminder | misschien | doorgaan | celebration
+        enabled: True = enabled, False = disabled
+    """
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+    notif_states = ch.setdefault("__notification_states__", {})
+
+    # Als __notification_states__ leeg is (eerste keer), initialiseer alles expliciet
+    if not notif_states:
+        defaults = {
+            "poll_opened": True,
+            "poll_reset": True,
+            "poll_closed": True,
+            "reminders": False,
+            "thursday_reminder": False,
+            "misschien": False,
+            "doorgaan": True,
+            "celebration": True,
+        }
+        notif_states.update(defaults)
+
+    notif_states[key] = enabled
+    _save_data(data)
+
+
 def is_notification_enabled(channel_id: int, key: str) -> bool:
     """
     Check of een notificatie enabled is.
@@ -533,24 +565,24 @@ def get_reminder_time(channel_id: int) -> str:
     Haal de reminder tijd op voor ghost notifications (niet-stemmers).
 
     Returns:
-        Tijd string in formaat "HH:MM", default: "16:00"
+        Minuten vóór deadline als string, default: "120" (2 uur vóór deadline)
     """
     data = _load_data()
     ch_data = data.get(str(channel_id), {})
-    return ch_data.get("__reminder_time__", "16:00")
+    return ch_data.get("__reminder_time__", "120")
 
 
-def set_reminder_time(channel_id: int, tijd: str) -> None:
+def set_reminder_time(channel_id: int, minuten: str) -> None:
     """
     Stel reminder tijd in voor ghost notifications (niet-stemmers).
 
     Args:
         channel_id: Het kanaal ID
-        tijd: Tijd string in formaat "HH:MM" (bijv. "16:00")
+        minuten: Aantal minuten vóór deadline als string (bijv. "120" voor 2 uur)
     """
     data = _load_data()
     ch_data = data.setdefault(str(channel_id), {})
-    ch_data["__reminder_time__"] = tijd
+    ch_data["__reminder_time__"] = minuten
     _save_data(data)
 
 
