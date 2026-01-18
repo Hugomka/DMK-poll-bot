@@ -185,7 +185,6 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
-            patch.object(scheduler, "get_reminder_time", return_value="16:00"),
             patch.object(scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]),
             patch.object(scheduler, "get_message_id", return_value=999),
             patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),

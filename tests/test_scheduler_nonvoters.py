@@ -63,8 +63,6 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "is_notification_enabled", return_value=True
         ), patch.object(
-            scheduler, "get_reminder_time", return_value="16:00"
-        ), patch.object(
             scheduler, "_is_deadline_mode", return_value=True
         ), patch.object(
             scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]

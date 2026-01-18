@@ -560,32 +560,6 @@ def is_notification_enabled(channel_id: int, key: str) -> bool:
     return states.get(key, False)
 
 
-def get_reminder_time(channel_id: int) -> str:
-    """
-    Haal de reminder tijd op voor ghost notifications (niet-stemmers).
-
-    Returns:
-        Minuten vóór deadline als string, default: "120" (2 uur vóór deadline)
-    """
-    data = _load_data()
-    ch_data = data.get(str(channel_id), {})
-    return ch_data.get("__reminder_time__", "120")
-
-
-def set_reminder_time(channel_id: int, minuten: str) -> None:
-    """
-    Stel reminder tijd in voor ghost notifications (niet-stemmers).
-
-    Args:
-        channel_id: Het kanaal ID
-        minuten: Aantal minuten vóór deadline als string (bijv. "120" voor 2 uur)
-    """
-    data = _load_data()
-    ch_data = data.setdefault(str(channel_id), {})
-    ch_data["__reminder_time__"] = minuten
-    _save_data(data)
-
-
 # ========================================================================
 # Enabled Days Configuration (per channel)
 # ========================================================================

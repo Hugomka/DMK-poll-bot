@@ -715,72 +715,8 @@ class TestResetSettings(TestPollSettings):
         }
 
 
-class TestReminderTime(TestPollSettings):
-    """Tests voor reminder tijd configuratie (ghost notifications)"""
-
-    async def test_get_reminder_time_default(self):
-        """Test dat get_reminder_time default 120 minuten retourneert (2 uur vóór deadline)"""
-        result = poll_settings.get_reminder_time(123)
-        assert result == "120"
-
-    async def test_get_reminder_time_nonexistent_channel(self):
-        """Test dat get_reminder_time default retourneert voor onbekend kanaal"""
-        # Stel tijd in voor kanaal 1
-        poll_settings.set_reminder_time(1, "90")
-
-        # Vraag tijd op voor kanaal 999 (bestaat niet)
-        result = poll_settings.get_reminder_time(999)
-        assert result == "120"
-
-    async def test_set_reminder_time_custom(self):
-        """Test dat set_reminder_time een custom minuten waarde opslaat"""
-        poll_settings.set_reminder_time(123, "90")
-
-        # Verifieer opslag
-        result = poll_settings.get_reminder_time(123)
-        assert result == "90"
-
-    async def test_set_reminder_time_overwrite(self):
-        """Test dat set_reminder_time een bestaande waarde overschrijft"""
-        # Stel eerst 90 minuten in
-        poll_settings.set_reminder_time(123, "90")
-        assert poll_settings.get_reminder_time(123) == "90"
-
-        # Overschrijf met 60 minuten
-        poll_settings.set_reminder_time(123, "60")
-        assert poll_settings.get_reminder_time(123) == "60"
-
-    async def test_set_reminder_time_multiple_channels(self):
-        """Test reminder tijd voor meerdere kanalen"""
-        poll_settings.set_reminder_time(1, "60")
-        poll_settings.set_reminder_time(2, "90")
-        poll_settings.set_reminder_time(3, "180")
-
-        assert poll_settings.get_reminder_time(1) == "60"
-        assert poll_settings.get_reminder_time(2) == "90"
-        assert poll_settings.get_reminder_time(3) == "180"
-
-    async def test_set_reminder_time_persists(self):
-        """Test dat reminder tijd persist naar bestand"""
-        poll_settings.set_reminder_time(123, "150")
-
-        # Lees direct uit bestand
-        with open(poll_settings.SETTINGS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        assert data["123"]["__reminder_time__"] == "150"
-
-    async def test_reminder_time_independent_of_other_settings(self):
-        """Test dat reminder tijd onafhankelijk is van andere settings"""
-        # Stel verschillende settings in
-        poll_settings.set_visibility(123, "vrijdag", "deadline", "18:00")
-        poll_settings.toggle_notification_setting(123, "reminders")
-        poll_settings.set_reminder_time(123, "90")
-
-        # Alle settings moeten bewaard blijven
-        assert poll_settings.get_setting(123, "vrijdag")["tijd"] == "18:00"
-        assert poll_settings.is_notification_enabled(123, "reminders") is True
-        assert poll_settings.get_reminder_time(123) == "90"
+class TestNotificationSettings(TestPollSettings):
+    """Tests voor notification settings"""
 
     async def test_set_notification_setting_enables(self):
         """Test dat set_notification_setting een notificatie kan inschakelen"""

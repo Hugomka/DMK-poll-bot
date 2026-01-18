@@ -117,7 +117,6 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
-            patch.object(scheduler, "get_reminder_time", return_value="16:00"),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
             patch.object(scheduler.TZ, "localize", return_value=fake_now),
             patch.dict(

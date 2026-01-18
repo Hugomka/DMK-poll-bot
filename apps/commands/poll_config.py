@@ -89,7 +89,7 @@ async def poll_instelling(
 
         elif instelling.value == "notificaties":
             # Open notificatie instellingen UI
-            embed = create_notification_settings_embed(channel_id)
+            embed = create_notification_settings_embed()
             view = NotificationSettingsView(channel_id)
 
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)

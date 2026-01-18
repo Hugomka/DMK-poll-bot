@@ -31,7 +31,6 @@ from apps.utils.poll_message import (
 )
 from apps.utils.poll_settings import (
     get_enabled_poll_days,
-    get_reminder_time,
     get_setting,
     is_notification_enabled,
     is_paused,
@@ -974,31 +973,14 @@ async def notify_non_voters(  # pragma: no cover
                 if not is_notification_enabled(int(cid) if cid != "0" else 0, "reminders"):
                     continue
 
-                # Check of het de juiste tijd is voor dit kanaal (per-channel reminder tijd)
-                # Reminder is opgeslagen als minuten vóór deadline (bijv. "120" = 2 uur vóór)
-                channel_id_int = int(cid) if cid != "0" else 0
-                reminder_minuten_str = get_reminder_time(channel_id_int)
-
-                # Parse de reminder minuten en bereken het gewenste uur
-                try:
-                    minuten_voor_deadline = int(reminder_minuten_str)
-                except (ValueError, AttributeError):
-                    minuten_voor_deadline = 120  # Fallback: 2 uur vóór deadline
-
-                # Deadline is standaard 18:00
-                deadline_uur = 18
-                # Bereken reminder uur: deadline_uur - (minuten / 60)
-                reminder_uur = deadline_uur - (minuten_voor_deadline // 60)
-                if reminder_uur < 0:
-                    reminder_uur = 0
-
+                # Reminder is altijd 2 uur vóór deadline (16:00, deadline is 18:00)
                 # Haal huidige tijd op in NL timezone
                 from datetime import datetime
                 now_nl = datetime.now(TZ)
 
-                # Controleer of het de juiste tijd is (check alleen uur)
+                # Controleer of het 16:00 is (check alleen uur)
                 # Scheduler draait elk uur op XX:00, dus we checken alleen of het uur matcht
-                if now_nl.hour != reminder_uur:
+                if now_nl.hour != 16:
                     continue
 
             # Skip kanalen die niet in 'deadline' modus staan (alleen voor scheduler, niet voor commando)

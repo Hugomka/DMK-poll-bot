@@ -295,8 +295,8 @@ class TestNotificationSettingsUI(BaseTestCase):
             self.assertIn(notif_type["label"], embed.description or "")
             self.assertIn(notif_type["emoji"], embed.description or "")
 
-    async def test_reminders_button_opens_modal(self):
-        """Test dat reminders button een modal opent in plaats van togglen."""
+    async def test_reminders_button_toggles(self):
+        """Test dat reminders button togglet zoals andere buttons."""
         channel_id = 123
         view = NotificationSettingsView(channel_id)
 
@@ -318,9 +318,5 @@ class TestNotificationSettingsUI(BaseTestCase):
         # Click reminders button
         await reminders_button.callback(interaction)
 
-        # Check dat send_modal called is (niet edit_message)
-        interaction.response.send_modal.assert_called_once()
-        interaction.response.edit_message.assert_not_called()
-
-    # NOTE: ReminderTimeModal tests zijn complex vanwege readonly TextInput.value property
-    # De modal validatie logica wordt gedekt door de poll_settings tests (get/set_reminder_time)
+        # Check dat edit_message called is (toggle gedrag)
+        interaction.response.edit_message.assert_called_once()
