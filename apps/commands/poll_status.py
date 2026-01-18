@@ -16,7 +16,11 @@ from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.celebration_gif import get_celebration_gif_url
 from apps.utils.constants import DAG_NAMEN
-from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
+from apps.utils.message_builder import (
+    build_grouped_names_for,
+    get_non_voters_for_day,
+    get_was_misschien_for_day,
+)
 from apps.utils.notification_texts import (
     NOTIFICATION_TEXTS,
     format_opening_time_from_schedule,
@@ -35,7 +39,7 @@ from apps.utils.poll_settings import (
     get_setting,
     is_paused,
 )
-from apps.utils.poll_storage import get_was_misschien_count, load_votes
+from apps.utils.poll_storage import load_votes
 
 
 def _is_denied_channel(channel) -> bool:
@@ -190,10 +194,14 @@ class PollStatus(commands.Cog):
 
                     # Insert was_misschien after misschien option
                     if opt.tijd == "misschien":
-                        was_misschien = await get_was_misschien_count(
-                            dag, gid_val, cid_val
+                        was_misschien_count, was_misschien_text = (
+                            await get_was_misschien_for_day(
+                                dag, guild, gid_val, cid_val
+                            )
                         )
-                        regel = f"💤 was misschien — **{was_misschien}** stemmen"
+                        regel = f"💤 was misschien — **{was_misschien_count}** stemmen"
+                        if was_misschien_text:
+                            regel += f":  {was_misschien_text}"
                         regels.append(regel)
 
                 # Voeg niet-stemmers toe (altijd tonen) - at the end

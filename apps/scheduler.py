@@ -1910,7 +1910,7 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
 
             # Find remaining "misschien" voters and convert them
             converted_any = False
-            misschien_count = 0
+            converted_user_ids: list[str] = []
             for uid, per_dag in votes.items():
                 tijden = (per_dag or {}).get(dag, [])
                 if not isinstance(tijden, list):
@@ -1924,19 +1924,19 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
                         await remove_vote(str(uid), dag, "misschien", gid, cid)
                         await add_vote(str(uid), dag, "niet meedoen", gid, cid)
                         converted_any = True
-                        misschien_count += 1
+                        converted_user_ids.append(str(uid))
                     except Exception:  # pragma: no cover
                         # Voeg toe aan retry queue voor 2 uur retry window
                         from apps.utils.retry_queue import add_failed_conversion
                         add_failed_conversion(str(gid), str(cid), str(uid), dag)
                         continue
 
-            # Store the count of converted misschien votes
-            if misschien_count > 0:
+            # Store the user IDs of converted misschien votes
+            if converted_user_ids:
                 try:
-                    from apps.utils.poll_storage import set_was_misschien_count
+                    from apps.utils.poll_storage import set_was_misschien_user_ids
 
-                    await set_was_misschien_count(dag, misschien_count, gid, cid)
+                    await set_was_misschien_user_ids(dag, converted_user_ids, gid, cid)
                 except Exception:  # pragma: no cover
                     pass
 

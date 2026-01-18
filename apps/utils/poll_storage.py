@@ -427,6 +427,24 @@ async def get_was_misschien_count(
     Returns:
     - Count of was_misschien votes for this day
     """
+    user_ids = await get_was_misschien_user_ids(dag, guild_id, channel_id)
+    return len(user_ids)
+
+
+async def get_was_misschien_user_ids(
+    dag: str, guild_id: int | str, channel_id: int | str
+) -> list[str]:
+    """
+    Get the user IDs of members whose "misschien" votes were converted.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+
+    Returns:
+    - List of user IDs (as strings)
+    """
     gid, cid = str(guild_id), str(channel_id)
     scoped = await load_votes(gid, cid)
 
@@ -435,28 +453,33 @@ async def get_was_misschien_count(
         per_dag = scoped[tracking_id]
         if isinstance(per_dag, dict) and dag in per_dag:
             tijden = per_dag[dag]
-            if isinstance(tijden, list) and len(tijden) > 0:
-                # The count is stored as the first element
-                try:
-                    return int(tijden[0])
-                except (ValueError, TypeError):  # pragma: no cover
-                    return 0
+            if isinstance(tijden, list):
+                # Backwards compatibility: old format stored count as single element
+                # New format stores list of user IDs
+                if len(tijden) == 1:
+                    try:
+                        # Als het een getal is, is het de oude count-only format
+                        int(tijden[0])
+                        return []  # Geen user IDs beschikbaar in oude format
+                    except (ValueError, TypeError):
+                        pass  # Niet een getal, dus waarschijnlijk een user ID
+                return list(tijden)
 
-    return 0
+    return []
 
 
-async def set_was_misschien_count(
-    dag: str, count: int, guild_id: int | str, channel_id: int | str
+async def set_was_misschien_user_ids(
+    dag: str, user_ids: list[str], guild_id: int | str, channel_id: int | str
 ) -> None:
     """
-    Set the was_misschien count for a specific day.
+    Set the user IDs of members whose "misschien" votes were converted.
 
     This is called when the deadline passes and "misschien" votes are
     converted to "niet meedoen".
 
     Parameters:
     - dag: 'vrijdag' | 'zaterdag' | 'zondag'
-    - count: Number of misschien votes that were converted
+    - user_ids: List of user IDs that were converted
     - guild_id: Discord guild ID
     - channel_id: Discord channel ID
     """
@@ -467,7 +490,37 @@ async def set_was_misschien_count(
     if tracking_id not in scoped:
         scoped[tracking_id] = _empty_days()
 
-    # Store the count as a list with a single element (to match the vote structure)
+    # Store the user IDs as a list
+    scoped[tracking_id][dag] = list(user_ids)
+
+    await save_votes_scoped(gid, cid, scoped)
+
+
+async def set_was_misschien_count(
+    dag: str, count: int, guild_id: int | str, channel_id: int | str
+) -> None:
+    """
+    DEPRECATED: Use set_was_misschien_user_ids instead.
+
+    Set the was_misschien count for a specific day.
+    This function is kept for backwards compatibility but stores no user IDs.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - count: Number of misschien votes that were converted
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+    """
+    # Backwards compatibility: create dummy list with count placeholders
+    # Deze functie zou niet meer aangeroepen moeten worden
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    tracking_id = _was_misschien_id(cid)
+    if tracking_id not in scoped:
+        scoped[tracking_id] = _empty_days()
+
+    # Store the count as a list with a single element (old format)
     scoped[tracking_id][dag] = [str(count)]
 
     await save_votes_scoped(gid, cid, scoped)

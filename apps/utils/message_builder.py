@@ -616,3 +616,60 @@ async def get_non_voters_for_day(
     text = ", ".join(non_voters) if non_voters else ""
 
     return count, text
+
+
+async def get_was_misschien_for_day(
+    dag: str,
+    guild: discord.Guild | None,
+    guild_id: int | str,
+    channel_id: int | str,
+) -> tuple[int, str]:
+    """
+    Retourneert (aantal_was_misschien, tekst) voor een specifieke dag.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild: Discord guild (server) voor het ophalen van display names
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+
+    Retourneert:
+    - (count, text) waarbij text bv. is: "@Naam1, @Naam2"
+    """
+    from apps.utils.poll_storage import get_was_misschien_user_ids
+
+    try:
+        user_ids = await get_was_misschien_user_ids(dag, guild_id, channel_id)
+
+        if not user_ids:
+            return 0, ""
+
+        # Bouw display names voor was_misschien gebruikers
+        names: list[str] = []
+
+        for member_id in user_ids:
+            if guild:
+                try:
+                    member = guild.get_member(
+                        int(member_id)
+                    ) or await guild.fetch_member(int(member_id))
+                    if member:
+                        display = (
+                            getattr(member, "display_name", None)
+                            or getattr(member, "global_name", None)
+                            or getattr(member, "name", "Lid")
+                        )
+                        names.append(f"@{display}")
+                except Exception:  # pragma: no cover
+                    # Lid niet gevonden, skip
+                    continue
+            else:
+                # Geen guild, gebruik ID als fallback
+                names.append(f"<@{member_id}>")
+
+        count = len(names)
+        text = ", ".join(names) if names else ""
+
+        return count, text
+    except Exception:  # pragma: no cover
+        return 0, ""
