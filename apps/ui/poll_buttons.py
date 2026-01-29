@@ -174,8 +174,13 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
         print(f"WARNING: Fout bij recreaten berichten in kanaal {channel_id}: {e}")
 
 
-def _get_timezone_legend(dag: str) -> str:
-    """Genereer compacte tijdzone legenda voor ephemeral stem-interface."""
+def _get_timezone_legend(dag: str, channel_id: int) -> str:
+    """Genereer compacte tijdzone legenda voor ephemeral stem-interface.
+
+    Toont alleen de tijden die enabled zijn voor deze dag.
+    """
+    from apps.utils.poll_settings import get_poll_option_state
+
     # Haal emoji's uit poll_options.json (centrale bron)
     all_options = get_poll_options()
     emoji_1900 = next(
@@ -205,9 +210,20 @@ def _get_timezone_legend(dag: str) -> str:
             f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
         )
 
-    tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
-    tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
-    return f"{emoji_1900} 19:00 = {tijd_1900} | {emoji_2030} 20:30 = {tijd_2030}"
+    # Check welke tijden enabled zijn voor deze dag
+    has_1900 = get_poll_option_state(channel_id, dag.lower(), "19:00")
+    has_2030 = get_poll_option_state(channel_id, dag.lower(), "20:30")
+
+    # Bouw legenda op basis van enabled tijden
+    parts = []
+    if has_1900:
+        tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
+        parts.append(f"{emoji_1900} 19:00 = {tijd_1900}")
+    if has_2030:
+        tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
+        parts.append(f"{emoji_2030} 20:30 = {tijd_2030}")
+
+    return " | ".join(parts)
 
 
 class PollButton(Button):
@@ -250,7 +266,7 @@ class PollButton(Button):
 
             # ✅ Snelle ACK: bewerk meteen hetzelfde ephemere bericht (geen nieuw bericht)
             header = HEADER_TMPL.format(dag=self.dag.capitalize())
-            legenda = _get_timezone_legend(self.dag)
+            legenda = _get_timezone_legend(self.dag, channel_id)
             header_volledig = f"{header}\n{legenda}"
             if not interaction.response.is_done():
                 try:
@@ -341,7 +357,7 @@ class PollButton(Button):
                     user_id, guild_id, channel_id, dag=self.dag
                 )
                 header = HEADER_TMPL.format(dag=self.dag.capitalize())
-                legenda = _get_timezone_legend(self.dag)
+                legenda = _get_timezone_legend(self.dag, channel_id)
                 header_volledig = f"{header}\n{legenda}"
                 msg = "⚠️ Er ging iets mis, probeer opnieuw."
                 if interaction.message is not None:
@@ -422,7 +438,7 @@ async def create_poll_button_views_per_day(
         if view.children:  # Alleen tonen als er knoppen zijn
             header = HEADER_TMPL.format(dag=dag.capitalize())
             # Voeg tijdzone legenda toe
-            legenda = _get_timezone_legend(dag)
+            legenda = _get_timezone_legend(dag, channel_id)
             header_met_legenda = f"{header}\n{legenda}"
             views.append((dag, header_met_legenda, view))
     return views

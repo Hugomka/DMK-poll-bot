@@ -22,8 +22,8 @@ class TestVoteMessageDates(BaseTestCase):
 
         # Enable alle dagen voor deze test
         for dag in ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]:
-            set_poll_option_state(channel_id, dag, "om 19:00 uur", True)
-            set_poll_option_state(channel_id, dag, "om 20:30 uur", True)
+            set_poll_option_state(channel_id, dag, "19:00", True)
+            set_poll_option_state(channel_id, dag, "20:30", True)
 
         # Mock datetime in BEIDE modules
         with patch("apps.ui.poll_buttons.datetime") as mock_dt_buttons, \
@@ -32,7 +32,7 @@ class TestVoteMessageDates(BaseTestCase):
             mock_dt_builder.now.return_value = tuesday
 
             # Haal stembericht legenda op voor donderdag
-            donderdag_legenda = _get_timezone_legend("donderdag")
+            donderdag_legenda = _get_timezone_legend("donderdag", channel_id)
 
             # Verwacht: donderdag 4 december 2025 (niet 27 november!)
             # 4 december 2025 19:00 = timestamp 1764871200
@@ -52,7 +52,7 @@ class TestVoteMessageDates(BaseTestCase):
             self.assertNotIn("1764271800", donderdag_legenda)
 
             # Haal stembericht legenda op voor zondag
-            zondag_legenda = _get_timezone_legend("zondag")
+            zondag_legenda = _get_timezone_legend("zondag", channel_id)
 
             # Verwacht: zondag 7 december 2025 (niet 30 november!)
             # 7 december 2025 19:00 = timestamp 1765130400
@@ -79,8 +79,8 @@ class TestVoteMessageDates(BaseTestCase):
 
         # Enable alle dagen
         for dag in ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]:
-            set_poll_option_state(channel_id, dag, "om 19:00 uur", True)
-            set_poll_option_state(channel_id, dag, "om 20:30 uur", True)
+            set_poll_option_state(channel_id, dag, "19:00", True)
+            set_poll_option_state(channel_id, dag, "20:30", True)
 
         with patch("apps.ui.poll_buttons.datetime") as mock_dt_buttons, \
              patch("apps.utils.message_builder.datetime") as mock_dt_builder:
@@ -98,7 +98,7 @@ class TestVoteMessageDates(BaseTestCase):
                 # omdat we alleen het Hammertime format valideren, niet de exacte timestamp
 
                 # Haal stembericht legenda op
-                legenda = _get_timezone_legend(dag)
+                legenda = _get_timezone_legend(dag, channel_id)
 
                 # Extract timestamps from legenda
                 # Legenda format: "emoji 19:00 = <t:TIMESTAMP:F> | emoji 20:30 = <t:TIMESTAMP:F>"
@@ -108,6 +108,57 @@ class TestVoteMessageDates(BaseTestCase):
                 # omdat TimeZoneHelper conversie kan falen, maar we kunnen wel checken dat
                 # het juiste format gebruikt wordt)
                 self.assertIn(":F>", legenda)
+
+
+    def test_legend_shows_only_enabled_time_slots(self):
+        """Test dat legenda alleen enabled tijdslots toont, niet beide."""
+        # Dinsdag 2 december 2025, 07:35
+        tuesday = datetime(2025, 12, 2, 7, 35, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+
+        channel_id = 99999
+
+        with patch("apps.ui.poll_buttons.datetime") as mock_dt_buttons, \
+             patch("apps.utils.message_builder.datetime") as mock_dt_builder:
+            mock_dt_buttons.now.return_value = tuesday
+            mock_dt_builder.now.return_value = tuesday
+
+            # Test 1: Alleen 19:00 enabled
+            set_poll_option_state(channel_id, "vrijdag", "19:00", True)
+            set_poll_option_state(channel_id, "vrijdag", "20:30", False)
+
+            legenda = _get_timezone_legend("vrijdag", channel_id)
+
+            # Moet 19:00 bevatten
+            self.assertIn("19:00", legenda)
+            # Moet NIET 20:30 bevatten
+            self.assertNotIn("20:30", legenda)
+            # Moet geen pipe hebben (want maar één tijd)
+            self.assertNotIn("|", legenda)
+
+            # Test 2: Alleen 20:30 enabled
+            set_poll_option_state(channel_id, "zaterdag", "19:00", False)
+            set_poll_option_state(channel_id, "zaterdag", "20:30", True)
+
+            legenda = _get_timezone_legend("zaterdag", channel_id)
+
+            # Moet 20:30 bevatten
+            self.assertIn("20:30", legenda)
+            # Moet NIET 19:00 bevatten
+            self.assertNotIn("19:00", legenda)
+            # Moet geen pipe hebben (want maar één tijd)
+            self.assertNotIn("|", legenda)
+
+            # Test 3: Beide tijden enabled
+            set_poll_option_state(channel_id, "zondag", "19:00", True)
+            set_poll_option_state(channel_id, "zondag", "20:30", True)
+
+            legenda = _get_timezone_legend("zondag", channel_id)
+
+            # Moet beide bevatten
+            self.assertIn("19:00", legenda)
+            self.assertIn("20:30", legenda)
+            # Moet pipe hebben (want twee tijden)
+            self.assertIn("|", legenda)
 
 
 if __name__ == "__main__":
