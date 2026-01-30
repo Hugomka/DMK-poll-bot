@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from apps.utils.i18n import t
 from apps.utils.poll_message import update_poll_message
 from apps.utils.poll_storage import add_guest_votes, remove_guest_votes
 
@@ -49,11 +50,13 @@ class PollGuests(commands.Cog):
         try:
             dag, tijd = slot.value.split("|", 1)
 
+            cid = getattr(interaction.channel, "id", 0) or 0
+
             # Split op komma of puntkomma
             ruwe = [p.strip() for p in re.split(r"[;,]", namen or "") if p.strip()]
             if not ruwe:
                 await interaction.followup.send(
-                    "⚠️ Geen geldige namen opgegeven.", ephemeral=True
+                    f"⚠️ {t(cid, 'COMMANDS.no_valid_names')}", ephemeral=True
                 )
                 return
 
@@ -75,19 +78,22 @@ class PollGuests(commands.Cog):
 
             parts: list[str] = []
             if toegevoegd:
-                parts.append(f"✅ Toegevoegd: {', '.join(toegevoegd)}")
+                parts.append(t(cid, "COMMANDS.guest_added_list", names=", ".join(toegevoegd)))
             if overgeslagen:
-                parts.append(f"ℹ️ Overgeslagen (bestond al): {', '.join(overgeslagen)}")
+                parts.append(t(cid, "COMMANDS.guest_skipped", skipped=", ".join(overgeslagen)))
             if not parts:
-                parts = ["(niets gewijzigd)"]
+                parts = [t(cid, "COMMANDS.nothing_changed")]
 
             await interaction.followup.send(
-                f"👥 Gaststemmen voor **{dag} {tijd}**\n" + "\n".join(parts),
+                t(cid, "COMMANDS.guest_added", dag=dag, tijd=tijd) + "\n" + "\n".join(parts),
                 ephemeral=True,
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            cid = getattr(interaction.channel, "id", 0) or 0
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
     @app_commands.guild_only()
     @app_commands.command(
@@ -116,10 +122,12 @@ class PollGuests(commands.Cog):
 
         try:
             dag, tijd = slot.value.split("|", 1)
+            cid = getattr(interaction.channel, "id", 0) or 0
+
             ruwe = [p.strip() for p in re.split(r"[;,]", namen or "") if p.strip()]
             if not ruwe:
                 await interaction.followup.send(
-                    "⚠️ Geen geldige namen opgegeven.", ephemeral=True
+                    f"⚠️ {t(cid, 'COMMANDS.no_valid_names')}", ephemeral=True
                 )
                 return
 
@@ -141,18 +149,21 @@ class PollGuests(commands.Cog):
 
             parts: list[str] = []
             if verwijderd:
-                parts.append(f"✅ Verwijderd: {', '.join(verwijderd)}")
+                parts.append(t(cid, "COMMANDS.guest_removed_list", names=", ".join(verwijderd)))
             if nietgevonden:
-                parts.append(f"ℹ️ Niet gevonden: {', '.join(nietgevonden)}")
+                parts.append(t(cid, "COMMANDS.guest_not_found", names=", ".join(nietgevonden)))
             if not parts:
-                parts = ["(niets gewijzigd)"]
+                parts = [t(cid, "COMMANDS.nothing_changed")]
 
             await interaction.followup.send(
-                f"👥 Gaststemmen verwijderd voor **{dag} {tijd}**\n" + "\n".join(parts),
+                t(cid, "COMMANDS.guest_removed", dag=dag, tijd=tijd) + "\n" + "\n".join(parts),
                 ephemeral=True,
             )
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            cid = getattr(interaction.channel, "id", 0) or 0
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

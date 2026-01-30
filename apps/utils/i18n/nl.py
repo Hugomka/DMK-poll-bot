@@ -73,6 +73,21 @@ UI = {
     "error_generic": "Er ging iets mis: {error}",
     # Settings
     "language_changed": "✅ Taal is gewijzigd naar Nederlands.",
+    # Stem nu button (vote now confirmation)
+    "vote_now_button": "🗳️ Stem nu",
+    "confirm_join_tonight": "💬 Wil je vanavond om **{time}** meedoen?",
+    "already_voted_not_joining": "ℹ️ Je hebt al voor **niet meedoen** gestemd.",
+    "already_voted_for_time": "ℹ️ Je hebt al voor **{times}** gestemd.",
+    "vote_registered_for_time": "✅ Je stem is geregistreerd voor **{time}**!",
+    "indicated_not_joining": "ℹ️ Je hebt aangegeven **niet mee te doen**.",
+    "yes_button": "✅ Ja",
+    "no_button": "❌ Nee",
+    # Cleanup confirmation
+    "yes_delete_button": "✅ Ja, verwijder",
+    "no_keep_button": "❌ Nee, behoud",
+    "cancel_button": "Annuleer",
+    "deleting_messages": "⏳ Bezig met verwijderen van {count} bericht(en)...",
+    "messages_kept_posting": "ℹ️ Oude berichten worden behouden. De polls worden nu geplaatst.",
 }
 
 # Notification texts
@@ -115,6 +130,14 @@ ERRORS = {
     "generic_error": "Er ging iets mis: {error}",
     "place_error": "Fout bij plaatsen: {error}",
     "delete_error": "Fout bij verwijderen: {error}",
+    # Stem nu button errors
+    "could_not_determine_day_time": "Fout: kon dag/tijd niet bepalen.",
+    "not_voted_yet_day": "Je hebt nog niet gestemd voor deze dag.",
+    "generic_try_again": "Er ging iets mis. Probeer het later opnieuw.",
+    "vote_processing_error": "Er ging iets mis bij het verwerken van je stem.",
+    "delete_messages_failed": "Er ging iets mis bij het verwijderen van berichten.",
+    # Archive errors
+    "archive_generate_failed": "Kon archief niet genereren.",
 }
 
 # Command feedback messages
@@ -128,12 +151,17 @@ COMMANDS = {
     "poll_resumed": "▶️ De poll is hervat.",
     "poll_deleted": "🗑️ Alle poll-berichten zijn verwijderd.",
     # Guest commands
-    "guest_added": "👥 Gaststemmen voor **{dag} {tijd}**\n✅ Toegevoegd: {added}",
+    "guest_added": "👥 Gaststemmen voor **{dag} {tijd}**",
     "guest_skipped": "ℹ️ Overgeslagen (bestond al): {skipped}",
-    "guest_removed": "👥 Gaststemmen verwijderd voor **{dag} {tijd}**\n✅ Verwijderd: {removed}",
+    "guest_removed": "👥 Gaststemmen verwijderd voor **{dag} {tijd}**",
     "no_valid_names": "Geen geldige namen opgegeven.",
+    "nothing_changed": "(niets gewijzigd)",
+    "guest_added_list": "✅ Toegevoegd: {names}",
+    "guest_removed_list": "✅ Verwijderd: {names}",
+    "guest_not_found": "ℹ️ Niet gevonden: {names}",
     # Settings
     "setting_changed": "⚙️ Instelling voor {dag} gewijzigd naar: **{mode}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
+    "settings_all_changed": "⚙️ Instellingen voor alle dagen gewijzigd naar: **{mode}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
     "poll_not_active_warning": "⚠️ De poll is momenteel niet actief. Wijzigingen worden toegepast bij de volgende activatie.",
 }
 
@@ -176,7 +204,27 @@ STATUS = {
     "no_schedule": "Geen",
     "default_label": "(default)",
     "visibility_always": "altijd zichtbaar",
-    "visibility_deadline": "deadline {tijd}",
+    "visibility_deadline": "verborgen tot {tijd}",
+    "visibility_deadline_show_ghosts": "verborgen tot {tijd} (behalve niet gestemd)",
+}
+
+# Archive UI text
+ARCHIVE = {
+    "standard_delimiter": "Standaard CSV delimiter",
+    "dutch_delimiter": "Nederlandse Excel delimiter",
+    "select_format": "Selecteer CSV Formaat...",
+    "delete_button": "Verwijder archief",
+    "confirm_delete": "⚠️ **Weet je zeker dat je het archief permanent wilt verwijderen?**\nDeze actie kan niet ongedaan worden gemaakt.",
+    "confirm_delete_button": "Verwijder Archief",
+    "deletion_cancelled": "❌ Verwijdering geannuleerd.",
+    "deleted": "🗑️ Archief verwijderd.",
+    "deleted_no_archive": "❌ **Archief verwijderd**\nEr is momenteel geen archief beschikbaar.",
+    "nothing_to_delete": "Er was geen archief om te verwijderen.",
+    "no_archive": "Er is nog geen archief voor dit kanaal.",
+    "read_failed": "Archief kon niet worden gelezen.",
+    "description": "CSV-archief met weekresultaten voor dit kanaal.",
+    "archive_message_weekend": "📊 **DMK Poll Archief - Weekend (vrijdag-zondag)**\nJe kunt een **CSV-formaat** tussen NL en US kiezen en download het archiefbestand dat geschikt is voor je spreadsheet.\n\n⚠️ **Let op**:\nOp de 'Verwijder archief'-knop klikken verwijdert je het hele archief permanent.",
+    "archive_message_weekday": "📊 **DMK Poll Archief - Weekday (maandag-donderdag)**\nJe kunt een **CSV-formaat** tussen NL en US kiezen en download het archiefbestand dat geschikt is voor je spreadsheet.\n\n⚠️ **Let op**:\nOp de 'Verwijder archief'-knop klikken verwijdert je het hele archief permanent.",
 }
 
 # Opening message parts

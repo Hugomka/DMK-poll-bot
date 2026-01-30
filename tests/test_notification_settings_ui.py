@@ -280,7 +280,7 @@ class TestNotificationSettingsUI(BaseTestCase):
 
     async def test_notification_types_have_required_fields(self):
         """Test dat alle notification types de vereiste velden hebben."""
-        required_fields = ["key", "label", "tijd", "emoji", "default"]
+        required_fields = ["key", "tijd", "emoji", "default"]
 
         for notif_type in NOTIFICATION_TYPES:
             for field in required_fields:
@@ -288,12 +288,15 @@ class TestNotificationSettingsUI(BaseTestCase):
 
     async def test_embed_contains_all_notification_types(self):
         """Test dat embed alle 8 notificatie types bevat in legenda."""
+        from apps.ui.notification_settings import get_notification_label
+
         embed = create_notification_settings_embed()
 
         # Check dat alle labels in description staan
         self.assertIsNotNone(embed.description)
         for notif_type in NOTIFICATION_TYPES:
-            self.assertIn(notif_type["label"], embed.description or "")
+            label = get_notification_label(notif_type["key"])
+            self.assertIn(label, embed.description or "")
             self.assertIn(notif_type["emoji"], embed.description or "")
 
     async def test_reminders_button_toggles(self):

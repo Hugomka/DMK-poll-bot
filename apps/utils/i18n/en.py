@@ -73,6 +73,21 @@ UI = {
     "error_generic": "Something went wrong: {error}",
     # Settings
     "language_changed": "✅ Language has been changed to English.",
+    # Stem nu button (vote now confirmation)
+    "vote_now_button": "🗳️ Vote now",
+    "confirm_join_tonight": "💬 Do you want to join tonight at **{time}**?",
+    "already_voted_not_joining": "ℹ️ You already voted for **not joining**.",
+    "already_voted_for_time": "ℹ️ You already voted for **{times}**.",
+    "vote_registered_for_time": "✅ Your vote is registered for **{time}**!",
+    "indicated_not_joining": "ℹ️ You indicated **not joining**.",
+    "yes_button": "✅ Yes",
+    "no_button": "❌ No",
+    # Cleanup confirmation
+    "yes_delete_button": "✅ Yes, delete",
+    "no_keep_button": "❌ No, keep",
+    "cancel_button": "Cancel",
+    "deleting_messages": "⏳ Deleting {count} message(s)...",
+    "messages_kept_posting": "ℹ️ Old messages will be kept. The polls are now being posted.",
 }
 
 # Notification texts
@@ -115,6 +130,14 @@ ERRORS = {
     "generic_error": "Something went wrong: {error}",
     "place_error": "Error placing polls: {error}",
     "delete_error": "Error deleting: {error}",
+    # Stem nu button errors
+    "could_not_determine_day_time": "Error: could not determine day/time.",
+    "not_voted_yet_day": "You haven't voted for this day yet.",
+    "generic_try_again": "Something went wrong. Please try again later.",
+    "vote_processing_error": "Something went wrong processing your vote.",
+    "delete_messages_failed": "Something went wrong deleting messages.",
+    # Archive errors
+    "archive_generate_failed": "Could not generate archive.",
 }
 
 # Command feedback messages
@@ -128,12 +151,17 @@ COMMANDS = {
     "poll_resumed": "▶️ The poll has been resumed.",
     "poll_deleted": "🗑️ All poll messages have been deleted.",
     # Guest commands
-    "guest_added": "👥 Guest votes for **{dag} {tijd}**\n✅ Added: {added}",
+    "guest_added": "👥 Guest votes for **{dag} {tijd}**",
     "guest_skipped": "ℹ️ Skipped (already exists): {skipped}",
-    "guest_removed": "👥 Guest votes removed for **{dag} {tijd}**\n✅ Removed: {removed}",
+    "guest_removed": "👥 Guest votes removed for **{dag} {tijd}**",
     "no_valid_names": "No valid names provided.",
+    "nothing_changed": "(nothing changed)",
+    "guest_added_list": "✅ Added: {names}",
+    "guest_removed_list": "✅ Removed: {names}",
+    "guest_not_found": "ℹ️ Not found: {names}",
     # Settings
     "setting_changed": "⚙️ Setting for {dag} changed to: **{mode}**.\n📌 Check the poll messages above to see the result.",
+    "settings_all_changed": "⚙️ Settings for all days changed to: **{mode}**.\n📌 Check the poll messages above to see the result.",
     "poll_not_active_warning": "⚠️ The poll is currently not active. Changes will be applied at the next activation.",
 }
 
@@ -177,6 +205,26 @@ STATUS = {
     "default_label": "(default)",
     "visibility_always": "always visible",
     "visibility_deadline": "deadline {tijd}",
+    "visibility_deadline_show_ghosts": "hidden until {tijd} (except not voted)",
+}
+
+# Archive UI text
+ARCHIVE = {
+    "standard_delimiter": "Standard CSV delimiter",
+    "dutch_delimiter": "Dutch Excel delimiter",
+    "select_format": "Select CSV Format...",
+    "delete_button": "Delete archive",
+    "confirm_delete": "⚠️ **Are you sure you want to permanently delete the archive?**\nThis action cannot be undone.",
+    "confirm_delete_button": "Delete Archive",
+    "deletion_cancelled": "❌ Deletion cancelled.",
+    "deleted": "🗑️ Archive deleted.",
+    "deleted_no_archive": "❌ **Archive deleted**\nNo archive currently available.",
+    "nothing_to_delete": "There was no archive to delete.",
+    "no_archive": "There is no archive for this channel yet.",
+    "read_failed": "Archive could not be read.",
+    "description": "CSV archive with weekly results for this channel.",
+    "archive_message_weekend": "📊 **DMK Poll Archive - Weekend (Friday-Sunday)**\nYou can choose a **CSV format** between NL and US and download the archive file suitable for your spreadsheet.\n\n⚠️ **Note**:\nClicking 'Delete archive' will permanently delete the entire archive.",
+    "archive_message_weekday": "📊 **DMK Poll Archive - Weekday (Monday-Thursday)**\nYou can choose a **CSV format** between NL and US and download the archive file suitable for your spreadsheet.\n\n⚠️ **Note**:\nClicking 'Delete archive' will permanently delete the entire archive.",
 }
 
 # Opening message parts

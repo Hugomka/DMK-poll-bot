@@ -4,70 +4,42 @@
 
 import discord
 
+from apps.utils.i18n import t
 from apps.utils.poll_settings import (
     get_all_notification_states,
     toggle_notification_setting,
 )
 
-# Notificatie type definities met labels en tijden
+# Notificatie type definities (labels komen uit i18n)
+# Key mapping naar i18n keys
+NOTIFICATION_TYPE_KEYS = {
+    "poll_opened": "notif_poll_opened",
+    "poll_reset": "notif_poll_reset",
+    "poll_closed": "notif_poll_closed",
+    "reminders": "notif_reminders",
+    "thursday_reminder": "notif_thursday_reminder",
+    "misschien": "notif_misschien",
+    "doorgaan": "notif_doorgaan",
+    "celebration": "notif_celebration",
+}
+
+# Notificatie type definities met tijden en defaults
 NOTIFICATION_TYPES = [
-    {
-        "key": "poll_opened",
-        "label": "Poll geopend",
-        "tijd": "di 20:00",
-        "emoji": "📂",
-        "default": True,
-    },
-    {
-        "key": "poll_reset",
-        "label": "Poll gereset",
-        "tijd": "di 20:00",
-        "emoji": "🔄",
-        "default": True,
-    },
-    {
-        "key": "poll_closed",
-        "label": "Poll gesloten",
-        "tijd": "ma 00:00",
-        "emoji": "🔒",
-        "default": True,
-    },
-    {
-        "key": "reminders",
-        "label": "Herinnering stemmen",
-        "tijd": "vr/za/zo 16:00",
-        "emoji": "⏰",
-        "default": False,
-    },
-    {
-        "key": "thursday_reminder",
-        "label": "Herinnering weekend",
-        "tijd": "do 20:00",
-        "emoji": "📅",
-        "default": False,
-    },
-    {
-        "key": "misschien",
-        "label": "Herinnering misschien",
-        "tijd": "17:00",
-        "emoji": "❓",
-        "default": False,
-    },
-    {
-        "key": "doorgaan",
-        "label": "Doorgaan",
-        "tijd": "18:00",
-        "emoji": "✅",
-        "default": True,
-    },
-    {
-        "key": "celebration",
-        "label": "Felicitatie",
-        "tijd": "automaat",
-        "emoji": "🎉",
-        "default": True,
-    },
+    {"key": "poll_opened", "tijd": "di 20:00", "emoji": "📂", "default": True},
+    {"key": "poll_reset", "tijd": "di 20:00", "emoji": "🔄", "default": True},
+    {"key": "poll_closed", "tijd": "ma 00:00", "emoji": "🔒", "default": True},
+    {"key": "reminders", "tijd": "vr/za/zo 16:00", "emoji": "⏰", "default": False},
+    {"key": "thursday_reminder", "tijd": "do 20:00", "emoji": "📅", "default": False},
+    {"key": "misschien", "tijd": "17:00", "emoji": "❓", "default": False},
+    {"key": "doorgaan", "tijd": "18:00", "emoji": "✅", "default": True},
+    {"key": "celebration", "tijd": "automaat", "emoji": "🎉", "default": True},
 ]
+
+
+def get_notification_label(key: str, channel_id: int = 0) -> str:
+    """Get translated label for a notification type."""
+    i18n_key = NOTIFICATION_TYPE_KEYS.get(key, key)
+    return t(channel_id, f"SETTINGS.{i18n_key}")
 
 
 class NotificationSettingsView(discord.ui.View):
@@ -84,11 +56,12 @@ class NotificationSettingsView(discord.ui.View):
         for notif_type in NOTIFICATION_TYPES:
             key = notif_type["key"]
             enabled = states.get(key, notif_type["default"])
+            label = get_notification_label(key, channel_id)
 
             self.add_item(
                 NotificationButton(
                     key=key,
-                    label=notif_type["label"],
+                    label=label,
                     tijd=notif_type["tijd"],
                     emoji=notif_type["emoji"],
                     enabled=enabled,
@@ -148,7 +121,6 @@ class NotificationButton(discord.ui.Button):
 
         except Exception as e:
             # Toon errors
-            from apps.utils.i18n import t
             await interaction.followup.send(
                 f"❌ {t(channel_id, 'ERRORS.toggle_notification', error=str(e))}", ephemeral=True
             )
@@ -156,14 +128,13 @@ class NotificationButton(discord.ui.Button):
 
 def create_notification_settings_embed(channel_id: int | None = None) -> discord.Embed:
     """Maak embed voor notificatie instellingen."""
-    from apps.utils.i18n import t
-
     cid = channel_id or 0
 
     # Voeg legenda toe voor elke notificatie
     legend_lines = []
     for notif in NOTIFICATION_TYPES:
-        legend_lines.append(f"{notif['emoji']} **{notif['label']}**: {notif['tijd']}")
+        label = get_notification_label(notif["key"], cid)
+        legend_lines.append(f"{notif['emoji']} **{label}**: {notif['tijd']}")
 
     description = (
         f"{t(cid, 'SETTINGS.notification_settings_description')}\n\n"

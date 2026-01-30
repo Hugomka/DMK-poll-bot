@@ -676,6 +676,8 @@ class PollLifecycle(commands.Cog):
 
         except Exception as e:  # pragma: no cover
             try:
+                from apps.utils.i18n import t as i18n_t
+
                 await interaction.followup.send(
                     f"❌ {i18n_t(channel_id, 'ERRORS.place_error', error=str(e))}", ephemeral=True
                 )
@@ -1121,7 +1123,12 @@ class PollLifecycle(commands.Cog):
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            from apps.utils.i18n import t
+
+            cid = getattr(channel, "id", 0) or 0
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
     # -----------------------------
     # /dmk-poll-stopzetten (permanent uitschakelen)
@@ -1282,7 +1289,12 @@ class PollLifecycle(commands.Cog):
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            from apps.utils.i18n import t
+
+            cid = getattr(channel, "id", 0) or 0
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
 
 async def setup(bot: commands.Bot) -> None:
