@@ -25,7 +25,12 @@ from apps.utils.poll_settings import (
 from apps.utils.poll_storage import get_user_votes, toggle_vote
 from apps.utils.time_zone_helper import TimeZoneHelper
 
-HEADER_TMPL = "📅 **{dag}** — kies jouw tijden 👇"
+def _get_header_tmpl(channel_id: int, dag: str) -> str:
+    """Get localized header template for voting interface."""
+    from apps.utils.i18n import get_day_name, t
+
+    dag_display = get_day_name(channel_id, dag)
+    return t(channel_id, "UI.choose_times_header", dag=dag_display)
 
 
 async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> None:
@@ -159,10 +164,11 @@ async def _cleanup_outdated_messages_for_channel(channel, channel_id: int) -> No
 
         # 3. Stemmen button message
         from apps.ui.poll_buttons import OneStemButtonView
+        from apps.utils.i18n import t
 
-        tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+        tekst = t(channel_id, "UI.click_vote_button")
         paused = is_paused(channel_id)
-        view = OneStemButtonView(paused=paused)
+        view = OneStemButtonView(paused=paused, channel_id=channel_id)
         s_msg = await safe_call(channel.send, content=tekst, view=view)
         if s_msg is not None:
             save_message_id(channel_id, "stemmen", s_msg.id)
@@ -237,25 +243,21 @@ class PollButton(Button):
             channel_id = interaction.channel_id
             if channel_id is None:
                 # Alleen in serverkanaal te gebruiken
+                msg = "⚠️ This button only works in a server channel."
                 if interaction.response.is_done():
-                    await interaction.followup.send(
-                        "⚠️ Deze knop werkt alleen in een serverkanaal.", ephemeral=True
-                    )
+                    await interaction.followup.send(msg, ephemeral=True)
                 else:
-                    await interaction.response.send_message(
-                        "⚠️ Deze knop werkt alleen in een serverkanaal.", ephemeral=True
-                    )
+                    await interaction.response.send_message(msg, ephemeral=True)
                 return
 
+            from apps.utils.i18n import t
+
             if is_paused(channel_id):
+                msg = f"⏸️ {t(channel_id, 'UI.voting_paused')}"
                 if interaction.response.is_done():
-                    await interaction.followup.send(
-                        "⏸️ Stemmen is gepauzeerd.", ephemeral=True
-                    )
+                    await interaction.followup.send(msg, ephemeral=True)
                 else:
-                    await interaction.response.send_message(
-                        "⏸️ Stemmen is gepauzeerd.", ephemeral=True
-                    )
+                    await interaction.response.send_message(msg, ephemeral=True)
                 return
 
             user_id = str(interaction.user.id)
@@ -265,13 +267,13 @@ class PollButton(Button):
             now = datetime.now(ZoneInfo("Europe/Amsterdam"))
 
             # ✅ Snelle ACK: bewerk meteen hetzelfde ephemere bericht (geen nieuw bericht)
-            header = HEADER_TMPL.format(dag=self.dag.capitalize())
+            header = _get_header_tmpl(channel_id, self.dag)
             legenda = _get_timezone_legend(self.dag, channel_id)
             header_volledig = f"{header}\n{legenda}"
             if not interaction.response.is_done():
                 try:
                     await interaction.response.edit_message(
-                        content=f"{header_volledig}\n🔄 Je stem wordt verwerkt…"
+                        content=f"{header_volledig}\n🔄 {t(channel_id, 'UI.vote_processing')}"
                     )
                 except Exception:  # pragma: no cover
                     # Als het niet lukt, val later terug op message.edit
@@ -280,15 +282,16 @@ class PollButton(Button):
             # ✅ Check zichtbaarheid
             if not is_vote_button_visible(channel_id, self.dag, self.tijd, now):
                 # Bewerk hetzelfde bericht en stop
+                closed_msg = f"❌ {t(channel_id, 'UI.vote_closed')}"
                 try:
                     if interaction.message is not None:
                         await interaction.message.edit(
-                            content=f"{header_volledig}\n❌ De stemmogelijkheid is gesloten.",
+                            content=f"{header_volledig}\n{closed_msg}",
                             view=None,
                         )
                     else:
                         await interaction.edit_original_response(
-                            content=f"{header_volledig}\n❌ De stemmogelijkheid is gesloten.",
+                            content=f"{header_volledig}\n{closed_msg}",
                             view=None,
                         )
                 except Exception:  # pragma: no cover
@@ -306,7 +309,7 @@ class PollButton(Button):
             )
 
             # Toon korte status in hetzelfde bericht (geen followup-spam)
-            status = "✅ Je stem is verwerkt."
+            status = f"✅ {t(channel_id, 'UI.vote_success')}"
             try:
                 if interaction.message is not None:
                     await interaction.message.edit(
@@ -356,10 +359,11 @@ class PollButton(Button):
                 new_view = await create_poll_button_view(
                     user_id, guild_id, channel_id, dag=self.dag
                 )
-                header = HEADER_TMPL.format(dag=self.dag.capitalize())
+                header = _get_header_tmpl(channel_id, self.dag)
                 legenda = _get_timezone_legend(self.dag, channel_id)
                 header_volledig = f"{header}\n{legenda}"
-                msg = "⚠️ Er ging iets mis, probeer opnieuw."
+                from apps.utils.i18n import t
+                msg = f"⚠️ {t(channel_id, 'UI.vote_error')}"
                 if interaction.message is not None:
                     await interaction.message.edit(
                         content=f"{header_volledig}\n{msg}",
@@ -436,7 +440,7 @@ async def create_poll_button_views_per_day(
 
         view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
         if view.children:  # Alleen tonen als er knoppen zijn
-            header = HEADER_TMPL.format(dag=dag.capitalize())
+            header = _get_header_tmpl(channel_id, dag)
             # Voeg tijdzone legenda toe
             legenda = _get_timezone_legend(dag, channel_id)
             header_met_legenda = f"{header}\n{legenda}"
@@ -445,8 +449,13 @@ async def create_poll_button_views_per_day(
 
 
 class OpenStemmenButton(Button):
-    def __init__(self, paused: bool = False):
-        label = "🗳️ Stemmen (gepauzeerd)" if paused else "🗳️ Stemmen"
+    def __init__(self, paused: bool = False, channel_id: int | None = None):
+        # Note: Labels are set at creation time, so we use a simple approach
+        # For full i18n, the view would need to be recreated when language changes
+        label = "🗳️ Vote (paused)" if paused else "🗳️ Vote"
+        if channel_id:
+            from apps.utils.i18n import t
+            label = f"🗳️ {t(channel_id, 'UI.vote_button_paused' if paused else 'UI.vote_button')}"
         style = ButtonStyle.secondary if paused else ButtonStyle.primary
         super().__init__(
             label=label, style=style, custom_id="open_stemmen", disabled=paused
@@ -455,25 +464,24 @@ class OpenStemmenButton(Button):
     async def callback(self, interaction: Interaction):
         channel_id = interaction.channel_id
         if channel_id is None:
+            msg = "⚠️ This button only works in a server channel."
             if interaction.response.is_done():
-                await interaction.followup.send(
-                    "⚠️ Deze knop werkt alleen in een serverkanaal.", ephemeral=True
-                )
+                await interaction.followup.send(msg, ephemeral=True)
             else:
-                await interaction.response.send_message(
-                    "⚠️ Deze knop werkt alleen in een serverkanaal.", ephemeral=True
-                )
+                await interaction.response.send_message(msg, ephemeral=True)
             return
+
+        from apps.utils.i18n import t
 
         if is_paused(channel_id):
             await interaction.response.send_message(
-                "⏸️ Stemmen is tijdelijk gepauzeerd.", ephemeral=True
+                f"⏸️ {t(channel_id, 'UI.paused_message')}", ephemeral=True
             )
             return
 
         # EERST: Acknowledge interaction (binnen 3 sec) om timeout te voorkomen
         await interaction.response.send_message(
-            "🔄 Poll wordt bijgewerkt... een moment geduld.",
+            f"🔄 {t(channel_id, 'UI.poll_updating')}",
             ephemeral=True,
         )
 
@@ -488,13 +496,13 @@ class OpenStemmenButton(Button):
 
         if not views_per_dag:
             await interaction.edit_original_response(
-                content="Stemmen is gesloten voor alle dagen. Kom later terug."
+                content=t(channel_id, "UI.voting_closed_all_days")
             )
             return
 
         # Update bericht en toon voting knoppen
         await interaction.edit_original_response(
-            content="Kies jouw tijden hieronder 👇 per dag (alleen jij ziet dit)."
+            content=t(channel_id, "UI.choose_times_instruction")
         )
 
         for dag, header, view in views_per_dag:
@@ -504,6 +512,6 @@ class OpenStemmenButton(Button):
 class OneStemButtonView(View):
     """De vaste stemknop onderaan het pollbericht."""
 
-    def __init__(self, paused: bool = False):
+    def __init__(self, paused: bool = False, channel_id: int | None = None):
         super().__init__(timeout=None)
-        self.add_item(OpenStemmenButton(paused))
+        self.add_item(OpenStemmenButton(paused, channel_id))

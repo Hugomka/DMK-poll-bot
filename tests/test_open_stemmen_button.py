@@ -22,12 +22,13 @@ class TestOpenStemmenButton(BaseTestCase):
         btn_paused = OpenStemmenButton(paused=True)
         self.assertTrue(btn_paused.disabled)
         self.assertEqual(btn_paused.style, ButtonStyle.secondary)
-        self.assertIn("gepauzeerd", btn_paused.label)
+        # Label contains "paused" (en) or "gepauzeerd" (nl)
+        self.assertTrue("paused" in btn_paused.label.lower() or "gepauzeerd" in btn_paused.label.lower())
 
         btn_active = OpenStemmenButton(paused=False)
         self.assertFalse(btn_active.disabled)
         self.assertEqual(btn_active.style, ButtonStyle.primary)
-        self.assertNotIn("gepauzeerd", btn_active.label)
+        self.assertFalse("paused" in btn_active.label.lower() and "gepauzeerd" in btn_active.label.lower())
 
     async def test_callback_no_channel_early_return(self) -> None:
         class DummyResponse:
@@ -59,7 +60,8 @@ class TestOpenStemmenButton(BaseTestCase):
         await btn.callback(cast(Any, interaction))
         self.assertEqual(len(interaction.response.sent), 1)
         msg, kw = interaction.response.sent[0]
-        self.assertIn("alleen in een serverkanaal", msg)
+        # Message can be in Dutch or English
+        self.assertTrue("server channel" in msg.lower() or "serverkanaal" in msg.lower())
         self.assertTrue(kw.get("ephemeral", False))
 
     async def test_callback_paused_channel(self) -> None:

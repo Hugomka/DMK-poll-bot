@@ -342,9 +342,12 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
             non_voters = _get_non_voter_mentions(channel, voted_ids)
             if non_voters:
                 # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
+                from apps.utils.i18n import get_count_text, t
+
                 mentions_str = ", ".join(non_voters)
                 count = len(non_voters)
-                text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd voor dit weekend. Als je nog niet gestemd hebt: graag stemmen vóór 18:00. Dank!"
+                count_text = get_count_text(cid, count)
+                text = f"{count_text} {t(cid, 'NOTIFICATIONS.not_voted_yet')} {t(cid, 'NOTIFICATIONS.reminder_weekend', count_text='').strip()}"
                 try:
                     await send_temporary_mention(
                         channel, mentions=mentions_str, text=text
@@ -1049,14 +1052,15 @@ async def notify_non_voters(  # pragma: no cover
                 continue
 
             # Tekst
+            from apps.utils.i18n import get_count_text, get_day_name, t
+
             count = len(to_mention)
-            count_text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd. "
+            count_text = get_count_text(int(cid) if cid != "0" else 0, count)
             if dag:
-                header = (
-                    f"📣 DMK-poll – **{dag}**\n{count_text}Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
-                )
+                dag_display = get_day_name(int(cid) if cid != "0" else 0, dag)
+                header = t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.reminder_day", dag=dag_display, count_text=count_text + " " + t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.not_voted_yet") + " ")
             else:
-                header = f"📣 DMK-poll – herinnering\n{count_text}Als je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
+                header = t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.reminder_weekend", count_text=count_text + " " + t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.not_voted_yet") + " ")
             footer = ""
 
             mentions_str = ", ".join(to_mention)
@@ -1192,10 +1196,13 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             )
 
             # Berichttekst - gebruik unified notification layout (5 uur lifetime) met Hammertime
+            from apps.utils.i18n import get_day_name, t
+
+            dag_display = get_day_name(cid, dag)
             if participant_list:
-                text = f"Totaal {totaal} deelnemers: {participant_list}\nDe DMK-avond van {dag} om {winnaar_hammertime} gaat door! Veel plezier!"
+                text = t(cid, "NOTIFICATIONS.event_proceeding_with_count", totaal=totaal, participants=participant_list, dag=dag_display, tijd=winnaar_hammertime)
             else:
-                text = f"De DMK-avond van {dag} om {winnaar_hammertime} gaat door! Veel plezier!"
+                text = t(cid, "NOTIFICATIONS.event_proceeding", dag=dag_display, tijd=winnaar_hammertime)
 
             try:
                 await send_persistent_mention(channel, mentions_str, text)
@@ -1292,10 +1299,12 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
 
             # Stuur resetbericht alleen in dit kanaal via notificatiebericht
             try:
+                from apps.utils.i18n import t
+
                 await send_temporary_mention(
                     channel,
                     mentions="@everyone",
-                    text="De poll is zojuist gereset voor het nieuwe weekend. Je kunt weer stemmen. Veel plezier!",
+                    text=t(cid, "NOTIFICATIONS.poll_reset"),
                 )
             except Exception:  # pragma: no cover
                 continue
@@ -1468,13 +1477,14 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
                 continue
 
             # Send temporary mention with button
+            from apps.utils.i18n import get_count_text, t
+
             mentions_str = ", ".join(misschien_voters)
             count = len(misschien_voters)
-            text = (
-                f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} op :m: **Misschien** gestemd. "
-                f"Als je op **Misschien** hebt gestemd: wil je vanavond meedoen?\n"
-                "Klik op **Stem nu** om je stem te bevestigen."
-            )
+            count_text = get_count_text(cid, count)
+            text = t(cid, "NOTIFICATIONS.maybe_reminder", dag=dag) if dag else ""
+            # More detailed message for misschien notification
+            text = f"{count_text} {t(cid, 'NOTIFICATIONS.maybe_voted')} {t(cid, 'NOTIFICATIONS.maybe_confirm')}"
 
             try:
                 await send_temporary_mention(
@@ -1806,10 +1816,12 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         await update_poll_message(channel, dag)
 
                     # STAP 4: Stemmen-knop bericht (nieuw aanmaken)
+                    from apps.utils.i18n import t
+
                     key = "stemmen"
-                    tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+                    tekst = t(cid, "UI.click_vote_button")
                     paused = is_paused(cid)
-                    view = OneStemButtonView(paused=paused)
+                    view = OneStemButtonView(paused=paused, channel_id=cid)
 
                     if send:
                         s_msg = await safe_call(send, content=tekst, view=view)
@@ -1843,12 +1855,13 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
 
                     # STAP 7: Openingsmentions versturen met HammerTime
                     try:
+                        from apps.utils.i18n import t
                         from apps.utils.mention_utils import send_temporary_mention
 
                         if hammertime_str:
-                            opening_notification = f"De DMK-poll-bot is zojuist aangezet om {hammertime_str}. Veel plezier met de stemmen! 🎮"
+                            opening_notification = t(cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str)
                         else:
-                            opening_notification = "De DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+                            opening_notification = t(cid, "NOTIFICATIONS.poll_opened")
 
                         await send_temporary_mention(
                             channel, mentions="@everyone", text=opening_notification

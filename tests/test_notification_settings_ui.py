@@ -218,7 +218,8 @@ class TestNotificationSettingsUI(BaseTestCase):
         # Check dat error message getoond wordt
         interaction.response.send_message.assert_called_once()
         args = interaction.response.send_message.call_args
-        self.assertIn("Kan channel ID niet bepalen", args[0][0])
+        # Message can be in Dutch or English depending on i18n
+        self.assertIn("channel id", args[0][0].lower())
         self.assertTrue(args[1]["ephemeral"])
 
     async def test_notification_button_callback_exception_handling(self):

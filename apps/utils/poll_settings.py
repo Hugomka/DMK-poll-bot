@@ -436,6 +436,50 @@ def get_effective_deactivation(channel_id: int) -> tuple[dict | None, bool]:
 
 
 # ========================================================================
+# Language Settings (per channel)
+# ========================================================================
+
+SUPPORTED_LANGUAGES = {"nl", "en"}
+DEFAULT_LANGUAGE = "nl"
+
+
+def get_language(channel_id: int) -> str:
+    """
+    Get language preference for a channel.
+
+    Returns:
+        Language code ('nl' or 'en'), default: 'nl'
+    """
+    data = _load_data()
+    return data.get(str(channel_id), {}).get("__language__", DEFAULT_LANGUAGE)
+
+
+def set_language(channel_id: int, language: str) -> str:
+    """
+    Set language preference for a channel.
+
+    Args:
+        channel_id: The channel ID
+        language: 'nl' or 'en'
+
+    Returns:
+        The new language setting
+
+    Raises:
+        ValueError: If language is not supported
+    """
+    if language not in SUPPORTED_LANGUAGES:
+        raise ValueError(
+            f"Unsupported language: {language}. Supported: {', '.join(SUPPORTED_LANGUAGES)}"
+        )
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+    ch["__language__"] = language
+    _save_data(data)
+    return language
+
+
+# ========================================================================
 # Notification Settings (per channel)
 # ========================================================================
 

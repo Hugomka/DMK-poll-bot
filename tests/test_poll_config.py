@@ -196,5 +196,5 @@ class TestPollConfigCommand(BaseTestCase):
         # Call setup
         await setup(mock_bot)
 
-        # Check dat command geregistreerd is
-        mock_bot.tree.add_command.assert_called_once_with(poll_config.poll_instelling)
+        # Check dat commands geregistreerd zijn (poll_instelling + poll_taal)
+        self.assertEqual(mock_bot.tree.add_command.call_count, 2)

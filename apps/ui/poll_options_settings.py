@@ -181,7 +181,7 @@ class PollOptionButton(discord.ui.Button):
         channel_id = interaction.channel_id
         if not channel_id:  # pragma: no cover
             await interaction.response.send_message(
-                "❌ Kan channel ID niet bepalen.", ephemeral=True
+                "❌ Cannot determine channel ID.", ephemeral=True
             )
             return
 
@@ -225,9 +225,9 @@ class PollOptionButton(discord.ui.Button):
                 await self._refresh_poll_messages(interaction.channel)
             else:
                 # Bot is niet actief - toon waarschuwing
+                from apps.utils.i18n import t
                 await interaction.followup.send(
-                    "⚠️ De poll is momenteel niet actief. "
-                    "Wijzigingen worden toegepast bij de volgende activatie.",
+                    f"⚠️ {t(channel_id, 'COMMANDS.poll_not_active_warning')}",
                     ephemeral=True,
                 )
 
@@ -236,8 +236,9 @@ class PollOptionButton(discord.ui.Button):
             pass
         except Exception as e:  # pragma: no cover
             # Alleen errors tonen
+            from apps.utils.i18n import t
             await interaction.followup.send(
-                f"❌ Fout bij togglen poll-optie: {e}", ephemeral=True
+                f"❌ {t(channel_id, 'ERRORS.toggle_poll_option', error=str(e))}", ephemeral=True
             )
 
     async def _refresh_poll_messages(self, channel):
@@ -410,12 +411,13 @@ class PollOptionButton(discord.ui.Button):
             clear_message_id(self.view.channel_id, "notification_persistent")
 
         # 3. Hermaak stemmen button message
+        from apps.utils.i18n import t as t_i18n  # pragma: no cover
         paused = is_paused(self.view.channel_id)  # pragma: no cover
-        view = OneStemButtonView(paused=paused)  # pragma: no cover
+        view = OneStemButtonView(paused=paused, channel_id=self.view.channel_id)  # pragma: no cover
         tekst = (  # pragma: no cover
-            "⏸️ Stemmen is tijdelijk gepauzeerd."
+            f"⏸️ {t_i18n(self.view.channel_id, 'UI.paused_message')}"
             if paused
-            else "Klik op **🗳️ Stemmen** om je keuzes te maken."
+            else t_i18n(self.view.channel_id, "UI.click_vote_button")
         )
         new_buttons = await safe_call(
             channel.send, content=tekst, view=view
@@ -425,7 +427,8 @@ class PollOptionButton(discord.ui.Button):
 
         # 4. Hermaak notificatie message (als die er was)
         if notif_id:  # pragma: no cover
-            content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+            from apps.utils.notification_texts import get_text_poll_opened
+            content = f":mega: Notificatie:\n{get_text_poll_opened(self.view.channel_id)}"
             new_notif = await safe_call(channel.send, content=content, view=None)
             if new_notif:  # pragma: no cover
                 save_message_id(
@@ -503,24 +506,25 @@ def create_poll_options_settings_embed(channel_id: int | None = None) -> discord
 
     tijden_legenda = "\n".join(legenda_lines)
 
+    from apps.utils.i18n import t
+
+    cid = channel_id or 0
+
     embed = discord.Embed(
-        title="⚙️ Instellingen Poll-opties",
+        title=t(cid, "SETTINGS.poll_options_title"),
         description=(
-            "Activeer of deactiveer de poll-optie voor de huidige poll. "
-            "Het heeft een direct effect op de huidige kanaal met de poll.\n\n"
-            "⚠️ **Let op:** Bij activeren van maandag en dinsdag kunnen problemen "
-            "ontstaan met de gesloten periode (default: maandag 00:00 t/m dinsdag 20:00). "
-            "Pas deze periode aan via `/dmk-poll-on` zodat leden kunnen stemmen.\n\n"
-            "**Tijden (jouw tijdzone):**\n"
+            f"{t(cid, 'SETTINGS.poll_options_description')}\n\n"
+            f"{t(cid, 'SETTINGS.poll_options_warning')}\n\n"
+            f"**{t(cid, 'SETTINGS.times_your_timezone')}:**\n"
             f"{tijden_legenda}\n\n"
-            "**Status:**\n"
-            "🟢 Groen = Actief (poll wordt gegenereerd)\n"
-            "🔵 Blauw = Actief na reset (poll in verleden, geen stemmen)\n"
-            "⚪ Grijs = Uitgeschakeld"
+            f"**{t(cid, 'SETTINGS.notification_status')}:**\n"
+            f"{t(cid, 'SETTINGS.status_active_generated')}\n"
+            f"{t(cid, 'SETTINGS.status_active_after_reset')}\n"
+            f"{t(cid, 'SETTINGS.status_inactive')}"
         ),
         color=discord.Color.blue(),
     )
 
-    embed.set_footer(text="Klik op een knop om de status te togglen")
+    embed.set_footer(text=t(cid, "SETTINGS.click_to_toggle"))
 
     return embed

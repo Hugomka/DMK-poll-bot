@@ -161,6 +161,10 @@ async def build_poll_message_for_day_async(
     - channel: optioneel, voor niet-stemmers tracking
     - datum_iso: optioneel, YYYY-MM-DD datum (voor rolling window). Als None, gebruik oude logica.
     """
+    from apps.utils.i18n import get_day_name, t
+
+    cid = int(channel_id)
+
     # Genereer Hammertime voor de datum (18:00 = deadline tijd)
     if datum_iso is None:
         # Fallback: gebruik rolling window om correcte datum te krijgen
@@ -179,9 +183,10 @@ async def build_poll_message_for_day_async(
     datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
         datum_iso, "18:00", style="D"  # D = long date format (bijv. "28 november 2025")
     )
-    title = f"**DMK-poll voor {dag.capitalize()} ({datum_hammertime}):**"
+    dag_display = get_day_name(cid, dag)
+    title = t(cid, "UI.poll_title", dag=dag_display, datum=datum_hammertime)
     if pauze:
-        title += " **- _(Gepauzeerd)_**"
+        title += " " + t(cid, "UI.poll_title_paused")
     message = f"{title}\n"
 
     # Gebruik de hide_counts en hide_ghosts parameters direct
@@ -207,7 +212,7 @@ async def build_poll_message_for_day_async(
         opties.append(opt)
 
     if not opties:
-        message += "_(geen opties gevonden)_"
+        message += t(cid, "UI.no_options")
         return message
 
     # Aantallen per tijd (scoped), tenzij verborgen
@@ -233,6 +238,8 @@ async def build_poll_message_for_day_async(
                 f"Dit zou niet moeten gebeuren - bug in get_rolling_window_days()."
             )
 
+    from apps.utils.i18n import get_time_label
+
     for opt in opties:
         # Filter "misschien" uit resultaten in deadline-modus:
         # - Bij verborgen counts: toont toch alleen "(stemmen verborgen)", geen meerwaarde
@@ -245,21 +252,25 @@ async def build_poll_message_for_day_async(
             tijd_display = TimeZoneHelper.nl_tijd_naar_hammertime(
                 datum_iso, "19:00", style="t"
             )
-            label = f"{opt.emoji} Om {tijd_display} uur"
+            label = f"{opt.emoji} {t(cid, 'COMMON.at_time', tijd=tijd_display)}"
         elif opt.tijd == "om 20:30 uur":
             tijd_display = TimeZoneHelper.nl_tijd_naar_hammertime(
                 datum_iso, "20:30", style="t"
             )
-            label = f"{opt.emoji} Om {tijd_display} uur"
+            label = f"{opt.emoji} {t(cid, 'COMMON.at_time', tijd=tijd_display)}"
         else:
-            # Voor "misschien", "niet meedoen", etc.: geen Hammertime
-            label = f"{opt.emoji} {opt.tijd.capitalize()}"
+            # Voor "misschien", "niet meedoen", etc.: gebruik localized label
+            localized_label = get_time_label(cid, opt.tijd)
+            label = f"{opt.emoji} {localized_label.capitalize()}"
 
         if effective_hide_counts:
-            message += f"{label} (stemmen verborgen)\n"
+            message += f"{label} ({t(cid, 'UI.votes_hidden')})\n"
         else:
             n = int(counts.get(opt.tijd, 0))
-            message += f"{label} ({n} stemmen)\n"
+            if n == 1:
+                message += f"{label} ({t(cid, 'UI.vote_count_singular', n=n)})\n"
+            else:
+                message += f"{label} ({t(cid, 'UI.votes_count', n=n)})\n"
 
     # Voeg niet-stemmers toe (tenzij verborgen via hide_ghosts)
     # Voor verleden dagen: altijd niet-stemmers tonen (effective_hide_ghosts is False)
@@ -270,9 +281,12 @@ async def build_poll_message_for_day_async(
         )
 
         if non_voter_count == 0:
-            message += "🎉 Iedereen heeft gestemd! - *Fantastisch dat jullie allemaal hebben gestemd! Bedankt!*\n"
+            message += f"{t(cid, 'UI.everyone_voted')} - *{t(cid, 'UI.everyone_voted_thanks')}*\n"
         else:
-            message += f"👻 Niet gestemd ({non_voter_count} personen)\n"
+            if non_voter_count == 1:
+                message += t(cid, "UI.not_voted_singular", count=non_voter_count) + "\n"
+            else:
+                message += t(cid, "UI.not_voted_count", count=non_voter_count) + "\n"
 
     return f"{message}\u200b"
 
@@ -390,6 +404,7 @@ async def build_doorgaan_participant_list(
     guild: discord.Guild | None,
     all_votes: dict,
     channel_member_ids: dict[str, Any],
+    channel_id: int | None = None,
 ) -> tuple[int, str, str]:
     """
     Bouw een deelnemerslijst voor de doorgaan-notificatie.
@@ -494,8 +509,12 @@ async def build_doorgaan_participant_list(
             else:
                 participant_parts.append(f"@{p['display_name']}")
         else:
-            # Gast: "Naam (gast)"
-            participant_parts.append(f"{p['guest_name']} (gast)")
+            # Gast: "Naam (gast)" - localized
+            from apps.utils.i18n import t
+
+            cid = channel_id or 0
+            guest_label = t(cid, "COMMON.guest")
+            participant_parts.append(f"{p['guest_name']} ({guest_label})")
 
     participant_list = ", ".join(participant_parts) if participant_parts else ""
 

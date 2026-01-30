@@ -89,7 +89,7 @@ async def poll_instelling(
 
         elif instelling.value == "notificaties":
             # Open notificatie instellingen UI
-            embed = create_notification_settings_embed()
+            embed = create_notification_settings_embed(channel_id)
             view = NotificationSettingsView(channel_id)
 
             await interaction.followup.send(embed=embed, view=view, ephemeral=True)
@@ -105,6 +105,50 @@ async def poll_instelling(
         )
 
 
+@app_commands.command(
+    name="dmk-poll-taal",
+    description="🌐 Set bot language / Stel bot taal in",
+)
+@app_commands.describe(language="Choose language / Kies taal")
+@app_commands.choices(
+    language=[
+        app_commands.Choice(name="🇳🇱 Nederlands", value="nl"),
+        app_commands.Choice(name="🇬🇧 English", value="en"),
+    ]
+)
+@app_commands.default_permissions(moderate_members=True)
+@app_commands.guild_only()
+async def poll_taal(
+    interaction: discord.Interaction, language: app_commands.Choice[str]
+):
+    """
+    Set the bot language for this channel.
+    Stel de bot taal in voor dit kanaal.
+    """
+    channel_id = interaction.channel_id
+    if not channel_id:
+        await interaction.response.send_message(
+            "❌ Cannot determine channel ID.", ephemeral=True
+        )
+        return
+
+    try:
+        from apps.utils.poll_settings import set_language
+        from apps.utils.i18n import t
+
+        set_language(channel_id, language.value)
+        await interaction.response.send_message(
+            t(channel_id, "UI.language_changed"),
+            ephemeral=True,
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"❌ Error setting language: {e}", ephemeral=True
+        )
+
+
 async def setup(bot):
     """Registreer poll config commands."""
     bot.tree.add_command(poll_instelling)
+    bot.tree.add_command(poll_taal)
