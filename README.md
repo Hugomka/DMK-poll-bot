@@ -44,6 +44,63 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **📊 Live status** | `/dmk-poll-status` toont per dag de aantallen, optioneel namen, en scheduling informatie. |
 | **🔄 Misschien-conversie** | Wie om 17:00 "misschien" heeft gestemd krijgt een bevestigingsknop; om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen". |
 | **🔔 Privacy-vriendelijke mentions** | Tijdelijke mentions (5 sec zichtbaar voor herinneringen), persistente mentions (5 uur zichtbaar voor "gaat door"-berichten). |
+| **🌍 Meertalige ondersteuning** | Volledige i18n ondersteuning voor Nederlands (🇳🇱) en Engels (🇺🇸). Taal per kanaal instelbaar via `/dmk-poll-taal`. |
+| **📂 Categorie-gebaseerde polls** | Kanalen in dezelfde Discord-categorie delen stemmen. Ideaal voor meertalige communities met aparte taalkanalen. |
+
+---
+
+## 🌍 Meertalige ondersteuning & Categorie Polls
+
+De bot ondersteunt **volledig meertalige** polls met **gedeelde stemmen** tussen kanalen in dezelfde categorie.
+
+### Hoe werkt het?
+
+1. **Taal per kanaal**: Elk kanaal kan een eigen taal hebben (Nederlands of Engels)
+2. **Gedeelde stemmen**: Kanalen in dezelfde Discord-categorie delen automatisch stemmen
+3. **Gesynchroniseerde instellingen**: Poll-opties, notificaties en periode-instellingen worden gesynchroniseerd
+
+### Voorbeeld setup
+
+```
+📁 DMK Category
+├── #dmk-poll-nl (Nederlands)
+└── #dmk-poll-en (Engels)
+```
+
+- Stemmen in `#dmk-poll-nl` zijn automatisch zichtbaar in `#dmk-poll-en` (en vice versa)
+- Elk kanaal toont de interface in de eigen taal
+- Steminstellingen worden gesynchroniseerd tussen beide kanalen
+
+### Taal instellen
+
+Gebruik `/dmk-poll-taal` om de taal van een kanaal te wijzigen:
+
+| Optie | Beschrijving |
+|-------|-------------|
+| 🇳🇱 Nederlands | Nederlandse interface en meldingen |
+| 🇺🇸 English | Engelse interface en meldingen |
+
+### Wat wordt vertaald?
+
+- Poll-berichten en titels
+- Stemknoppen en tijdlabels
+- Notificaties en herinneringen
+- Beslissingsberichten ("Gaat door!" / "Is happening!")
+- Settings UI en foutmeldingen
+
+### Gesynchroniseerde instellingen
+
+Deze instellingen worden automatisch gesynchroniseerd tussen kanalen in dezelfde categorie:
+
+| Instelling | Beschrijving |
+|------------|-------------|
+| `__poll_options__` | Welke dag/tijd combinaties actief zijn |
+| `__period_settings__` | Open/sluit tijden voor periodes |
+| `__reminder_time__` | Minuten voor deadline voor herinneringen |
+| `__notification_states__` | Welke notificaties aan/uit staan |
+| `__paused__` | Of de poll gepauzeerd is |
+
+**Let op:** De taalinstelling (`__language__`) wordt **niet** gesynchroniseerd - dit is bewust per kanaal anders.
 
 ---
 
@@ -65,6 +122,7 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-notify`** *(default: admin/mod)* | Stuur handmatig een notificatie. Kies uit 7 standaard notificaties of gebruik een eigen tekst. Extra optie: `ping` om te kiezen tussen @everyone, @here (alleen online users) of geen ping (stille notificatie). |
 | **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
 | **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
+| **`/dmk-poll-taal`** *(default: admin/mod)* | Wijzig de taal van het kanaal. Kies tussen 🇳🇱 Nederlands en 🇺🇸 English. |
 
 **Opmerking:** De meeste admin-commando's geven **ephemeral** feedback (alleen zichtbaar voor jou), zodat het kanaal schoon blijft.
 
@@ -672,6 +730,35 @@ cat .scheduler_state.json
 ---
 
 ## 🎉 Recente verbeteringen
+
+### v2.4 - Dual Language & Category Polls (2026-01)
+
+**Meertalige ondersteuning:**
+- Volledige i18n (internationalisatie) ondersteuning voor Nederlands (🇳🇱) en Engels (🇺🇸)
+- Per-kanaal taalinstelling via `/dmk-poll-taal` commando
+- Alle UI elementen vertaald: knoppen, meldingen, beslissingsberichten, foutmeldingen
+- Tijdnotatie aangepast per taal: "om 19:00 uur" (NL) vs "at 7:00 PM" (EN)
+
+**Categorie-gebaseerde polls:**
+- Kanalen in dezelfde Discord-categorie delen automatisch stemmen
+- Ideaal voor meertalige communities (bijv. NL + EN kanalen samen)
+- Stemmen in één kanaal zijn direct zichtbaar in alle gekoppelde kanalen
+- Instellingen worden automatisch gesynchroniseerd tussen gekoppelde kanalen
+
+**Gesynchroniseerde instellingen:**
+- Poll-opties (dag/tijd combinaties)
+- Periode-instellingen (open/sluit tijden)
+- Notificatie voorkeuren
+- Herinnerings-tijd
+- Pauze-status
+
+**Bestanden aangepast:**
+- `apps/utils/i18n/` - Nieuwe i18n module met NL en EN vertalingen
+- `apps/entities/poll_option.py` - Gelokaliseerde button labels
+- `apps/logic/decision.py` - Vertaalde beslissingsberichten
+- `apps/utils/poll_settings.py` - `sync_settings_to_category()` functie
+- `apps/ui/poll_buttons.py` - Gelokaliseerde tijdzone legenda
+- `apps/commands/poll_config.py` - Nieuw `/dmk-poll-taal` commando
 
 ### v2.3 - Rolling Window Date System (2025-12-02)
 
