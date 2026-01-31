@@ -110,6 +110,13 @@ NOTIFICATIONS = {
     "maybe_reminder": "You voted 'maybe' for {dag}. Please confirm your participation.",
     "maybe_voted": "voted :m: **Maybe**.",
     "maybe_confirm": "If you voted **Maybe**: do you want to join tonight?\nClick **Vote now** to confirm your participation.",
+    # Notification heading
+    "notification_heading": ":mega: Notification:",
+    # Decision lines
+    "decision_pending": "⏳ Decision coming **at 6:00 PM**.",
+    "decision_not_happening": "🚫 **Not happening** (not enough votes).",
+    "decision_happening_1900": "🏁 **Tonight at 7:00 PM is happening!** ({count} votes)",
+    "decision_happening_2030": "🏁 **Tonight at 8:30 PM is happening!** ({count} votes)",
 }
 
 # Error messages
@@ -216,7 +223,7 @@ ARCHIVE = {
     "delete_button": "Delete archive",
     "confirm_delete": "⚠️ **Are you sure you want to permanently delete the archive?**\nThis action cannot be undone.",
     "confirm_delete_button": "Delete Archive",
-    "deletion_cancelled": "❌ Deletion cancelled.",
+    "deletion_cancelled": "❌ Deletion canceled.",
     "deleted": "🗑️ Archive deleted.",
     "deleted_no_archive": "❌ **Archive deleted**\nNo archive currently available.",
     "nothing_to_delete": "There was no archive to delete.",

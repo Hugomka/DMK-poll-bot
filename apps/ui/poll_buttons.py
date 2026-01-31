@@ -221,13 +221,17 @@ def _get_timezone_legend(dag: str, channel_id: int) -> str:
     has_2030 = get_poll_option_state(channel_id, dag.lower(), "20:30")
 
     # Bouw legenda op basis van enabled tijden
+    from apps.utils.i18n import get_time_label
+
     parts = []
     if has_1900:
         tijd_1900 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "19:00", style="F")
-        parts.append(f"{emoji_1900} 19:00 = {tijd_1900}")
+        label_1900 = get_time_label(channel_id, "19:00")
+        parts.append(f"{emoji_1900} {label_1900} = {tijd_1900}")
     if has_2030:
         tijd_2030 = TimeZoneHelper.nl_tijd_naar_hammertime(datum_iso, "20:30", style="F")
-        parts.append(f"{emoji_2030} 20:30 = {tijd_2030}")
+        label_2030 = get_time_label(channel_id, "20:30")
+        parts.append(f"{emoji_2030} {label_2030} = {tijd_2030}")
 
     return " | ".join(parts)
 
@@ -398,7 +402,7 @@ class PollButtonView(View):
         super().__init__(timeout=180)  # Iets ruimer
         now = now or datetime.now(ZoneInfo("Europe/Amsterdam"))
 
-        for option in get_poll_options():
+        for option in get_poll_options(channel_id):
             if filter_dag and option.dag != filter_dag:
                 continue
 

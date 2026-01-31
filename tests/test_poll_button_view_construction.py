@@ -133,7 +133,12 @@ class TestPollButtonViewConstruction(BaseTestCase):
             self.assertIn(f"📅 **{dag}", header.lower())  # dag name is in header
             self.assertIn("👇", header)  # emoji is present
             # Check dat tijdzone legenda aanwezig is (met juiste emoji per dag)
-            self.assertIn("19:00 = <t:", header)  # Tijd aanwezig
+            # Time label can be "19:00" (NL: "om 19:00 uur") or "7:00 PM" (EN: "at 7:00 PM")
+            self.assertTrue(
+                "19:00" in header or "7:00 PM" in header,
+                f"Expected time label in header: {header}"
+            )
+            self.assertIn("<t:", header)  # Hammertime present
             self.assertIn(":F>", header)  # Hammertime full format
             # Check dag-specifieke emoji's
             if dag == "vrijdag":

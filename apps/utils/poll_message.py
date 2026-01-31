@@ -192,10 +192,14 @@ async def create_notification_message(
             clear_message_id(cid, key)
 
     # STAP 2: Maak nieuw notificatiebericht aan
+    from apps.utils.i18n import t
+
+    heading = t(cid, "NOTIFICATIONS.notification_heading")
     if activation_hammertime:
-        content = f":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet om {activation_hammertime}. Veel plezier met de stemmen! 🎮"
+        body = t(cid, "NOTIFICATIONS.poll_opened_at", tijd=activation_hammertime)
     else:
-        content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+        body = t(cid, "NOTIFICATIONS.poll_opened")
+    content = f"{heading}\n{body}"
 
     send = getattr(channel, "send", None)
     if send is None:
@@ -241,7 +245,10 @@ async def update_notification_message(
         return
 
     # Build content
-    content = ":mega: Notificatie:\n"
+    from apps.utils.i18n import t
+
+    heading = t(cid, "NOTIFICATIONS.notification_heading")
+    content = f"{heading}\n"
     content += f"{mentions}\n" if mentions else "\n"
     content += f"{text}" if text else ""
 

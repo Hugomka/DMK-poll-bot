@@ -113,7 +113,7 @@ async def poll_instelling(
 @app_commands.choices(
     language=[
         app_commands.Choice(name="🇳🇱 Nederlands", value="nl"),
-        app_commands.Choice(name="🇬🇧 English", value="en"),
+        app_commands.Choice(name="🇺🇸 English", value="en"),
     ]
 )
 @app_commands.default_permissions(moderate_members=True)
@@ -133,8 +133,8 @@ async def poll_taal(
         return
 
     try:
-        from apps.utils.poll_settings import set_language
         from apps.utils.i18n import t
+        from apps.utils.poll_settings import set_language
 
         set_language(channel_id, language.value)
         await interaction.response.send_message(

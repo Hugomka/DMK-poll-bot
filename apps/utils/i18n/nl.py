@@ -110,6 +110,13 @@ NOTIFICATIONS = {
     "maybe_reminder": "Je hebt 'misschien' gestemd voor {dag}. Bevestig a.u.b. je deelname.",
     "maybe_voted": "op :m: **Misschien** gestemd.",
     "maybe_confirm": "Als je op **Misschien** hebt gestemd: wil je vanavond meedoen?\nKlik op **Stem nu** om je stem te bevestigen.",
+    # Notification heading
+    "notification_heading": ":mega: Notificatie:",
+    # Decision lines
+    "decision_pending": "⏳ Beslissing komt **om 18:00**.",
+    "decision_not_happening": "🚫 **Gaat niet door** (te weinig stemmen).",
+    "decision_happening_1900": "🏁 **Vanavond om 19:00 gaat door!** ({count} stemmen)",
+    "decision_happening_2030": "🏁 **Vanavond om 20:30 gaat door!** ({count} stemmen)",
 }
 
 # Error messages
