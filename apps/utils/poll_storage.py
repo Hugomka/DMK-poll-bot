@@ -173,9 +173,30 @@ async def add_vote(
 
 
 async def toggle_vote(
-    user_id: str, dag: str, tijd: str, guild_id: int | str, channel_id: int | str
+    user_id: str,
+    dag: str,
+    tijd: str,
+    guild_id: int | str,
+    channel_id: int | str,
+    channel: Any = None,
 ) -> list:
+    """
+    Toggle a vote for a user on a specific day/time.
+
+    If channel is provided and the channel is part of a category with multiple
+    active poll channels, the vote will be synced across all linked channels.
+    """
     gid, cid = str(guild_id), str(channel_id)
+
+    # Get all channels that share votes (for category-based dual language support)
+    if channel:
+        from apps.utils.poll_settings import get_vote_scope_channels
+
+        scope_ids = get_vote_scope_channels(channel)
+    else:
+        scope_ids = [int(channel_id)]
+
+    # Perform the toggle on the primary channel
     scoped = await load_votes(gid, cid)
     uid = str(user_id)
     user = scoped.setdefault(uid, _empty_days())
@@ -199,7 +220,30 @@ async def toggle_vote(
     user[dag] = day_votes
     scoped[uid] = user
     await save_votes_scoped(gid, cid, scoped)
+
+    # Sync vote to all other linked channels in the category
+    if len(scope_ids) > 1:
+        for other_cid in scope_ids:
+            if other_cid != int(channel_id):
+                await _sync_user_vote_to_channel(gid, str(other_cid), uid, dag, day_votes)
+
     return day_votes
+
+
+async def _sync_user_vote_to_channel(
+    guild_id: str, channel_id: str, user_id: str, dag: str, day_votes: list
+) -> None:
+    """
+    Sync a user's votes for a specific day to another channel.
+
+    This is used for category-based vote sharing to keep all linked channels
+    in sync when a vote changes.
+    """
+    scoped = await load_votes(guild_id, channel_id)
+    user = scoped.setdefault(user_id, _empty_days())
+    user[dag] = day_votes.copy()  # Copy to avoid shared references
+    scoped[user_id] = user
+    await save_votes_scoped(guild_id, channel_id, scoped)
 
 
 async def remove_vote(

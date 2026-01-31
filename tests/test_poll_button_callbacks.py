@@ -99,7 +99,7 @@ class TestPollButtonCallbacks(BaseTestCase):
             await asyncio.sleep(0)
 
             toggle_mock.assert_awaited_once_with(
-                "42", "vrijdag", "om 19:00 uur", 7, 123
+                "42", "vrijdag", "om 19:00 uur", 7, 123, channel=interaction.channel
             )
             create_view_mock.assert_awaited_once_with("42", 7, 123, dag="vrijdag")
             update_mock.assert_awaited_once_with(interaction.channel, "vrijdag")

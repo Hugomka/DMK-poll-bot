@@ -299,8 +299,14 @@ class PollButton(Button):
                 return
 
             # ✅ Toggle stem (onder lock in poll_storage)
+            # Pass channel for category-based vote syncing
             await toggle_vote(
-                user_id, self.dag, self.tijd, (interaction.guild_id or 0), channel_id
+                user_id,
+                self.dag,
+                self.tijd,
+                (interaction.guild_id or 0),
+                channel_id,
+                channel=interaction.channel,
             )
 
             # ✅ Vernieuw eigen ephemeral view (zelfde bericht)
