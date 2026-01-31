@@ -688,3 +688,177 @@ async def get_non_voters_for_day(
             continue
 
     return len(non_voter_ids), non_voter_ids
+
+
+# === CATEGORY-BASED VOTE SCOPE (DUAL LANGUAGE SUPPORT) =======================
+
+
+async def load_votes_for_scope(
+    guild_id: int | str, scope_channel_ids: list[int]
+) -> Dict[str, Any]:
+    """
+    Load and merge votes from multiple channels in the same category.
+
+    Votes are merged by user_id. If the same user voted in multiple channels,
+    only the first occurrence is kept (typically from their "home" channel).
+
+    Parameters:
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+
+    Returns:
+    - Merged dict of {user_id -> {dag: [tijden]}}
+    """
+    merged: Dict[str, Any] = {}
+    for channel_id in scope_channel_ids:
+        channel_votes = await load_votes(guild_id, channel_id)
+        for user_id, votes in channel_votes.items():
+            # Skip special tracking entries (they're channel-specific)
+            if isinstance(user_id, str) and user_id.startswith("_"):
+                continue
+            # First occurrence wins (user's home channel)
+            if user_id not in merged:
+                merged[user_id] = votes
+    return merged
+
+
+async def get_counts_for_day_scoped(
+    dag: str, guild_id: int | str, scope_channel_ids: list[int]
+) -> Dict[str, int]:
+    """
+    Get vote counts aggregated across all channels in the scope.
+
+    Parameters:
+    - dag: Day name (vrijdag, zaterdag, zondag, etc.)
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+
+    Returns:
+    - Dict of {tijd: count} for all time options on this day
+    """
+    all_votes = await load_votes_for_scope(guild_id, scope_channel_ids)
+    counts: Dict[str, int] = {}
+
+    for o in get_poll_options():
+        if o.dag != dag:
+            continue
+        c = 0
+        for per_user in all_votes.values():
+            tijden = per_user.get(dag, [])
+            if isinstance(tijden, list) and o.tijd in tijden:
+                c += 1
+        counts[o.tijd] = c
+
+    return counts
+
+
+async def calculate_leading_time_scoped(
+    guild_id: int | str, scope_channel_ids: list[int], dag: str
+) -> str | None:
+    """
+    Determine the winning time (19:00 or 20:30) aggregated across all scope channels.
+
+    Rules:
+    - Only "om 19:00 uur" and "om 20:30 uur" count
+    - Tie-breaker: 20:30 wins on ties
+    - Returns "19:00", "20:30", or None if no votes
+
+    Parameters:
+    - guild_id: Guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+    - dag: The day (vrijdag, zaterdag, zondag)
+
+    Returns:
+    - "19:00", "20:30", or None if no votes
+    """
+    T19 = "om 19:00 uur"
+    T2030 = "om 20:30 uur"
+
+    counts = await get_counts_for_day_scoped(dag, guild_id, scope_channel_ids)
+    c19 = counts.get(T19, 0)
+    c2030 = counts.get(T2030, 0)
+
+    if c19 == 0 and c2030 == 0:
+        return None
+
+    if c2030 >= c19:
+        return "20:30"
+    else:
+        return "19:00"
+
+
+async def get_non_voters_for_day_scoped(
+    dag: str, guild_id: int | str, scope_channel_ids: list[int], channels: list
+) -> tuple[int, list[str]]:
+    """
+    Get users who haven't voted across any channel in the scope.
+
+    A user is considered a non-voter only if they haven't voted in ANY of the
+    linked channels.
+
+    Parameters:
+    - dag: Day name
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+    - channels: List of Discord channel objects (to get members)
+
+    Returns:
+    - (count, list of user_ids) of non-voters for this day
+    """
+    # Get all users who HAVE voted in any scope channel
+    voted_users: set[str] = set()
+
+    for cid in scope_channel_ids:
+        votes = await load_votes(guild_id, cid)
+        for user_id, user_votes in votes.items():
+            # Skip special tracking entries
+            if isinstance(user_id, str) and user_id.startswith("_"):
+                continue
+            # Handle guest votes - count the owner as having voted
+            actual_uid = (
+                user_id.split("_guest::", 1)[0]
+                if isinstance(user_id, str) and "_guest::" in user_id
+                else user_id
+            )
+            if dag in user_votes and user_votes[dag]:
+                voted_users.add(str(actual_uid))
+
+    # Get all members from all channels (union of all members)
+    all_members: set[str] = set()
+    for channel in channels:
+        members = getattr(channel, "members", [])
+        for member in members:
+            if getattr(member, "bot", False):
+                continue
+            member_id = str(getattr(member, "id", ""))
+            if member_id:
+                all_members.add(member_id)
+
+    non_voter_ids = list(all_members - voted_users)
+    return len(non_voter_ids), non_voter_ids
+
+
+async def get_voters_for_time_scoped(
+    dag: str, tijd: str, guild_id: int | str, scope_channel_ids: list[int]
+) -> list[str]:
+    """
+    Get user IDs who voted for a specific time slot across all scope channels.
+
+    Parameters:
+    - dag: Day name
+    - tijd: Time slot (e.g., "om 19:00 uur")
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+
+    Returns:
+    - List of user_ids who voted for this time
+    """
+    all_votes = await load_votes_for_scope(guild_id, scope_channel_ids)
+    voter_ids: list[str] = []
+
+    for user_id, per_user in all_votes.items():
+        tijden = per_user.get(dag, [])
+        if isinstance(tijden, list) and tijd in tijden:
+            voter_ids.append(str(user_id))
+
+    return voter_ids

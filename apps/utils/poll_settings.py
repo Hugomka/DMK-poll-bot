@@ -864,6 +864,75 @@ def get_enabled_poll_days(channel_id: int) -> list[str]:
     return [dag for dag in WEEK_DAYS if not is_day_completely_disabled(channel_id, dag)]
 
 
+# ========================================================================
+# Category-Based Vote Scope (Dual Language Support)
+# ========================================================================
+
+
+def get_activated_channels_in_category(guild, category_id: int) -> list[int]:
+    """
+    Return list of channel IDs in this category that have active polls.
+
+    A channel is considered active if:
+    - It's in the specified category
+    - It's not permanently disabled (via /dmk-poll-stopzetten)
+    - It has settings and is not paused
+
+    Args:
+        guild: Discord guild object
+        category_id: The Discord category ID
+
+    Returns:
+        List of channel IDs with active polls in this category
+    """
+    from apps.utils.poll_message import is_channel_disabled
+
+    activated = []
+    for channel in guild.text_channels:
+        if channel.category_id != category_id:
+            continue
+        if is_channel_disabled(channel.id):
+            continue
+        # Check if channel has been activated (has poll settings and not paused)
+        settings = _load_data().get(str(channel.id), {})
+        if settings and not settings.get("__paused__", True):
+            activated.append(channel.id)
+    return activated
+
+
+def get_vote_scope_channels(channel) -> list[int]:
+    """
+    Get all channel IDs that share votes with this channel.
+
+    Returns [channel.id] for standalone channels (no category or only one active
+    channel in category).
+    Returns all activated channel IDs in the same category for linked channels.
+
+    Args:
+        channel: Discord TextChannel object
+
+    Returns:
+        List of channel IDs that share votes
+    """
+    channel_id = getattr(channel, "id", None)
+    if channel_id is None:
+        return []  # Invalid channel object
+
+    category_id = getattr(channel, "category_id", None)
+    if not category_id:
+        return [channel_id]  # No category = standalone
+
+    guild = getattr(channel, "guild", None)
+    if not guild:
+        return [channel_id]
+
+    # Get all activated channels in this category
+    linked = get_activated_channels_in_category(guild, category_id)
+
+    # Only share votes if there are multiple active channels
+    return linked if len(linked) > 1 else [channel_id]
+
+
 def get_enabled_rolling_window_days(
     channel_id: int, dag_als_vandaag: str | None = None
 ) -> list[dict[str, str]]:

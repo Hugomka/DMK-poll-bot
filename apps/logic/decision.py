@@ -1,15 +1,16 @@
 # apps/logic/decision.py
 
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from apps.utils.poll_settings import should_hide_counts
-from apps.utils.poll_storage import get_counts_for_day
+from apps.utils.poll_storage import get_counts_for_day, get_counts_for_day_scoped
 
 # Alleen deze twee tijden doen mee aan de beslissing
 T19 = "om 19:00 uur"
 T2030 = "om 20:30 uur"
-MIN_STEMMEN = 6  # Drempel voor “gaat door”
+MIN_STEMMEN = 6  # Drempel voor "gaat door"
 
 
 async def build_decision_line(
@@ -17,6 +18,7 @@ async def build_decision_line(
     channel_id: int | str,
     dag: str,
     now: datetime | None = None,
+    channel: Any = None,
 ) -> str | None:
     """
     Geeft 1 regel terug die onder het pollbericht kan.
@@ -55,7 +57,17 @@ async def build_decision_line(
         return "⏳ Beslissing komt **om 18:00**."
 
     # Ná de deadline → echte beslissing tonen (gescope per guild en channel)
-    counts = await get_counts_for_day(dag, guild_id, channel_id)
+    # Use category-scoped counts for dual language support
+    if channel:
+        from apps.utils.poll_settings import get_vote_scope_channels
+        scope_ids = get_vote_scope_channels(channel)
+        if len(scope_ids) > 1:
+            # Multiple channels share votes - use aggregated counts
+            counts = await get_counts_for_day_scoped(dag, guild_id, scope_ids)
+        else:
+            counts = await get_counts_for_day(dag, guild_id, channel_id)
+    else:
+        counts = await get_counts_for_day(dag, guild_id, channel_id)
     c19 = counts.get(T19, 0)
     c2030 = counts.get(T2030, 0)
 

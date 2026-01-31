@@ -15,7 +15,7 @@ from apps.utils.discord_client import safe_call
 from apps.utils.poll_message import (
     check_all_voted_celebration,
     clear_message_id,
-    update_poll_message,
+    update_poll_messages_for_category,
 )
 from apps.utils.poll_settings import (
     get_enabled_rolling_window_days,
@@ -332,8 +332,9 @@ class PollButton(Button):
                     pass
 
             # ✅ Update publieke poll (achtergrond, alleen deze dag)
+            # Uses category-wide update for dual language support
             if interaction.channel is not None:
-                asyncio.create_task(update_poll_message(interaction.channel, self.dag))
+                asyncio.create_task(update_poll_messages_for_category(interaction.channel, self.dag))
 
                 # ✅ Update non-voter notification real-time (als die actief is)
                 from apps.utils.mention_utils import update_non_voter_notification

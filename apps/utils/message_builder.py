@@ -10,7 +10,9 @@ from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_settings import get_setting
 from apps.utils.poll_storage import (
     get_counts_for_day,
+    get_counts_for_day_scoped,
     load_votes,
+    load_votes_for_scope,
 )
 from apps.utils.poll_storage import (
     get_non_voters_for_day as get_non_voters_from_storage,
@@ -217,7 +219,20 @@ async def build_poll_message_for_day_async(
 
     # Aantallen per tijd (scoped), tenzij verborgen
     # Voor verleden dagen: altijd counts ophalen (effective_hide_counts is False)
-    counts = {} if effective_hide_counts else await get_counts_for_day(dag, guild_id, channel_id)
+    # Use category-scoped counts for dual language support
+    if effective_hide_counts:
+        counts = {}
+    else:
+        from apps.utils.poll_settings import get_vote_scope_channels
+        if channel:
+            scope_ids = get_vote_scope_channels(channel)
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated counts
+                counts = await get_counts_for_day_scoped(dag, guild_id, scope_ids)
+            else:
+                counts = await get_counts_for_day(dag, guild_id, channel_id)
+        else:
+            counts = await get_counts_for_day(dag, guild_id, channel_id)
 
     # Bepaal of we in deadline-modus zitten (voor misschien-filtering)
     setting = get_setting(int(channel_id), dag) or {}
@@ -274,8 +289,15 @@ async def build_poll_message_for_day_async(
 
     # Voeg niet-stemmers toe (tenzij verborgen via hide_ghosts)
     # Voor verleden dagen: altijd niet-stemmers tonen (effective_hide_ghosts is False)
+    # Use category-scoped votes for dual language support
     if guild and channel and not effective_hide_ghosts:
-        all_votes = await load_votes(guild_id, channel_id)
+        from apps.utils.poll_settings import get_vote_scope_channels
+        scope_ids = get_vote_scope_channels(channel)
+        if len(scope_ids) > 1:
+            # Multiple channels share votes - use aggregated votes
+            all_votes = await load_votes_for_scope(guild_id, scope_ids)
+        else:
+            all_votes = await load_votes(guild_id, channel_id)
         non_voter_count, _ = await get_non_voters_for_day(
             dag, guild, channel, all_votes
         )

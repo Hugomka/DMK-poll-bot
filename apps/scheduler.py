@@ -37,7 +37,9 @@ from apps.utils.poll_settings import (
 )
 from apps.utils.poll_storage import (
     calculate_leading_time,
+    calculate_leading_time_scoped,
     load_votes,
+    load_votes_for_scope,
     reset_votes,
     reset_votes_scoped,
 )
@@ -1000,12 +1002,24 @@ async def notify_non_voters(  # pragma: no cover
             all_members = [m for m in members_src if not getattr(m, "bot", False)]
 
             gid = getattr(guild, "id", "0")
-            votes = await load_votes(gid, cid) or {}
+
+            # Use category-scoped votes for dual language support
+            from apps.utils.poll_settings import get_vote_scope_channels
+            scope_ids = get_vote_scope_channels(ch)
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated votes
+                votes = await load_votes_for_scope(gid, scope_ids) or {}
+            else:
+                votes = await load_votes(gid, cid) or {}
 
             # Calculate leading time at 17:00 for vote analysis
+            # Use scoped version for dual language support
             if dag:
                 try:
-                    leading_time = await calculate_leading_time(gid, cid, dag)
+                    if len(scope_ids) > 1:
+                        leading_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                    else:
+                        leading_time = await calculate_leading_time(gid, cid, dag)
                     if leading_time:
                         print(
                             f"📊 Leading time voor {dag} in channel {cid}: {leading_time}"
@@ -1127,18 +1141,27 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
             # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
-            scoped = (
-                await load_votes(
-                    getattr(guild, "id", "0"),
-                    getattr(channel, "id", "0"),
+            # Use category-scoped votes for dual language support
+            from apps.utils.poll_settings import get_vote_scope_channels
+            scope_ids = get_vote_scope_channels(channel)
+            guild_id = getattr(guild, "id", "0")
+
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated votes
+                scoped = await load_votes_for_scope(guild_id, scope_ids) or {}
+            else:
+                scoped = (
+                    await load_votes(
+                        guild_id,
+                        getattr(channel, "id", "0"),
+                    )
+                    or {}
                 )
-                or {}
-            )
 
             # Tel totale stemmen (inclusief gasten), niet alleen unieke eigenaren
             c19 = 0
             c2030 = 0
-            for uid, per_dag in scoped.items():
+            for _uid, per_dag in scoped.items():
                 tijden = (per_dag or {}).get(dag, [])
                 if not isinstance(tijden, list):
                     continue
@@ -1445,7 +1468,15 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
             # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
             gid = getattr(guild, "id", "0")
-            votes = await load_votes(gid, cid) or {}
+
+            # Use category-scoped votes for dual language support
+            from apps.utils.poll_settings import get_vote_scope_channels
+            scope_ids = get_vote_scope_channels(channel)
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated votes
+                votes = await load_votes_for_scope(gid, scope_ids) or {}
+            else:
+                votes = await load_votes(gid, cid) or {}
 
             # Vind "misschien" stemmers voor deze dag
             misschien_voter_ids = await _get_voted_ids(votes, dag=dag, vote_type="misschien")
@@ -1466,9 +1497,13 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
                 continue  # No misschien voters in this channel
 
             # Calculate leading time
+            # Use scoped version for dual language support
             leading_time = None
             try:
-                leading_time = await calculate_leading_time(gid, cid, dag)
+                if len(scope_ids) > 1:
+                    leading_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                else:
+                    leading_time = await calculate_leading_time(gid, cid, dag)
             except Exception:  # pragma: no cover
                 pass
 
