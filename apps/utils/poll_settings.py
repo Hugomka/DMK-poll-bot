@@ -933,6 +933,67 @@ def get_vote_scope_channels(channel) -> list[int]:
     return linked if len(linked) > 1 else [channel_id]
 
 
+# Settings that should be synced across linked channels in the same category.
+# Everything except __language__ which is intentionally per-channel for dual language support.
+SYNCED_SETTINGS = [
+    "__poll_options__",
+    "__period_settings__",
+    "__reminder_time__",
+    "__notification_states__",
+    "__paused__",
+    "__scheduled_activation__",
+]
+
+
+def sync_settings_to_category(channel) -> None:
+    """
+    Sync all shared settings from this channel to all linked channels in the category.
+
+    When settings are changed in one channel, this function copies them to all other
+    channels in the same category that share votes. This ensures consistent behavior
+    across language variants.
+
+    Settings synced: poll options, period settings, reminder time, notification states,
+    paused state, and scheduled activation.
+
+    Settings NOT synced: language (intentionally different per channel).
+
+    Args:
+        channel: Discord TextChannel object
+    """
+    scope_ids = get_vote_scope_channels(channel)
+    if len(scope_ids) <= 1:
+        return  # No other channels to sync
+
+    channel_id = getattr(channel, "id", None)
+    if channel_id is None:
+        return
+
+    source_id = str(channel_id)
+    data = _load_data()
+    source_settings = data.get(source_id, {})
+
+    if not source_settings:
+        return
+
+    for cid in scope_ids:
+        if cid != channel_id:
+            target_id = str(cid)
+            if target_id not in data:
+                data[target_id] = {}
+            for key in SYNCED_SETTINGS:
+                if key in source_settings:
+                    value = source_settings[key]
+                    # Deep copy dicts, shallow copy other values
+                    data[target_id][key] = value.copy() if isinstance(value, dict) else value
+
+    _save_data(data)
+
+
+# Backwards compatibility alias
+sync_poll_options_to_category = sync_settings_to_category
+
+
 def get_enabled_rolling_window_days(
     channel_id: int, dag_als_vandaag: str | None = None
 ) -> list[dict[str, str]]:

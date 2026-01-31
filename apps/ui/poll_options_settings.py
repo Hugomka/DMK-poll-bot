@@ -189,6 +189,11 @@ class PollOptionButton(discord.ui.Button):
             # Toggle de optie
             nieuwe_status = toggle_poll_option(channel_id, self.dag, self.tijd)
 
+            # Sync all settings to linked channels in the category
+            from apps.utils.poll_settings import sync_settings_to_category
+
+            sync_settings_to_category(interaction.channel)
+
             # Update button status
             self.enabled = nieuwe_status
 

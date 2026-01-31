@@ -108,6 +108,11 @@ class NotificationButton(discord.ui.Button):
             # Toggle de notificatie instelling
             nieuwe_status = toggle_notification_setting(channel_id, self.key)
 
+            # Sync all settings to linked channels in the category
+            from apps.utils.poll_settings import sync_settings_to_category
+
+            sync_settings_to_category(interaction.channel)
+
             # Update button style
             self.enabled = nieuwe_status
             self.style = (
