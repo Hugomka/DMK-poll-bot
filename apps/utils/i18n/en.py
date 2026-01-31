@@ -247,7 +247,7 @@ OPENING = {
     "how_multiple": "You can choose multiple times",
     "how_change": "You can always change your vote",
     "guests_title": "👥 **Bringing guests?**",
-    "guests_instruction": "Use `/gast-add` to add guests to your vote.",
+    "guests_instruction": "Use `/guest-add` to add guests to your vote.",
     "have_fun": "Have fun! 🎉",
     "fallback": "Click **🗳️ Vote** to make your choices.\n\nHave fun! 🎉",
 }

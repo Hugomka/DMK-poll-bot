@@ -32,7 +32,7 @@ def _mk_choice(name: str, value: str) -> Any:
 
 
 class TestPollGuestsAdd(BaseTestCase):
-    """Tests voor /gast-add command"""
+    """Tests voor /guest-add command"""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -71,7 +71,7 @@ class TestPollGuestsAdd(BaseTestCase):
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
         slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
 
-        await self._run(self.cog.gast_add, interaction, slot, "")
+        await self._run(self.cog.guest_add, interaction, slot, "")
 
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
@@ -88,7 +88,7 @@ class TestPollGuestsAdd(BaseTestCase):
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
         slot = _mk_choice("Zaterdag 20:30", "zaterdag|om 20:30 uur")
 
-        await self._run(self.cog.gast_add, interaction, slot, "  ,  ,  ")
+        await self._run(self.cog.guest_add, interaction, slot, "  ,  ,  ")
 
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
@@ -111,7 +111,7 @@ class TestPollGuestsAdd(BaseTestCase):
         ) as mock_add, patch(
             "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
         ) as mock_update:
-            await self._run(self.cog.gast_add, interaction, slot, "Mario, Luigi")
+            await self._run(self.cog.guest_add, interaction, slot, "Mario, Luigi")
 
         # add_guest_votes moet zijn aangeroepen met juiste parameters
         mock_add.assert_awaited_once_with(789, "vrijdag", "om 19:00 uur", ["Mario", "Luigi"], 456, 123)
@@ -144,7 +144,7 @@ class TestPollGuestsAdd(BaseTestCase):
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=([], ["Peach", "Toad"])),
         ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Peach, Toad")
+            await self._run(self.cog.guest_add, interaction, slot, "Peach, Toad")
 
         # Moet bevestiging sturen met overgeslagen lijst
         interaction.followup.send.assert_awaited_once()
@@ -171,7 +171,7 @@ class TestPollGuestsAdd(BaseTestCase):
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario"], ["Luigi"])),
         ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario, Luigi")
+            await self._run(self.cog.guest_add, interaction, slot, "Mario, Luigi")
 
         # Moet beide secties tonen
         interaction.followup.send.assert_awaited_once()
@@ -198,7 +198,7 @@ class TestPollGuestsAdd(BaseTestCase):
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=([], [])),
         ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario")
+            await self._run(self.cog.guest_add, interaction, slot, "Mario")
 
         # Moet (niets gewijzigd) tonen
         interaction.followup.send.assert_awaited_once()
@@ -220,7 +220,7 @@ class TestPollGuestsAdd(BaseTestCase):
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario", "Luigi", "Peach"], [])),
         ) as mock_add, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario; Luigi; Peach")
+            await self._run(self.cog.guest_add, interaction, slot, "Mario; Luigi; Peach")
 
         # Moet gesplitst zijn op puntkomma
         mock_add.assert_awaited_once()
@@ -243,7 +243,7 @@ class TestPollGuestsAdd(BaseTestCase):
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario", "Luigi"], [])),
         ) as mock_add, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario, Luigi; Peach")
+            await self._run(self.cog.guest_add, interaction, slot, "Mario, Luigi; Peach")
 
         # Moet gesplitst zijn op beide
         mock_add.assert_awaited_once()
@@ -266,7 +266,7 @@ class TestPollGuestsAdd(BaseTestCase):
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario"], [])),
         ) as mock_add, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario")
+            await self._run(self.cog.guest_add, interaction, slot, "Mario")
 
         # Moet guild "0" gebruiken
         mock_add.assert_awaited_once()
@@ -276,7 +276,7 @@ class TestPollGuestsAdd(BaseTestCase):
 
 
 class TestPollGuestsRemove(BaseTestCase):
-    """Tests voor /gast-remove command"""
+    """Tests voor /guest-remove command"""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -315,7 +315,7 @@ class TestPollGuestsRemove(BaseTestCase):
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
         slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
 
-        await self._run(self.cog.gast_remove, interaction, slot, "")
+        await self._run(self.cog.guest_remove, interaction, slot, "")
 
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
@@ -338,7 +338,7 @@ class TestPollGuestsRemove(BaseTestCase):
         ) as mock_remove, patch(
             "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
         ) as mock_update:
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario, Luigi")
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario, Luigi")
 
         # remove_guest_votes moet zijn aangeroepen met juiste parameters
         mock_remove.assert_awaited_once_with(789, "vrijdag", "om 19:00 uur", ["Mario", "Luigi"], 456, 123)
@@ -371,7 +371,7 @@ class TestPollGuestsRemove(BaseTestCase):
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=([], ["Peach", "Toad"])),
         ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Peach, Toad")
+            await self._run(self.cog.guest_remove, interaction, slot, "Peach, Toad")
 
         # Moet bevestiging sturen met niet gevonden lijst
         interaction.followup.send.assert_awaited_once()
@@ -397,7 +397,7 @@ class TestPollGuestsRemove(BaseTestCase):
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=(["Mario"], ["Luigi"])),
         ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario, Luigi")
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario, Luigi")
 
         # Moet beide secties tonen
         interaction.followup.send.assert_awaited_once()
@@ -424,7 +424,7 @@ class TestPollGuestsRemove(BaseTestCase):
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=([], [])),
         ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario")
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario")
 
         # Moet (niets gewijzigd) tonen
         interaction.followup.send.assert_awaited_once()
@@ -444,7 +444,7 @@ class TestPollGuestsRemove(BaseTestCase):
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=(["Mario"], [])),
         ) as mock_remove, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario")
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario")
 
         # Moet guild "0" gebruiken
         mock_remove.assert_awaited_once()

@@ -247,7 +247,7 @@ OPENING = {
     "how_multiple": "Je kunt meerdere tijden kiezen",
     "how_change": "Je kunt je stem altijd aanpassen",
     "guests_title": "👥 **Gasten meebrengen?**",
-    "guests_instruction": "Gebruik `/gast-add` om gasten toe te voegen aan je stem.",
+    "guests_instruction": "Gebruik `/guest-add` om gasten toe te voegen aan je stem.",
     "have_fun": "Veel plezier! 🎉",
     "fallback": "Klik op **🗳️ Stemmen** om je keuzes aan te geven.\n\nVeel plezier! 🎉",
 }

@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from discord import app_commands
 
-from apps.commands.poll_lifecycle import PollLifecycle
-from apps.commands.poll_votes import PollVotes
 from apps.commands.poll_archive import PollArchive
 from apps.commands.poll_guests import PollGuests
+from apps.commands.poll_lifecycle import PollLifecycle
 from apps.commands.poll_status import PollStatus
+from apps.commands.poll_votes import PollVotes
 from tests.base import BaseTestCase
 
 
@@ -129,7 +129,9 @@ class TestPollArchiveCommands(BaseTestCase):
         channel = MagicMock(id=1)
         interaction = _mk_interaction(channel=channel, admin=True)
 
-        with patch("apps.commands.poll_archive.archive_exists_scoped", return_value=False):
+        with patch(
+            "apps.commands.poll_archive.archive_exists_scoped", return_value=False
+        ):
             await self._run(self.cog.archief, interaction)
 
         interaction.followup.send.assert_called()
@@ -141,7 +143,7 @@ class TestPollArchiveCommands(BaseTestCase):
 
 
 class TestPollGuestsCommands(BaseTestCase):
-    """Tests for PollGuests cog (gast-add, gast-remove)"""
+    """Tests for PollGuests cog (guest-add, guest-remove)"""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -163,7 +165,7 @@ class TestPollGuestsCommands(BaseTestCase):
             return args[0]
         return ""
 
-    async def test_gast_add_invalid_names_sends_warning(self):
+    async def test_guest_add_invalid_names_sends_warning(self):
         guild = MagicMock(id=1)
         channel = MagicMock(id=2, guild=guild)
 
@@ -182,10 +184,10 @@ class TestPollGuestsCommands(BaseTestCase):
             "apps.utils.poll_storage.add_guest_votes", new=AsyncMock()
         ) as add:
             await self._run(
-                self.cog.gast_add,
+                self.cog.guest_add,
                 interaction,
                 slot=slot,
-                namen=" ; ,  ,  ;  ",
+                names=" ; ,  ,  ;  ",
             )
 
         interaction.followup.send.assert_called()
@@ -196,7 +198,7 @@ class TestPollGuestsCommands(BaseTestCase):
         add.assert_not_awaited()
         upd.assert_not_awaited()
 
-    async def test_gast_remove_invalid_names_sends_warning(self):
+    async def test_guest_remove_invalid_names_sends_warning(self):
         guild = MagicMock(id=1)
         channel = MagicMock(id=2, guild=guild)
 
@@ -215,10 +217,10 @@ class TestPollGuestsCommands(BaseTestCase):
             "apps.utils.poll_message.update_poll_message", new=AsyncMock()
         ) as upd:
             await self._run(
-                self.cog.gast_remove,
+                self.cog.guest_remove,
                 interaction,
                 slot=slot,
-                namen=" , ;  ",
+                names=" , ;  ",
             )
 
         interaction.followup.send.assert_called()
@@ -274,7 +276,9 @@ class TestPollStatusCommands(BaseTestCase):
         with patch("apps.utils.poll_settings.is_paused", return_value=False), patch(
             "apps.utils.poll_settings.get_setting",
             side_effect=lambda cid, d: {"modus": "altijd"},
-        ), patch("apps.entities.poll_option.get_poll_options", return_value=opties), patch(
+        ), patch(
+            "apps.entities.poll_option.get_poll_options", return_value=opties
+        ), patch(
             "apps.utils.poll_storage.load_votes", new=AsyncMock(return_value={})
         ), patch(
             "apps.utils.message_builder.build_grouped_names_for",
@@ -303,6 +307,7 @@ class TestErrorHandling(BaseTestCase):
         self.bot = MagicMock()
         # Import parent DMKPoll for error handler testing
         from apps.commands.dmk_poll import DMKPoll
+
         self.cog = DMKPoll(self.bot)
 
     async def _run(self, cmd, *args, **kwargs):

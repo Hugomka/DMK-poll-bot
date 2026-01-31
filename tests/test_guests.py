@@ -26,7 +26,7 @@ class TestGasten(BaseTestCase):
         self.mock_bot = MagicMock()
         self.cog = PollStatus(self.mock_bot)
 
-    # --- /gast-add: gasten worden toegevoegd en tellen mee ---
+    # --- /guest-add: gasten worden toegevoegd en tellen mee ---
     async def test_gast_add_telt_mee(self):
         # Voeg 2 gasten toe
         toegevoegd, overgeslagen = await add_guest_votes(
@@ -47,7 +47,7 @@ class TestGasten(BaseTestCase):
         count = await get_votes_for_option(DAG, TIJD, 1, 123)
         self.assertEqual(count, 2)
 
-    # --- /gast-remove: specifieke namen worden verwijderd ---
+    # --- /guest-remove: specifieke namen worden verwijderd ---
     async def test_gast_remove_verwijdert_correct(self):
         # Start met drie gasten
         await add_guest_votes(OWNER, DAG, TIJD, ["Toad", "Luigi", "Peach"], 1, 123)

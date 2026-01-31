@@ -121,8 +121,8 @@ DMK-poll-bot works with **Slash commands** (type `/` in Discord).
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pause/names status and per day the counts with names. |
 | **`/dmk-poll-notify`** *(default: admin/mod)* | Send a notification manually. Choose from 7 standard notifications or use custom text. Extra option: `ping` to choose between @everyone, @here (only online users), or no ping (silent notification). |
 | **`/dmk-poll-taal`** *(default: admin/mod)* | Change the channel's language. Choose between 🇳🇱 Nederlands and 🇺🇸 English. |
-| **`/gast-add`** | Add guest votes: `/gast-add slot:"Friday 8:30 PM" namen:"Mario, Luigi"` |
-| **`/gast-remove`** | Remove guest votes: `/gast-remove slot:"Friday 8:30 PM" namen:"Mario"` |
+| **`/guest-add`** | Add guest votes: `/guest-add slot:"Saturday 8:30 PM" names:"Mario, Luigi"` |
+| **`/guest-remove`** | Remove guest votes: `/guest-remove slot:"Saturday 8:30 PM" names:"Mario"` |
 
 **Note:** Most admin commands give **ephemeral** feedback (only visible to you), keeping the channel clean.
 
@@ -146,7 +146,7 @@ Admins and moderators can **customize** this per server via Discord:
 - **Add guest:**
   Example:
 ```
-/gast-add slot:"Saturday 7:00 PM" namen:"Pauline, King Boo"
+/guest-add slot:"Saturday 7:00 PM (Zaterdag 19:00)" names:"Pauline, King Boo"
 ```
 
 You can separate multiple names with commas or `;`. The bot reports which guests were added and which already existed.
@@ -154,7 +154,7 @@ You can separate multiple names with commas or `;`. The bot reports which guests
 - **Remove guest:**
 Example:
 ```
-/gast-remove slot:"Saturday 7:00 PM" namen:"King Boo"
+/guest-remove slot:"Saturday 7:00 PM (Zaterdag 19:00)" names:"King Boo"
 ```
 The bot reports which names were removed or not found.
 

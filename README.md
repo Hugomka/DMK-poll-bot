@@ -120,8 +120,8 @@ DMK-poll-bot werkt met **Slash commando's** (typ `/` in Discord).
 | **`/dmk-poll-archief`** *(default: admin/mod)* | Bekijk en beheer het CSV-archief: kies CSV-formaat (🇺🇸 Comma / 🇳🇱 Semicolon), download direct, of verwijder archief. |
 | **`/dmk-poll-status`** *(default: admin/mod)* | Ephemeral embed: pauze/namen-status en per dag de aantallen met namen. |
 | **`/dmk-poll-notify`** *(default: admin/mod)* | Stuur handmatig een notificatie. Kies uit 7 standaard notificaties of gebruik een eigen tekst. Extra optie: `ping` om te kiezen tussen @everyone, @here (alleen online users) of geen ping (stille notificatie). |
-| **`/gast-add`** | Voeg gaststemmen toe: `/gast-add slot:"Vrijdag 20:30" namen:"Mario, Luigi"` |
-| **`/gast-remove`** | Verwijder gaststemmen: `/gast-remove slot:"Vrijdag 20:30" namen:"Mario"` |
+| **`/guest-add`** | Voeg gaststemmen toe: `/guest-add slot:"Saturday 8:30 PM" names:"Mario, Luigi"` |
+| **`/guest-remove`** | Verwijder gaststemmen: `/guest-remove slot:"Saturday 8:30 PM" names:"Mario"` |
 | **`/dmk-poll-taal`** *(default: admin/mod)* | Wijzig de taal van het kanaal. Kies tussen 🇳🇱 Nederlands en 🇺🇸 English. |
 
 **Opmerking:** De meeste admin-commando's geven **ephemeral** feedback (alleen zichtbaar voor jou), zodat het kanaal schoon blijft.
@@ -146,7 +146,7 @@ Beheerders en moderators kunnen dit per server **aanpassen** via Discord:
 - **Gast toevoegen:**
   Voorbeeld:
 ```
-/gast-add slot:"Zaterdag 19:00" namen:"Pauline, King Boo"
+/guest-add slot:"Saturday 7:00 PM (Zaterdag 19:00)" names:"Pauline, King Boo"
 ```
 
 Je kunt meerdere namen scheiden met komma's of `;`. De bot meldt welke gasten zijn toegevoegd en welke al bestonden.
@@ -154,7 +154,7 @@ Je kunt meerdere namen scheiden met komma's of `;`. De bot meldt welke gasten zi
 - **Gast verwijderen:**
 Voorbeeld:
 ```
-/gast-remove slot:"Zaterdag 19:00" namen:"King Boo"
+/guest-remove slot:"Saturday 7:00 PM (Zaterdag 19:00)" names:"King Boo"
 ```
 De bot meldt welke namen zijn verwijderd of niet gevonden.
 
@@ -662,7 +662,7 @@ Elke week organiseren we DMK-avonden op vrijdag, zaterdag en zondag. Stem hieron
 • Je kunt je stem altijd aanpassen
 
 👥 **Gasten meebrengen?**
-Gebruik `/gast-add` om gasten toe te voegen aan je stem.
+Gebruik `/guest-add` om gasten toe te voegen aan je stem.
 
 Veel plezier! 🎉
 ```
