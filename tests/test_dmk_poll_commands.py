@@ -169,12 +169,8 @@ class TestPollGuestsCommands(BaseTestCase):
         guild = MagicMock(id=1)
         channel = MagicMock(id=2, guild=guild)
 
-        Choice = type(
-            "Choice",
-            (),
-            {"__init__": lambda self, value: setattr(self, "value", value)},
-        )
-        slot = Choice("vrijdag|om 19:00 uur")
+        # slot is now a plain string (autocomplete value)
+        slot = "vrijdag|om 19:00 uur"
 
         interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
 
@@ -202,12 +198,8 @@ class TestPollGuestsCommands(BaseTestCase):
         guild = MagicMock(id=1)
         channel = MagicMock(id=2, guild=guild)
 
-        Choice = type(
-            "Choice",
-            (),
-            {"__init__": lambda self, value: setattr(self, "value", value)},
-        )
-        slot = Choice("zaterdag|om 20:30 uur")
+        # slot is now a plain string (autocomplete value)
+        slot = "zaterdag|om 20:30 uur"
 
         interaction = _mk_interaction(channel=channel, admin=True, guild=guild)
 

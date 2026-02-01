@@ -6,9 +6,7 @@ Tests voor poll_guests.py om coverage te verhogen van 53% naar 80%+
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from discord import app_commands
-
-from apps.commands.poll_guests import PollGuests
+from apps.commands.poll_guests import PollGuests, slot_autocomplete, ALL_SLOTS
 from tests.base import BaseTestCase
 
 
@@ -23,12 +21,114 @@ def _mk_interaction(channel: Any = None, guild: Any = None, user: Any = None) ->
     return interaction
 
 
-def _mk_choice(name: str, value: str) -> Any:
-    """Maakt een app_commands.Choice mock."""
-    choice = MagicMock(spec=app_commands.Choice)
-    choice.name = name
-    choice.value = value
-    return choice
+class TestSlotAutocomplete(BaseTestCase):
+    """Tests voor slot_autocomplete function"""
+
+    async def test_autocomplete_returns_only_enabled_slots(self):
+        """Test dat autocomplete alleen enabled slots teruggeeft"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        # Mock get_poll_option_state to only enable vrijdag 19:00 and zaterdag 20:30
+        def mock_option_state(channel_id, dag, tijd):
+            return (dag == "vrijdag" and tijd == "19:00") or (
+                dag == "zaterdag" and tijd == "20:30"
+            )
+
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            side_effect=mock_option_state,
+        ):
+            choices = await slot_autocomplete(interaction, "")
+
+        # Should only return 2 choices
+        assert len(choices) == 2
+        values = [c.value for c in choices]
+        assert "vrijdag|om 19:00 uur" in values
+        assert "zaterdag|om 20:30 uur" in values
+
+    async def test_autocomplete_filters_by_current_input(self):
+        """Test dat autocomplete filtert op basis van huidige input"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        # Enable all slots
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=True,
+        ):
+            # Filter by "zater" should only return zaterdag slots
+            choices = await slot_autocomplete(interaction, "zater")
+
+        assert len(choices) == 2
+        for choice in choices:
+            assert "zaterdag" in choice.value.lower()
+
+    async def test_autocomplete_case_insensitive_filter(self):
+        """Test dat autocomplete case-insensitieve filtering gebruikt"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=True,
+        ):
+            # Filter by "VRIJDAG" (uppercase) should still match
+            choices = await slot_autocomplete(interaction, "VRIJDAG")
+
+        assert len(choices) == 2
+        for choice in choices:
+            assert "vrijdag" in choice.value.lower()
+
+    async def test_autocomplete_empty_when_all_disabled(self):
+        """Test dat autocomplete lege lijst geeft als alles disabled is"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=False,
+        ):
+            choices = await slot_autocomplete(interaction, "")
+
+        assert len(choices) == 0
+
+    async def test_autocomplete_handles_missing_channel(self):
+        """Test dat autocomplete werkt zonder channel"""
+        interaction = _mk_interaction(channel=None)
+
+        # Should use channel_id 0 and not crash
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=True,
+        ):
+            choices = await slot_autocomplete(interaction, "")
+
+        # Should return all 14 slots when all enabled
+        assert len(choices) == 14
+
+    async def test_all_slots_constant_has_14_entries(self):
+        """Test dat ALL_SLOTS constant 14 entries heeft (7 dagen x 2 tijden)"""
+        assert len(ALL_SLOTS) == 14
+
+        # Check structure
+        for dag, tijd, display_name in ALL_SLOTS:
+            assert dag in [
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ]
+            assert tijd in ["19:00", "20:30"]
+            assert dag.capitalize() in display_name
+            assert tijd in display_name
 
 
 class TestPollGuestsAdd(BaseTestCase):
@@ -69,7 +169,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         await self._run(self.cog.guest_add, interaction, slot, "")
 
@@ -86,7 +186,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 20:30", "zaterdag|om 20:30 uur")
+        slot = "zaterdag|om 20:30 uur"
 
         await self._run(self.cog.guest_add, interaction, slot, "  ,  ,  ")
 
@@ -103,7 +203,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -138,7 +238,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 19:00", "zaterdag|om 19:00 uur")
+        slot = "zaterdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -165,7 +265,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zondag 20:30", "zondag|om 20:30 uur")
+        slot = "zondag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -192,7 +292,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 20:30", "vrijdag|om 20:30 uur")
+        slot = "vrijdag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -214,7 +314,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -237,7 +337,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 19:00", "zaterdag|om 19:00 uur")
+        slot = "zaterdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -260,7 +360,7 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=None, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
@@ -313,7 +413,7 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         await self._run(self.cog.guest_remove, interaction, slot, "")
 
@@ -330,7 +430,7 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
@@ -365,7 +465,7 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 20:30", "zaterdag|om 20:30 uur")
+        slot = "zaterdag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
@@ -391,7 +491,7 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zondag 19:00", "zondag|om 19:00 uur")
+        slot = "zondag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
@@ -418,7 +518,7 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 20:30", "vrijdag|om 20:30 uur")
+        slot = "vrijdag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
@@ -438,7 +538,7 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=None, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
