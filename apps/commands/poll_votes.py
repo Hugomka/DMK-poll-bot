@@ -11,6 +11,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from apps.commands import with_default_suffix
+from apps.utils.i18n import t
 from apps.utils.poll_message import update_poll_message
 from apps.utils.poll_settings import get_enabled_poll_days, set_visibility
 
@@ -59,8 +60,12 @@ class PollVotes(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            await interaction.followup.send(
+                t(0, "ERRORS.no_channel"), ephemeral=True
+            )
             return
+
+        cid = channel.id
 
         try:
             if dag and dag.value:
@@ -81,25 +86,27 @@ class PollVotes(commands.Cog):
             modus = (laatste or {}).get("modus", "deadline")
 
             if modus == "altijd":
-                modus_txt = "altijd zichtbaar"
+                modus_txt = t(cid, "STATUS.visibility_always")
             elif modus == "deadline_show_ghosts":
-                modus_txt = f"verborgen tot {tijd_txt} (behalve niet gestemd)"
+                modus_txt = t(cid, "STATUS.visibility_deadline_show_ghosts", tijd=tijd_txt)
             else:
-                modus_txt = f"verborgen tot {tijd_txt}"
+                modus_txt = t(cid, "STATUS.visibility_deadline", tijd=tijd_txt)
 
             if dag and dag.value:
                 await interaction.followup.send(
-                    f"⚙️ Instelling voor {dag.value} gewijzigd naar: **{modus_txt}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
+                    t(cid, "COMMANDS.setting_changed", dag=dag.value, mode=modus_txt),
                     ephemeral=True,
                 )
             else:
                 await interaction.followup.send(
-                    f"⚙️ Instellingen voor alle dagen gewijzigd naar: **{modus_txt}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
+                    t(cid, "COMMANDS.settings_all_changed", mode=modus_txt),
                     ephemeral=True,
                 )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

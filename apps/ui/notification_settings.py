@@ -4,70 +4,42 @@
 
 import discord
 
+from apps.utils.i18n import t
 from apps.utils.poll_settings import (
     get_all_notification_states,
     toggle_notification_setting,
 )
 
-# Notificatie type definities met labels en tijden
+# Notificatie type definities (labels komen uit i18n)
+# Key mapping naar i18n keys
+NOTIFICATION_TYPE_KEYS = {
+    "poll_opened": "notif_poll_opened",
+    "poll_reset": "notif_poll_reset",
+    "poll_closed": "notif_poll_closed",
+    "reminders": "notif_reminders",
+    "thursday_reminder": "notif_thursday_reminder",
+    "misschien": "notif_misschien",
+    "doorgaan": "notif_doorgaan",
+    "celebration": "notif_celebration",
+}
+
+# Notificatie type definities met tijden en defaults
 NOTIFICATION_TYPES = [
-    {
-        "key": "poll_opened",
-        "label": "Poll geopend",
-        "tijd": "di 20:00",
-        "emoji": "📂",
-        "default": True,
-    },
-    {
-        "key": "poll_reset",
-        "label": "Poll gereset",
-        "tijd": "di 20:00",
-        "emoji": "🔄",
-        "default": True,
-    },
-    {
-        "key": "poll_closed",
-        "label": "Poll gesloten",
-        "tijd": "ma 00:00",
-        "emoji": "🔒",
-        "default": True,
-    },
-    {
-        "key": "reminders",
-        "label": "Herinnering stemmen",
-        "tijd": "vr/za/zo 16:00",
-        "emoji": "⏰",
-        "default": False,
-    },
-    {
-        "key": "thursday_reminder",
-        "label": "Herinnering weekend",
-        "tijd": "do 20:00",
-        "emoji": "📅",
-        "default": False,
-    },
-    {
-        "key": "misschien",
-        "label": "Herinnering misschien",
-        "tijd": "17:00",
-        "emoji": "❓",
-        "default": False,
-    },
-    {
-        "key": "doorgaan",
-        "label": "Doorgaan",
-        "tijd": "18:00",
-        "emoji": "✅",
-        "default": True,
-    },
-    {
-        "key": "celebration",
-        "label": "Felicitatie",
-        "tijd": "automaat",
-        "emoji": "🎉",
-        "default": True,
-    },
+    {"key": "poll_opened", "tijd": "di 20:00", "emoji": "📂", "default": True},
+    {"key": "poll_reset", "tijd": "di 20:00", "emoji": "🔄", "default": True},
+    {"key": "poll_closed", "tijd": "ma 00:00", "emoji": "🔒", "default": True},
+    {"key": "reminders", "tijd": "vr/za/zo 16:00", "emoji": "⏰", "default": False},
+    {"key": "thursday_reminder", "tijd": "do 20:00", "emoji": "📅", "default": False},
+    {"key": "misschien", "tijd": "17:00", "emoji": "❓", "default": False},
+    {"key": "doorgaan", "tijd": "18:00", "emoji": "✅", "default": True},
+    {"key": "celebration", "tijd": "automaat", "emoji": "🎉", "default": True},
 ]
+
+
+def get_notification_label(key: str, channel_id: int = 0) -> str:
+    """Get translated label for a notification type."""
+    i18n_key = NOTIFICATION_TYPE_KEYS.get(key, key)
+    return t(channel_id, f"SETTINGS.{i18n_key}")
 
 
 class NotificationSettingsView(discord.ui.View):
@@ -84,11 +56,12 @@ class NotificationSettingsView(discord.ui.View):
         for notif_type in NOTIFICATION_TYPES:
             key = notif_type["key"]
             enabled = states.get(key, notif_type["default"])
+            label = get_notification_label(key, channel_id)
 
             self.add_item(
                 NotificationButton(
                     key=key,
-                    label=notif_type["label"],
+                    label=label,
                     tijd=notif_type["tijd"],
                     emoji=notif_type["emoji"],
                     enabled=enabled,
@@ -127,13 +100,18 @@ class NotificationButton(discord.ui.Button):
         channel_id = interaction.channel_id
         if not channel_id:
             await interaction.response.send_message(
-                "❌ Kan channel ID niet bepalen.", ephemeral=True
+                "❌ Cannot determine channel ID.", ephemeral=True
             )
             return
 
         try:
             # Toggle de notificatie instelling
             nieuwe_status = toggle_notification_setting(channel_id, self.key)
+
+            # Sync all settings to linked channels in the category
+            from apps.utils.poll_settings import sync_settings_to_category
+
+            sync_settings_to_category(interaction.channel)
 
             # Update button style
             self.enabled = nieuwe_status
@@ -149,31 +127,34 @@ class NotificationButton(discord.ui.Button):
         except Exception as e:
             # Toon errors
             await interaction.followup.send(
-                f"❌ Fout bij togglen notificatie: {e}", ephemeral=True
+                f"❌ {t(channel_id, 'ERRORS.toggle_notification', error=str(e))}", ephemeral=True
             )
 
 
-def create_notification_settings_embed() -> discord.Embed:
+def create_notification_settings_embed(channel_id: int | None = None) -> discord.Embed:
     """Maak embed voor notificatie instellingen."""
+    cid = channel_id or 0
+
     # Voeg legenda toe voor elke notificatie
     legend_lines = []
     for notif in NOTIFICATION_TYPES:
-        legend_lines.append(f"{notif['emoji']} **{notif['label']}**: {notif['tijd']}")
+        label = get_notification_label(notif["key"], cid)
+        legend_lines.append(f"{notif['emoji']} **{label}**: {notif['tijd']}")
 
     description = (
-        "Schakel automatische notificaties in of uit. "
-        "Deze instellingen bepalen welke notificaties de bot automatisch verstuurt.\n\n"
-        "**Legenda:**\n"
+        f"{t(cid, 'SETTINGS.notification_settings_description')}\n\n"
+        f"**{t(cid, 'SETTINGS.notification_legend')}:**\n"
         + "\n".join(legend_lines)
-        + "\n\n**Status:**\n🟢 Groen = Actief\n⚪ Grijs = Uitgeschakeld"
+        + f"\n\n**{t(cid, 'SETTINGS.notification_status')}:**\n"
+        + f"{t(cid, 'SETTINGS.status_active')}\n{t(cid, 'SETTINGS.status_inactive')}"
     )
 
     embed = discord.Embed(
-        title="🔔 Instellingen Notificaties",
+        title=t(cid, "SETTINGS.notification_settings_title"),
         description=description,
         color=discord.Color.blue(),
     )
 
-    embed.set_footer(text="Klik op een knop om de status te togglen")
+    embed.set_footer(text=t(cid, "SETTINGS.click_to_toggle"))
 
     return embed

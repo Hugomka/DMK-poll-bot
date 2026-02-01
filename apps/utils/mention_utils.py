@@ -11,7 +11,13 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from apps.utils.discord_client import safe_call
+from apps.utils.i18n import t
 from apps.utils.poll_message import clear_message_id, get_message_id, save_message_id
+
+
+def _get_notification_heading(channel_id: int) -> str:
+    """Get localized notification heading for a channel."""
+    return t(channel_id, "NOTIFICATIONS.notification_heading")
 
 # Storage voor non-voter notification metadata (per kanaal)
 # Format: {channel_id: {"dag": str, "deadline_time": str, "message_id": int}}
@@ -101,7 +107,7 @@ async def send_temporary_mention(
 
     # Build content using renderer (no comma artifacts, clean layout)
     content = render_notification_content(
-        heading=":mega: Notificatie:",
+        heading=_get_notification_heading(cid),
         mentions=mentions,
         text=text,
         footer=None,
@@ -124,7 +130,7 @@ async def send_temporary_mention(
 
         # Stap 3: Plan privacy removal (na 5 seconden)
         asyncio.create_task(
-            _remove_mentions_after_delay(msg, delay, text, view, show_button)
+            _remove_mentions_after_delay(msg, delay, text, view, show_button, cid)
         )
 
         # Stap 4: Plan auto-delete (na delete_after_hours)
@@ -138,7 +144,7 @@ async def send_temporary_mention(
 
 
 async def _remove_mentions_after_delay(
-    message: Any, delay: float, text: str, view: Any, show_button: bool
+    message: Any, delay: float, text: str, view: Any, show_button: bool, channel_id: int
 ) -> None:
     """
     Interne helper: verwijder mentions na delay seconden, behoud tekst en knop.
@@ -149,13 +155,14 @@ async def _remove_mentions_after_delay(
         text: De tekst om te behouden
         view: De view om te behouden (bijv. Stem Nu knop)
         show_button: Of de knop getoond moet blijven
+        channel_id: Het kanaal ID voor i18n
     """
     try:
         await asyncio.sleep(delay)
 
         # Build content zonder mentions using renderer (no comma artifacts)
         content = render_notification_content(
-            heading=":mega: Notificatie:",
+            heading=_get_notification_heading(channel_id),
             mentions=None,  # Remove mentions for privacy
             text=text,
             footer=None,
@@ -250,7 +257,7 @@ async def send_persistent_mention(
 
     # Build content using renderer (unified layout, no comma artifacts)
     content = render_notification_content(
-        heading=":mega: Notificatie:",
+        heading=_get_notification_heading(cid),
         mentions=mentions,
         text=text,
         footer=None,
@@ -335,7 +342,7 @@ async def send_non_voter_notification(
         return
 
     content = render_notification_content(
-        heading=":mega: Notificatie:",
+        heading=_get_notification_heading(cid),
         mentions=mentions_str,
         text=text,
         footer=None,
@@ -419,7 +426,7 @@ async def _remove_all_mentions_before_deadline(
 
         # Build content zonder mentions
         content = render_notification_content(
-            heading=":mega: Notificatie:",
+            heading=_get_notification_heading(channel_id),
             mentions=None,  # Verwijder mentions
             text=text,
             footer=None,
@@ -515,7 +522,7 @@ async def update_non_voter_notification(channel: Any, dag: str, guild_id: int) -
 
         # Update bericht
         content = render_notification_content(
-            heading=":mega: Notificatie:",
+            heading=_get_notification_heading(cid),
             mentions=mentions_str,
             text=header,
             footer=None,

@@ -8,6 +8,8 @@ from typing import Callable
 from discord import ButtonStyle, Interaction
 from discord.ui import Button, View
 
+from apps.utils.i18n import t
+
 
 class CleanupConfirmationView(View):
     """View met Ja/Nee knoppen voor bevestiging van kanaalopschoning."""
@@ -17,17 +19,20 @@ class CleanupConfirmationView(View):
         on_confirm: Callable,
         on_cancel: Callable,
         message_count: int,
+        channel_id: int = 0,
     ):
         """
         Args:
             on_confirm: Async functie om aan te roepen bij "Ja"
             on_cancel: Async functie om aan te roepen bij "Nee"
             message_count: Aantal berichten dat verwijderd zou worden
+            channel_id: Discord channel ID voor i18n
         """
         super().__init__(timeout=180)  # 3 minuten timeout
         self.on_confirm = on_confirm
         self.on_cancel = on_cancel
         self.message_count = message_count
+        self.channel_id = channel_id
 
         # Voeg knoppen toe
         self.add_item(YesButton(self))
@@ -39,7 +44,7 @@ class YesButton(Button):
 
     def __init__(self, parent_view: CleanupConfirmationView):
         super().__init__(
-            label="✅ Ja, verwijder",
+            label=t(parent_view.channel_id, "UI.yes_delete_button"),
             style=ButtonStyle.danger,
             custom_id="cleanup_yes",
         )
@@ -48,13 +53,15 @@ class YesButton(Button):
     async def callback(self, interaction: Interaction):
         """Handler voor Ja-knop."""
         try:
+            cid = self.parent_view.channel_id
+
             # Disable alle knoppen
             for item in self.parent_view.children:
                 if isinstance(item, Button):
                     item.disabled = True
 
             await interaction.response.edit_message(
-                content=f"⏳ Bezig met verwijderen van {self.parent_view.message_count} bericht(en)...",
+                content=t(cid, "UI.deleting_messages", count=self.parent_view.message_count),
                 view=self.parent_view,
             )
 
@@ -65,7 +72,7 @@ class YesButton(Button):
             print(f"⚠️ Fout in YesButton.callback: {e}")
             try:
                 await interaction.followup.send(
-                    "⚠️ Er ging iets mis bij het verwijderen van berichten.",
+                    f"⚠️ {t(self.parent_view.channel_id, 'ERRORS.delete_messages_failed')}",
                     ephemeral=True,
                 )
             except Exception:  # pragma: no cover
@@ -77,7 +84,7 @@ class NoButton(Button):
 
     def __init__(self, parent_view: CleanupConfirmationView):
         super().__init__(
-            label="❌ Nee, behoud",
+            label=t(parent_view.channel_id, "UI.no_keep_button"),
             style=ButtonStyle.secondary,
             custom_id="cleanup_no",
         )
@@ -86,13 +93,15 @@ class NoButton(Button):
     async def callback(self, interaction: Interaction):
         """Handler voor Nee-knop."""
         try:
+            cid = self.parent_view.channel_id
+
             # Disable alle knoppen
             for item in self.parent_view.children:
                 if isinstance(item, Button):
                     item.disabled = True
 
             await interaction.response.edit_message(
-                content="ℹ️ Oude berichten worden behouden. De polls worden nu geplaatst.",
+                content=t(cid, "UI.messages_kept_posting"),
                 view=self.parent_view,
             )
 
@@ -103,7 +112,7 @@ class NoButton(Button):
             print(f"⚠️ Fout in NoButton.callback: {e}")
             try:
                 await interaction.followup.send(
-                    "⚠️ Er ging iets mis.",
+                    f"⚠️ {t(self.parent_view.channel_id, 'ERRORS.generic_error', error=str(e))}",
                     ephemeral=True,
                 )
             except Exception:  # pragma: no cover

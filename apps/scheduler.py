@@ -37,7 +37,9 @@ from apps.utils.poll_settings import (
 )
 from apps.utils.poll_storage import (
     calculate_leading_time,
+    calculate_leading_time_scoped,
     load_votes,
+    load_votes_for_scope,
     reset_votes,
     reset_votes_scoped,
 )
@@ -342,9 +344,12 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
             non_voters = _get_non_voter_mentions(channel, voted_ids)
             if non_voters:
                 # Gebruik tijdelijke mentions (5 seconden zichtbaar, auto-delete na 1 uur)
+                from apps.utils.i18n import get_count_text, t
+
                 mentions_str = ", ".join(non_voters)
                 count = len(non_voters)
-                text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd voor dit weekend. Als je nog niet gestemd hebt: graag stemmen vóór 18:00. Dank!"
+                count_text = get_count_text(cid, count)
+                text = f"{count_text} {t(cid, 'NOTIFICATIONS.not_voted_yet')} {t(cid, 'NOTIFICATIONS.reminder_weekend', count_text='').strip()}"
                 try:
                     await send_temporary_mention(
                         channel, mentions=mentions_str, text=text
@@ -997,12 +1002,24 @@ async def notify_non_voters(  # pragma: no cover
             all_members = [m for m in members_src if not getattr(m, "bot", False)]
 
             gid = getattr(guild, "id", "0")
-            votes = await load_votes(gid, cid) or {}
+
+            # Use category-scoped votes for dual language support
+            from apps.utils.poll_settings import get_vote_scope_channels
+            scope_ids = get_vote_scope_channels(ch)
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated votes
+                votes = await load_votes_for_scope(gid, scope_ids) or {}
+            else:
+                votes = await load_votes(gid, cid) or {}
 
             # Calculate leading time at 17:00 for vote analysis
+            # Use scoped version for dual language support
             if dag:
                 try:
-                    leading_time = await calculate_leading_time(gid, cid, dag)
+                    if len(scope_ids) > 1:
+                        leading_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                    else:
+                        leading_time = await calculate_leading_time(gid, cid, dag)
                     if leading_time:
                         print(
                             f"📊 Leading time voor {dag} in channel {cid}: {leading_time}"
@@ -1049,14 +1066,15 @@ async def notify_non_voters(  # pragma: no cover
                 continue
 
             # Tekst
+            from apps.utils.i18n import get_count_text, get_day_name, t
+
             count = len(to_mention)
-            count_text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd. "
+            count_text = get_count_text(int(cid) if cid != "0" else 0, count)
             if dag:
-                header = (
-                    f"📣 DMK-poll – **{dag}**\n{count_text}Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
-                )
+                dag_display = get_day_name(int(cid) if cid != "0" else 0, dag)
+                header = t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.reminder_day", dag=dag_display, count_text=count_text + " " + t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.not_voted_yet") + " ")
             else:
-                header = f"📣 DMK-poll – herinnering\n{count_text}Als je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
+                header = t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.reminder_weekend", count_text=count_text + " " + t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.not_voted_yet") + " ")
             footer = ""
 
             mentions_str = ", ".join(to_mention)
@@ -1123,18 +1141,27 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             # ALLOW_FROM_PER_CHANNEL_ONLY check verwijderd:
             # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
-            scoped = (
-                await load_votes(
-                    getattr(guild, "id", "0"),
-                    getattr(channel, "id", "0"),
+            # Use category-scoped votes for dual language support
+            from apps.utils.poll_settings import get_vote_scope_channels
+            scope_ids = get_vote_scope_channels(channel)
+            guild_id = getattr(guild, "id", "0")
+
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated votes
+                scoped = await load_votes_for_scope(guild_id, scope_ids) or {}
+            else:
+                scoped = (
+                    await load_votes(
+                        guild_id,
+                        getattr(channel, "id", "0"),
+                    )
+                    or {}
                 )
-                or {}
-            )
 
             # Tel totale stemmen (inclusief gasten), niet alleen unieke eigenaren
             c19 = 0
             c2030 = 0
-            for uid, per_dag in scoped.items():
+            for _uid, per_dag in scoped.items():
                 tijden = (per_dag or {}).get(dag, [])
                 if not isinstance(tijden, list):
                     continue
@@ -1192,10 +1219,13 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             )
 
             # Berichttekst - gebruik unified notification layout (5 uur lifetime) met Hammertime
+            from apps.utils.i18n import get_day_name, t
+
+            dag_display = get_day_name(cid, dag)
             if participant_list:
-                text = f"Totaal {totaal} deelnemers: {participant_list}\nDe DMK-avond van {dag} om {winnaar_hammertime} gaat door! Veel plezier!"
+                text = t(cid, "NOTIFICATIONS.event_proceeding_with_count", totaal=totaal, participants=participant_list, dag=dag_display, tijd=winnaar_hammertime)
             else:
-                text = f"De DMK-avond van {dag} om {winnaar_hammertime} gaat door! Veel plezier!"
+                text = t(cid, "NOTIFICATIONS.event_proceeding", dag=dag_display, tijd=winnaar_hammertime)
 
             try:
                 await send_persistent_mention(channel, mentions_str, text)
@@ -1292,10 +1322,12 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
 
             # Stuur resetbericht alleen in dit kanaal via notificatiebericht
             try:
+                from apps.utils.i18n import t
+
                 await send_temporary_mention(
                     channel,
                     mentions="@everyone",
-                    text="De poll is zojuist gereset voor het nieuwe weekend. Je kunt weer stemmen. Veel plezier!",
+                    text=t(cid, "NOTIFICATIONS.poll_reset"),
                 )
             except Exception:  # pragma: no cover
                 continue
@@ -1436,7 +1468,15 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
             # Notificaties werken op data-niveau (votes), niet afhankelijk van berichten
 
             gid = getattr(guild, "id", "0")
-            votes = await load_votes(gid, cid) or {}
+
+            # Use category-scoped votes for dual language support
+            from apps.utils.poll_settings import get_vote_scope_channels
+            scope_ids = get_vote_scope_channels(channel)
+            if len(scope_ids) > 1:
+                # Multiple channels share votes - use aggregated votes
+                votes = await load_votes_for_scope(gid, scope_ids) or {}
+            else:
+                votes = await load_votes(gid, cid) or {}
 
             # Vind "misschien" stemmers voor deze dag
             misschien_voter_ids = await _get_voted_ids(votes, dag=dag, vote_type="misschien")
@@ -1457,9 +1497,13 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
                 continue  # No misschien voters in this channel
 
             # Calculate leading time
+            # Use scoped version for dual language support
             leading_time = None
             try:
-                leading_time = await calculate_leading_time(gid, cid, dag)
+                if len(scope_ids) > 1:
+                    leading_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                else:
+                    leading_time = await calculate_leading_time(gid, cid, dag)
             except Exception:  # pragma: no cover
                 pass
 
@@ -1468,13 +1512,14 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
                 continue
 
             # Send temporary mention with button
+            from apps.utils.i18n import get_count_text, t
+
             mentions_str = ", ".join(misschien_voters)
             count = len(misschien_voters)
-            text = (
-                f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} op :m: **Misschien** gestemd. "
-                f"Als je op **Misschien** hebt gestemd: wil je vanavond meedoen?\n"
-                "Klik op **Stem nu** om je stem te bevestigen."
-            )
+            count_text = get_count_text(cid, count)
+            text = t(cid, "NOTIFICATIONS.maybe_reminder", dag=dag) if dag else ""
+            # More detailed message for misschien notification
+            text = f"{count_text} {t(cid, 'NOTIFICATIONS.maybe_voted')} {t(cid, 'NOTIFICATIONS.maybe_confirm')}"
 
             try:
                 await send_temporary_mention(
@@ -1806,10 +1851,12 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         await update_poll_message(channel, dag)
 
                     # STAP 4: Stemmen-knop bericht (nieuw aanmaken)
+                    from apps.utils.i18n import t
+
                     key = "stemmen"
-                    tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+                    tekst = t(cid, "UI.click_vote_button")
                     paused = is_paused(cid)
-                    view = OneStemButtonView(paused=paused)
+                    view = OneStemButtonView(paused=paused, channel_id=cid)
 
                     if send:
                         s_msg = await safe_call(send, content=tekst, view=view)
@@ -1843,12 +1890,13 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
 
                     # STAP 7: Openingsmentions versturen met HammerTime
                     try:
+                        from apps.utils.i18n import t
                         from apps.utils.mention_utils import send_temporary_mention
 
                         if hammertime_str:
-                            opening_notification = f"De DMK-poll-bot is zojuist aangezet om {hammertime_str}. Veel plezier met de stemmen! 🎮"
+                            opening_notification = t(cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str)
                         else:
-                            opening_notification = "De DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+                            opening_notification = t(cid, "NOTIFICATIONS.poll_opened")
 
                         await send_temporary_mention(
                             channel, mentions="@everyone", text=opening_notification

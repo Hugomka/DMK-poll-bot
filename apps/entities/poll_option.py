@@ -23,14 +23,41 @@ _DEFAULTS = [
     {"dag": "zondag", "tijd": "niet meedoen", "emoji": "❌"},
 ]
 
+# Map internal tijd keys to i18n TIME_LABELS keys
+_TIJD_TO_I18N_KEY = {
+    "om 19:00 uur": "19:00",
+    "om 20:30 uur": "20:30",
+    "misschien": "maybe",
+    "niet meedoen": "not_joining",
+}
+
 
 class PollOption:
-    def __init__(self, dag: str, tijd: str, emoji: str, stijl=ButtonStyle.secondary):
+    def __init__(
+        self,
+        dag: str,
+        tijd: str,
+        emoji: str,
+        stijl=ButtonStyle.secondary,
+        channel_id: int = 0,
+    ):
         self.dag = dag
         self.tijd = tijd
         self.emoji = emoji
         self.stijl = stijl
-        self.label = f"{emoji} {dag.capitalize()} {tijd}"
+        self._channel_id = channel_id
+        # Generate localized label
+        self.label = self._make_label()
+
+    def _make_label(self) -> str:
+        """Generate localized button label."""
+        from apps.utils.i18n import get_day_name, get_time_label
+
+        dag_display = get_day_name(self._channel_id, self.dag).capitalize()
+        # Map internal tijd to i18n key
+        tijd_key = _TIJD_TO_I18N_KEY.get(self.tijd, self.tijd)
+        tijd_display = get_time_label(self._channel_id, tijd_key)
+        return f"{self.emoji} {dag_display} {tijd_display}"
 
 
 def _load_raw_options():
@@ -50,10 +77,13 @@ def _load_raw_options():
         return list(_DEFAULTS)
 
 
-def get_poll_options() -> list[PollOption]:
-    """Live inladen bij elke aanroep."""
+def get_poll_options(channel_id: int = 0) -> list[PollOption]:
+    """Live inladen bij elke aanroep, with localized labels."""
     items = _load_raw_options()
-    return [PollOption(o["dag"], o["tijd"], o["emoji"]) for o in items]
+    return [
+        PollOption(o["dag"], o["tijd"], o["emoji"], channel_id=channel_id)
+        for o in items
+    ]
 
 
 def list_days() -> list[str]:

@@ -21,8 +21,9 @@ class TestNotificationTextHelpers(unittest.TestCase):
     def test_get_text_herinnering_dag_without_non_voters(self):
         """Test herinnering voor dag zonder niet-stemmers."""
         result = get_text_herinnering_dag("vrijdag")
-        self.assertIn("DMK-poll - **vrijdag**", result)
-        self.assertIn("Als je nog niet gestemd hebt voor **vrijdag**", result)
+        # Language-agnostic: check for day name and poll reminder format
+        self.assertIn("DMK-poll", result)
+        self.assertIn("vrijdag", result.lower())
         # Geen count_text
         self.assertNotIn("lid", result.lower())
         self.assertNotIn("leden", result.lower())
@@ -31,15 +32,19 @@ class TestNotificationTextHelpers(unittest.TestCase):
         """Test herinnering voor dag met 1 niet-stemmer (enkelvoud)."""
         non_voters = ["Alice"]
         result = get_text_herinnering_dag("zaterdag", non_voters)
-        self.assertIn("**1 lid** heeft nog niet gestemd", result)
-        self.assertIn("DMK-poll - **zaterdag**", result)
+        # Language-agnostic: check for singular count
+        self.assertTrue("**1 lid**" in result or "**1 member**" in result)
+        self.assertIn("DMK-poll", result)
+        self.assertIn("zaterdag", result.lower())
 
     def test_get_text_herinnering_dag_with_multiple_non_voters(self):
         """Test herinnering voor dag met meerdere niet-stemmers (meervoud)."""
         non_voters = ["Alice", "Bob", "Charlie"]
         result = get_text_herinnering_dag("zondag", non_voters)
-        self.assertIn("**3 leden** hebben nog niet gestemd", result)
-        self.assertIn("DMK-poll - **zondag**", result)
+        # Language-agnostic: check for plural count
+        self.assertTrue("**3 leden**" in result or "**3 members**" in result)
+        self.assertIn("DMK-poll", result)
+        self.assertIn("zondag", result.lower())
 
     def test_get_text_herinnering_dag_with_empty_list(self):
         """Test herinnering met lege lijst (moet zelfde zijn als None)."""
@@ -50,8 +55,9 @@ class TestNotificationTextHelpers(unittest.TestCase):
     def test_get_text_herinnering_weekend_without_non_voters(self):
         """Test weekend herinnering zonder niet-stemmers."""
         result = get_text_herinnering_weekend()
-        self.assertIn("DMK-poll - herinnering", result)
-        self.assertIn("Als je nog niet gestemd hebt voor dit weekend", result)
+        self.assertIn("DMK-poll", result)
+        # Language-agnostic: check for weekend/herinnering
+        self.assertTrue("herinnering" in result.lower() or "reminder" in result.lower())
         # Geen count_text
         self.assertNotIn("lid", result.lower())
         self.assertNotIn("leden", result.lower())
@@ -60,8 +66,9 @@ class TestNotificationTextHelpers(unittest.TestCase):
         """Test weekend herinnering met 1 niet-stemmer (enkelvoud)."""
         non_voters = ["Alice"]
         result = get_text_herinnering_weekend(non_voters)
-        self.assertIn("**1 lid** heeft nog niet gestemd", result)
-        self.assertIn("DMK-poll - herinnering", result)
+        # Language-agnostic: check for singular count
+        self.assertTrue("**1 lid**" in result or "**1 member**" in result)
+        self.assertIn("DMK-poll", result)
 
     def test_get_text_herinnering_weekend_with_multiple_non_voters(self):
         """Test weekend herinnering met meerdere niet-stemmers (meervoud)."""

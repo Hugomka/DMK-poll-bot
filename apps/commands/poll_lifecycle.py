@@ -48,6 +48,7 @@ def _load_opening_message(channel_id: int | None = None) -> str:
     Returns:
         Opening message string met accurate channel-specifieke informatie
     """
+    from apps.utils.i18n import get_day_name, t
     from apps.utils.poll_settings import (
         get_enabled_poll_days,
         get_setting,
@@ -57,25 +58,29 @@ def _load_opening_message(channel_id: int | None = None) -> str:
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
+    cid = channel_id or 0
+
     # Basis header (altijd hetzelfde)
-    header = "@everyone\n# 🎮 **Welkom bij de DMK-poll!**\n\n"
+    header = t(cid, "OPENING.header")
 
     # Als geen channel_id, gebruik generieke fallback
     if channel_id is None:
-        return header + "Klik op **🗳️ Stemmen** om je keuzes aan te geven.\n\nVeel plezier! 🎉"
+        return header + t(cid, "OPENING.fallback")
 
     # Haal enabled dagen op
     enabled_days = get_enabled_poll_days(channel_id)
     if not enabled_days:
         enabled_days = ["vrijdag", "zaterdag", "zondag"]  # Fallback
 
-    # Format dagen lijst
-    if len(enabled_days) == 1:
-        dagen_tekst = enabled_days[0]
-    elif len(enabled_days) == 2:
-        dagen_tekst = f"{enabled_days[0]} en {enabled_days[1]}"
+    # Format dagen lijst (localized)
+    localized_days = [get_day_name(cid, dag) for dag in enabled_days]
+    and_word = t(cid, "COMMON.and")
+    if len(localized_days) == 1:
+        dagen_tekst = localized_days[0]
+    elif len(localized_days) == 2:
+        dagen_tekst = f"{localized_days[0]} {and_word} {localized_days[1]}"
     else:
-        dagen_tekst = ", ".join(enabled_days[:-1]) + f" en {enabled_days[-1]}"
+        dagen_tekst = ", ".join(localized_days[:-1]) + f" {and_word} {localized_days[-1]}"
 
     # Bepaal deadline tijd (gebruik eerste enabled dag als referentie)
     eerste_dag = enabled_days[0] if enabled_days else "vrijdag"
@@ -90,7 +95,7 @@ def _load_opening_message(channel_id: int | None = None) -> str:
     )
 
     # Basis intro
-    intro = f"Elke week organiseren we DMK-avonden op {dagen_tekst}. Stem hieronder op de avonden waarop jij mee wilt doen! De stemmen blijven verborgen tot de deadline van {deadline_hammertime} uur."
+    intro = t(cid, "OPENING.intro", dagen=dagen_tekst, deadline=deadline_hammertime)
 
     # Check welke notificaties enabled zijn
     reminders_enabled = is_notification_enabled(channel_id, "reminders")
@@ -99,15 +104,15 @@ def _load_opening_message(channel_id: int | None = None) -> str:
     # Build notification text
     notification_parts = []
     if reminders_enabled:
-        notification_parts.append("Als je nog niet gestemd hebt, krijg je 2 uur voor de deadline een herinnering.")
+        notification_parts.append(t(cid, "OPENING.reminder_note"))
     if misschien_enabled:
-        notification_parts.append("Heb je op 'misschien' gestemd? Dan krijg je 1 uur voor de deadline een herinnering om je stem te bevestigen. Als je dan nog niet stemt, wordt je stem automatisch omgezet naar 'niet meedoen'.")
+        notification_parts.append(t(cid, "OPENING.maybe_note"))
 
     notification_text = " ".join(notification_parts) if notification_parts else ""
 
     # Append call to action
     if notification_text:
-        notification_text += " Dus wees op tijd als je graag mee wilt doen, en zet de meldingen voor dit kanaal aan."
+        notification_text += " " + t(cid, "OPENING.notification_cta")
 
     # Build complete message
     message_parts = [header, intro]
@@ -115,14 +120,14 @@ def _load_opening_message(channel_id: int | None = None) -> str:
         message_parts.append(notification_text)
 
     message_parts.extend([
-        "\nℹ️ **Stem alsjeblieft op elke dag, ook als je denkt niet mee te doen. Zo blijft het overzicht duidelijk.**",
-        "\n📅 **Hoe werkt het?**",
-        "• Klik op **🗳️ Stemmen** om je keuzes aan te geven",
-        "• Je kunt meerdere tijden kiezen",
-        "• Je kunt je stem altijd aanpassen",
-        "\n👥 **Gasten meebrengen?**",
-        "Gebruik `/gast-add` om gasten toe te voegen aan je stem.",
-        "\nVeel plezier! 🎉"
+        "\n" + t(cid, "OPENING.vote_info"),
+        "\n" + t(cid, "OPENING.how_it_works"),
+        "• " + t(cid, "OPENING.how_click"),
+        "• " + t(cid, "OPENING.how_multiple"),
+        "• " + t(cid, "OPENING.how_change"),
+        "\n" + t(cid, "OPENING.guests_title"),
+        t(cid, "OPENING.guests_instruction"),
+        "\n" + t(cid, "OPENING.have_fun"),
     ])
 
     return "\n".join(message_parts)
@@ -145,52 +150,55 @@ class PollLifecycle(commands.Cog):
         datum: str | None,
         tijd: str | None,
         frequentie: str | None,
+        channel_id: int = 0,
     ) -> str | None:
         """
         Valideer de scheduling parameters.
         Retourneert een foutmelding als de parameters ongeldig zijn, anders None.
         """
+        from apps.utils.i18n import t
+
         # Als geen parameters, dan handmatig activeren (standaard gedrag)
         if not tijd and not dag and not datum and not frequentie:
             return None
 
         # tijd is verplicht met dag of datum
         if (dag or datum) and not tijd:
-            return "De parameter 'tijd' is verplicht samen met 'dag' of 'datum'."
+            return t(channel_id, "ERRORS.time_required")
 
         # dag en datum kunnen niet samen
         if dag and datum:
-            return "Je kunt niet zowel 'dag' als 'datum' opgeven. Kies één van beide."
+            return t(channel_id, "ERRORS.dag_datum_conflict")
 
         # tijd kan niet zonder dag of datum
         if tijd and not dag and not datum:
-            return "De parameter 'tijd' kan niet zonder 'dag' of 'datum'."
+            return t(channel_id, "ERRORS.time_without_dag_datum")
 
         # Valideer tijd formaat (HH:mm)
         if tijd:
             try:
                 parts = tijd.split(":")
                 if len(parts) != 2:
-                    return "Tijd moet in HH:mm formaat zijn (bijv. 20:00)."
+                    return t(channel_id, "ERRORS.invalid_time")
                 uur, minuut = int(parts[0]), int(parts[1])
                 if not (0 <= uur <= 23 and 0 <= minuut <= 59):
-                    return "Ongeldige tijd. Uur moet 0-23 zijn, minuut moet 0-59 zijn."
+                    return t(channel_id, "ERRORS.invalid_time")
             except ValueError:
-                return "Tijd moet in HH:mm formaat zijn (bijv. 20:00)."
+                return t(channel_id, "ERRORS.invalid_time")
 
         # Valideer datum formaat (DD-MM-YYYY)
         if datum:
             try:
                 datetime.strptime(datum, "%d-%m-%Y")
             except ValueError:
-                return "Datum moet in DD-MM-YYYY formaat zijn (bijv. 31-12-2025)."
+                return t(channel_id, "ERRORS.invalid_date")
 
         # frequentie validatie
         if frequentie:
             if frequentie == "eenmalig" and not datum:
-                return "Frequentie 'eenmalig' vereist een 'datum' parameter."
+                return t(channel_id, "ERRORS.frequentie_eenmalig_requires_datum")
             if frequentie == "wekelijks" and not dag:
-                return "Frequentie 'wekelijks' vereist een 'dag' parameter."
+                return t(channel_id, "ERRORS.frequentie_wekelijks_requires_dag")
 
         return None
 
@@ -293,12 +301,16 @@ class PollLifecycle(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            from apps.utils.i18n import t
+            await interaction.followup.send(f"❌ {t(0, 'ERRORS.no_channel')}", ephemeral=True)
             return
+
+        from apps.utils.i18n import t
+        cid = channel.id
 
         # Valideer parameters
         validation_error = self._validate_scheduling_params(
-            dag, datum, tijd, frequentie
+            dag, datum, tijd, frequentie, cid
         )
         if validation_error:
             await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
@@ -605,11 +617,13 @@ class PollLifecycle(commands.Cog):
                 await update_poll_message(channel, dag)
 
             # Vierde bericht: één vaste knop "🗳️ Stemmen"
+            from apps.utils.i18n import t as i18n_t
+
             key = "stemmen"
-            tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
+            tekst = i18n_t(channel_id, "UI.click_vote_button")
             s_mid = get_message_id(channel.id, key)
             paused = is_paused(channel.id)
-            view = OneStemButtonView(paused=paused)
+            view = OneStemButtonView(paused=paused, channel_id=channel_id)
             send = _get_attr(channel, "send")
 
             if s_mid:
@@ -649,9 +663,7 @@ class PollLifecycle(commands.Cog):
 
             # Stuur bevestiging (alleen als we direct vanuit on() komen, niet via opschoon-knoppen)
             try:
-                confirmation = (
-                    "✅ Polls zijn weer ingeschakeld en geplaatst/bijgewerkt."
-                )
+                confirmation = i18n_t(channel_id, "COMMANDS.polls_enabled")
                 if schedule_message:
                     confirmation += f"\n{schedule_message}"
                 await interaction.followup.send(
@@ -664,12 +676,14 @@ class PollLifecycle(commands.Cog):
 
         except Exception as e:  # pragma: no cover
             try:
+                from apps.utils.i18n import t as i18n_t
+
                 await interaction.followup.send(
-                    f"❌ Fout bij plaatsen: {e}", ephemeral=True
+                    f"❌ {i18n_t(channel_id, 'ERRORS.place_error', error=str(e))}", ephemeral=True
                 )
             except Exception:  # pragma: no cover
                 # Als interaction al is afgehandeld, print alleen de fout
-                print(f"❌ Fout bij plaatsen polls: {e}")
+                print(f"❌ Place error: {e}")
 
     # -----------------------------
     # /dmk-poll-reset
@@ -684,8 +698,11 @@ class PollLifecycle(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            from apps.utils.i18n import t
+            await interaction.followup.send(f"❌ {t(0, 'ERRORS.no_channel')}", ephemeral=True)
             return
+
+        from apps.utils.i18n import t
         dagen = WEEK_DAYS
 
         guild = getattr(interaction, "guild", None) or getattr(channel, "guild", None)
@@ -762,22 +779,22 @@ class PollLifecycle(commands.Cog):
             if s_mid:
                 s_msg = await fetch_message_or_none(channel, s_mid)
                 if s_msg is not None:
-                    tekst = "Klik op **🗳️ Stemmen** om je keuzes te maken."
-                    view = OneStemButtonView(paused=paused)
+                    tekst = t(cid, "UI.click_vote_button")
+                    view = OneStemButtonView(paused=paused, channel_id=cid)
                     await safe_call(s_msg.edit, content=tekst, view=view)
 
             # 6) Terugkoppeling
             if gevonden:
                 await interaction.followup.send(
-                    "🔄 De stemmen zijn gereset voor een nieuwe week.", ephemeral=True
+                    t(cid, "COMMANDS.reset_complete"), ephemeral=True
                 )
             else:
                 await interaction.followup.send(
-                    "⚠️ Geen dag-berichten gevonden om te resetten.", ephemeral=True
+                    t(cid, "COMMANDS.no_day_messages"), ephemeral=True
                 )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Reset mislukt: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ {t(cid, 'ERRORS.reset_failed', error=str(e))}", ephemeral=True)
 
     # -----------------------------
     # /dmk-poll-pauze
@@ -792,8 +809,12 @@ class PollLifecycle(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            from apps.utils.i18n import t
+            await interaction.followup.send(f"❌ {t(0, 'ERRORS.no_channel')}", ephemeral=True)
             return
+
+        from apps.utils.i18n import t
+        cid = channel.id
 
         try:
             # 1) Toggle pauze-status
@@ -803,11 +824,11 @@ class PollLifecycle(commands.Cog):
             key = "stemmen"
             mid = get_message_id(channel.id, key)
             tekst = (
-                "⏸️ Stemmen is tijdelijk gepauzeerd."
+                t(cid, "UI.paused_message")
                 if paused
-                else "Klik op **🗳️ Stemmen** om je keuzes te maken."
+                else t(cid, "UI.click_vote_button")
             )
-            view = OneStemButtonView(paused=paused)
+            view = OneStemButtonView(paused=paused, channel_id=cid)
 
             send = _get_attr(channel, "send")
             if mid:
@@ -829,13 +850,11 @@ class PollLifecycle(commands.Cog):
                 if newmsg is not None:
                     save_message_id(channel.id, key, newmsg.id)
 
-            status_txt = "gepauzeerd" if paused else "hervat"
-            await interaction.followup.send(
-                f"⏯️ Stemmen is {status_txt}.", ephemeral=True
-            )
+            status_msg = t(cid, "COMMANDS.poll_paused") if paused else t(cid, "COMMANDS.poll_resumed")
+            await interaction.followup.send(status_msg, ephemeral=True)
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ {t(cid, 'ERRORS.generic_error', error=str(e))}", ephemeral=True)
 
     # -----------------------------
     # /dmk-poll-off
@@ -874,12 +893,16 @@ class PollLifecycle(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            from apps.utils.i18n import t
+            await interaction.followup.send(f"❌ {t(0, 'ERRORS.no_channel')}", ephemeral=True)
             return
+
+        from apps.utils.i18n import t
+        cid = channel.id
 
         # Valideer parameters
         validation_error = self._validate_scheduling_params(
-            dag, datum, tijd, frequentie
+            dag, datum, tijd, frequentie, cid
         )
         if validation_error:
             await interaction.followup.send(f"❌ {validation_error}", ephemeral=True)
@@ -1100,7 +1123,12 @@ class PollLifecycle(commands.Cog):
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            from apps.utils.i18n import t
+
+            cid = getattr(channel, "id", 0) or 0
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
     # -----------------------------
     # /dmk-poll-stopzetten (permanent uitschakelen)
@@ -1127,7 +1155,8 @@ class PollLifecycle(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            from apps.utils.i18n import t
+            await interaction.followup.send(f"❌ {t(0, 'ERRORS.no_channel')}", ephemeral=True)
             return
 
         # Stap 1: Controleer op non-bot berichten in het kanaal
@@ -1260,7 +1289,12 @@ class PollLifecycle(commands.Cog):
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            from apps.utils.i18n import t
+
+            cid = getattr(channel, "id", 0) or 0
+            await interaction.followup.send(
+                t(cid, "ERRORS.generic_error", error=str(e)), ephemeral=True
+            )
 
 
 async def setup(bot: commands.Bot) -> None:

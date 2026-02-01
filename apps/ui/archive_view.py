@@ -7,6 +7,7 @@ from discord import File
 from discord.ui import Button, Select, View
 
 from apps.utils.archive import create_archive, delete_archive_scoped
+from apps.utils.i18n import t
 
 
 class ArchiveView(View):
@@ -19,35 +20,38 @@ class ArchiveView(View):
         self.weekday = weekday
         self.selected_delimiter = ","  # Default
 
+        cid = channel_id or 0
+
         # Add SelectMenu (row 0)
-        self.add_item(DelimiterSelectMenu(self))
+        self.add_item(DelimiterSelectMenu(self, cid))
 
         # Add Delete button (row 1, red)
-        self.add_item(DeleteArchiveButton(self))
+        self.add_item(DeleteArchiveButton(self, cid))
 
 
 class DelimiterSelectMenu(Select):
     """SelectMenu voor delimiter keuze - update bestand direct bij selectie."""
 
-    def __init__(self, parent_view: "ArchiveView"):
+    def __init__(self, parent_view: "ArchiveView", channel_id: int = 0):
         self.parent_view = parent_view
+        self._channel_id = channel_id
 
         options = [
             discord.SelectOption(
                 label="🇺🇸 Comma (,)",
                 value=",",
-                description="Standaard CSV delimiter",
+                description=t(channel_id, "ARCHIVE.standard_delimiter"),
                 default=True,
             ),
             discord.SelectOption(
                 label="🇳🇱 Semicolon (;)",
                 value=";",
-                description="Nederlandse Excel delimiter",
+                description=t(channel_id, "ARCHIVE.dutch_delimiter"),
             ),
         ]
 
         super().__init__(
-            placeholder="Selecteer CSV Formaat...",
+            placeholder=t(channel_id, "ARCHIVE.select_format"),
             options=options,
             custom_id="delimiter_select",
             row=0,
@@ -56,6 +60,7 @@ class DelimiterSelectMenu(Select):
     async def callback(self, interaction: discord.Interaction):
         """Update CSV bestand met geselecteerde delimiter."""
         self.parent_view.selected_delimiter = self.values[0]
+        cid = self._channel_id
 
         # Update default option
         for option in self.options:
@@ -71,7 +76,7 @@ class DelimiterSelectMenu(Select):
 
         if not csv_data:
             await interaction.response.send_message(
-                "❌ Kon archief niet genereren.", ephemeral=True
+                t(cid, "ERRORS.archive_generate_failed"), ephemeral=True
             )
             return
 
@@ -82,13 +87,10 @@ class DelimiterSelectMenu(Select):
         filename = f"dmk_archive_{guild_id}_{channel_id}_{archive_type}.csv"
 
         # Behoud de originele tekst van het bericht
-        day_range = "maandag-donderdag" if self.parent_view.weekday else "vrijdag-zondag"
-        message_content = (
-            f"\n📊 **DMK Poll Archief - {'Weekday' if self.parent_view.weekday else 'Weekend'} ({day_range})**\n"
-            "Je kunt een **CSV-formaat** tussen NL en US kiezen en download het archiefbestand dat geschikt is voor je spreadsheet.\n\n"
-            "⚠️ **Let op**:\n"
-            "Op de 'Verwijder archief'-knop klikken verwijdert je het hele archief permanent."
-        )
+        if self.parent_view.weekday:
+            message_content = t(cid, "ARCHIVE.archive_message_weekday")
+        else:
+            message_content = t(cid, "ARCHIVE.archive_message_weekend")
 
         # Update bericht met nieuw CSV bestand
         await interaction.response.edit_message(
@@ -101,9 +103,10 @@ class DelimiterSelectMenu(Select):
 class DeleteArchiveButton(Button):
     """Delete knop om archief te verwijderen."""
 
-    def __init__(self, parent_view: "ArchiveView"):
+    def __init__(self, parent_view: "ArchiveView", channel_id: int = 0):
+        self._channel_id = channel_id
         super().__init__(
-            label="Verwijder archief",
+            label=t(channel_id, "ARCHIVE.delete_button"),
             style=discord.ButtonStyle.danger,  # Red button
             custom_id="delete_archive_scoped",
             row=1,
@@ -112,17 +115,19 @@ class DeleteArchiveButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         """Toon bevestigingsbericht voordat archief wordt verwijderd."""
+        cid = self._channel_id
+
         # Maak bevestigingsview met verwijzing naar origineel bericht
         confirmation_view = ConfirmDeleteView(
             self.parent_view.guild_id,
             self.parent_view.channel_id,
             interaction.message,
+            cid,
         )
 
         # Stuur bevestigingsbericht als ephemeral followup
         await interaction.response.send_message(
-            "⚠️ **Weet je zeker dat je het archief permanent wilt verwijderen?**\n"
-            "Deze actie kan niet ongedaan worden gemaakt.",
+            t(cid, "ARCHIVE.confirm_delete"),
             view=confirmation_view,
             ephemeral=True,
         )
@@ -136,23 +141,26 @@ class ConfirmDeleteView(View):
         guild_id: int | None,
         channel_id: int | None,
         original_message: discord.Message | None,
+        i18n_channel_id: int = 0,
     ):
         super().__init__(timeout=60)  # 60 seconden timeout
         self.guild_id = guild_id
         self.channel_id = channel_id
         self.original_message = original_message
+        self._i18n_channel_id = i18n_channel_id
 
         # Voeg knoppen toe
-        self.add_item(CancelButton())
-        self.add_item(ConfirmDeleteButton(self))
+        self.add_item(CancelButton(i18n_channel_id))
+        self.add_item(ConfirmDeleteButton(self, i18n_channel_id))
 
 
 class CancelButton(Button):
     """Annuleer knop - sluit bevestigingsbericht."""
 
-    def __init__(self):
+    def __init__(self, channel_id: int = 0):
+        self._channel_id = channel_id
         super().__init__(
-            label="Annuleer",
+            label=t(channel_id, "UI.cancel_button"),
             style=discord.ButtonStyle.success,  # Green button
             custom_id="cancel_delete",
         )
@@ -160,7 +168,7 @@ class CancelButton(Button):
     async def callback(self, interaction: discord.Interaction):
         """Sluit bevestigingsbericht."""
         await interaction.response.edit_message(
-            content="❌ Verwijdering geannuleerd.",
+            content=t(self._channel_id, "ARCHIVE.deletion_cancelled"),
             view=None,
         )
 
@@ -168,9 +176,10 @@ class CancelButton(Button):
 class ConfirmDeleteButton(Button):
     """Bevestig verwijdering knop - voert daadwerkelijke verwijdering uit."""
 
-    def __init__(self, parent_view: "ConfirmDeleteView"):
+    def __init__(self, parent_view: "ConfirmDeleteView", channel_id: int = 0):
+        self._channel_id = channel_id
         super().__init__(
-            label="Verwijder Archief",
+            label=t(channel_id, "ARCHIVE.confirm_delete_button"),
             style=discord.ButtonStyle.danger,  # Red button
             custom_id="confirm_delete_archive",
         )
@@ -178,6 +187,7 @@ class ConfirmDeleteButton(Button):
 
     async def callback(self, interaction: discord.Interaction):
         """Verwijder archief en update beide berichten."""
+        cid = self._channel_id
         ok = delete_archive_scoped(
             self.parent_view.guild_id, self.parent_view.channel_id
         )
@@ -185,24 +195,20 @@ class ConfirmDeleteButton(Button):
         if ok:
             # Update bevestigingsbericht
             await interaction.response.edit_message(
-                content="🗑️ Archief verwijderd.",
+                content=t(cid, "ARCHIVE.deleted"),
                 view=None,
             )
 
             # Update originele bericht om verwijdering aan te geven
             if self.parent_view.original_message is not None:
-                deleted_content = (
-                    "❌ **Archief verwijderd**\n"
-                    "Er is momenteel geen archief beschikbaar."
-                )
                 await self.parent_view.original_message.edit(
-                    content=deleted_content,
+                    content=t(cid, "ARCHIVE.deleted_no_archive"),
                     attachments=[],
                     view=None,
                 )
         else:
             # Als archief niet bestond
             await interaction.response.edit_message(
-                content="⚠️ Er was geen archief om te verwijderen.",
+                content=t(cid, "ARCHIVE.nothing_to_delete"),
                 view=None,
             )
