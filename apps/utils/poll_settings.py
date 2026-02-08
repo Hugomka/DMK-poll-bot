@@ -69,6 +69,49 @@ def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
     return instelling
 
 
+def is_slot_past_deadline(channel_id: int, dag: str, tijd: str, now: datetime) -> bool:
+    """
+    Bepaalt of een tijdslot voorbij de deadline is (voor guest votes).
+
+    Een slot is "past deadline" als:
+    - De dag al voorbij is, OF
+    - Het is dezelfde dag EN de starttijd van het slot is al geweest
+
+    Args:
+        channel_id: Discord channel ID
+        dag: Dagnaam (e.g., 'vrijdag', 'zaterdag')
+        tijd: Tijdslot string (e.g., 'om 19:00 uur' of '19:00')
+        now: Huidige datetime
+
+    Returns:
+        True als het slot al voorbij is, anders False
+    """
+    target_idx = DAYS_INDEX.get(dag.lower())
+    if target_idx is None:
+        return False  # Onbekende dag
+
+    huidige_idx = now.weekday()
+
+    # Als de dag al voorbij is deze week → past deadline
+    if huidige_idx > target_idx:
+        return True
+
+    # Als de dag nog moet komen → niet past deadline
+    if huidige_idx < target_idx:
+        return False
+
+    # Zelfde dag: check of de starttijd van het slot al geweest is
+    # Extraheer uur en minuut uit tijd string (bijv. "om 19:00 uur" -> 19, 0)
+    tijd_clean = tijd.replace("om ", "").replace(" uur", "").strip()
+    try:
+        uur, minuut = map(int, tijd_clean.split(":"))
+    except ValueError:
+        return False  # Kan tijd niet parsen
+
+    slot_time = time(uur, minuut)
+    return now.time() >= slot_time
+
+
 def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     """Bepaalt of stemaantallen verborgen moeten worden."""
     instelling = get_setting(channel_id, dag)

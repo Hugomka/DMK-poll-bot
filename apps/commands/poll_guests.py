@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 import discord
 from discord import app_commands
@@ -12,8 +13,16 @@ from discord.ext import commands
 
 from apps.utils.i18n import t
 from apps.utils.poll_message import update_poll_message
-from apps.utils.poll_settings import get_poll_option_state
-from apps.utils.poll_storage import add_guest_votes, remove_guest_votes
+from apps.utils.poll_settings import (
+    get_poll_option_state,
+    get_vote_scope_channels,
+    is_slot_past_deadline,
+)
+from apps.utils.poll_storage import (
+    add_guest_votes,
+    get_guest_names_for_slot,
+    remove_guest_votes,
+)
 
 # All possible slots (day|time combinations)
 ALL_SLOTS = [
@@ -57,6 +66,46 @@ async def slot_autocomplete(
     return choices[:25]
 
 
+async def guest_names_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """
+    Autocomplete function for guest names parameter in /guest-remove.
+    Returns existing guests added by the user for the selected slot.
+    """
+    # Get the slot value from the interaction's namespace
+    slot = getattr(interaction.namespace, "slot", None)
+    if not slot:
+        return []
+
+    try:
+        dag, tijd = slot.split("|", 1)
+    except ValueError:
+        return []
+
+    channel_id = getattr(interaction.channel, "id", 0) or 0
+    guild_id = getattr(interaction.guild, "id", 0) if interaction.guild else 0
+    user_id = interaction.user.id
+
+    # Get existing guest names for this user and slot
+    guest_names = await get_guest_names_for_slot(
+        user_id, dag, tijd, guild_id, channel_id
+    )
+
+    if not guest_names:
+        return []
+
+    choices = []
+    for name in guest_names:
+        # Filter by current input (case-insensitive)
+        if current.lower() in name.lower():
+            choices.append(app_commands.Choice(name=name, value=name))
+
+    # Discord limits autocomplete to 25 choices
+    return choices[:25]
+
+
 class PollGuests(commands.Cog):
     """Guest management"""
 
@@ -87,6 +136,11 @@ class PollGuests(commands.Cog):
             dag, tijd = slot.split("|", 1)
 
             cid = getattr(interaction.channel, "id", 0) or 0
+            gid = (
+                getattr(interaction.guild, "id", "0")
+                if interaction.guild is not None
+                else "0"
+            )
 
             # Split on comma or semicolon
             raw_names = [p.strip() for p in re.split(r"[;,]", names or "") if p.strip()]
@@ -96,20 +150,35 @@ class PollGuests(commands.Cog):
                 )
                 return
 
+            # Check if slot is past deadline
+            now = datetime.now()
+            if is_slot_past_deadline(cid, dag, tijd, now):
+                await interaction.followup.send(
+                    t(cid, "COMMANDS.guest_added", dag=dag, tijd=tijd)
+                    + "\n"
+                    + t(
+                        cid,
+                        "COMMANDS.guest_not_allowed_past_deadline",
+                        names=", ".join(raw_names),
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+            # Get scope channels for category sync
+            scope_ids = get_vote_scope_channels(interaction.channel)
+
             added, skipped = await add_guest_votes(
                 interaction.user.id,
                 dag,
                 tijd,
                 raw_names,
-                (
-                    getattr(interaction.guild, "id", "0")
-                    if interaction.guild is not None
-                    else "0"
-                ),
-                getattr(interaction.channel, "id", "0") or "0",
+                gid,
+                cid,
+                scope_channel_ids=scope_ids,
             )
 
-            # Update public poll message for that day
+            # Update public poll message for that day (in all scope channels)
             await update_poll_message(channel=interaction.channel, dag=dag)
 
             parts: list[str] = []
@@ -142,7 +211,7 @@ class PollGuests(commands.Cog):
         name="guest-remove",
         description="Remove guest votes for a day+time / Verwijder gaststemmen",
     )
-    @app_commands.autocomplete(slot=slot_autocomplete)
+    @app_commands.autocomplete(slot=slot_autocomplete, names=guest_names_autocomplete)
     @app_commands.describe(
         slot="Day and time / Dag en tijd",
         names="Names separated by comma / Namen gescheiden door komma",
@@ -159,6 +228,11 @@ class PollGuests(commands.Cog):
         try:
             dag, tijd = slot.split("|", 1)
             cid = getattr(interaction.channel, "id", 0) or 0
+            gid = (
+                getattr(interaction.guild, "id", "0")
+                if interaction.guild is not None
+                else "0"
+            )
 
             raw_names = [p.strip() for p in re.split(r"[;,]", names or "") if p.strip()]
             if not raw_names:
@@ -167,20 +241,20 @@ class PollGuests(commands.Cog):
                 )
                 return
 
+            # Get scope channels for category sync
+            scope_ids = get_vote_scope_channels(interaction.channel)
+
             removed, not_found = await remove_guest_votes(
                 interaction.user.id,
                 dag,
                 tijd,
                 raw_names,
-                (
-                    getattr(interaction.guild, "id", "0")
-                    if interaction.guild is not None
-                    else "0"
-                ),
-                getattr(interaction.channel, "id", "0") or "0",
+                gid,
+                cid,
+                scope_channel_ids=scope_ids,
             )
 
-            # Update public poll message for that day
+            # Update public poll message for that day (in all scope channels)
             await update_poll_message(channel=interaction.channel, dag=dag)
 
             parts: list[str] = []

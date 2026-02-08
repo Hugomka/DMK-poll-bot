@@ -376,6 +376,7 @@ async def add_guest_votes(
     namen: list[str],
     guild_id: int | str,
     channel_id: int | str,
+    scope_channel_ids: list[int] | None = None,
 ) -> tuple[list[str], list[str]]:
     if not is_valid_option(dag, tijd):
         return ([], namen or [])
@@ -406,7 +407,43 @@ async def add_guest_votes(
         toegevoegd.append(naam)
 
     await save_votes_scoped(gid, cid, scoped)
+
+    # Sync to other channels in the same category
+    if scope_channel_ids and len(scope_channel_ids) > 1:
+        for other_cid in scope_channel_ids:
+            if other_cid != int(channel_id):
+                await _sync_guest_votes_to_channel(
+                    gid, str(other_cid), str(owner_user_id), dag, tijd, toegevoegd
+                )
+
     return (toegevoegd, overgeslagen)
+
+
+async def _sync_guest_votes_to_channel(
+    guild_id: str,
+    channel_id: str,
+    owner_user_id: str,
+    dag: str,
+    tijd: str,
+    added_names: list[str],
+) -> None:
+    """
+    Sync guest votes to another channel.
+    """
+    scoped = await load_votes(guild_id, channel_id)
+
+    for naam in added_names:
+        key = _guest_id(owner_user_id, naam)
+        per_dag = scoped.get(key, {})
+        bestaande = per_dag.get(dag, [])
+
+        if tijd not in bestaande:
+            nieuw = set(bestaande)
+            nieuw.add(tijd)
+            per_dag[dag] = sorted(list(nieuw))
+            scoped[key] = per_dag
+
+    await save_votes_scoped(guild_id, channel_id, scoped)
 
 
 async def remove_guest_votes(
@@ -416,6 +453,7 @@ async def remove_guest_votes(
     namen: list[str],
     guild_id: int | str,
     channel_id: int | str,
+    scope_channel_ids: list[int] | None = None,
 ) -> tuple[list[str], list[str]]:
     gid, cid = str(guild_id), str(channel_id)
     scoped = await load_votes(gid, cid)
@@ -438,7 +476,82 @@ async def remove_guest_votes(
             nietgevonden.append(naam)
 
     await save_votes_scoped(gid, cid, scoped)
+
+    # Sync to other channels in the same category
+    if scope_channel_ids and len(scope_channel_ids) > 1:
+        for other_cid in scope_channel_ids:
+            if other_cid != int(channel_id):
+                await _sync_guest_removal_to_channel(
+                    gid, str(other_cid), str(owner_id), dag, tijd, verwijderd
+                )
+
     return verwijderd, nietgevonden
+
+
+async def _sync_guest_removal_to_channel(
+    guild_id: str,
+    channel_id: str,
+    owner_id: str,
+    dag: str,
+    tijd: str,
+    removed_names: list[str],
+) -> None:
+    """
+    Sync guest vote removal to another channel.
+    """
+    scoped = await load_votes(guild_id, channel_id)
+
+    for naam in removed_names:
+        key = f"{owner_id}_guest::{naam}"
+        if key in scoped and tijd in scoped[key].get(dag, []):
+            try:
+                scoped[key][dag].remove(tijd)
+            except ValueError:
+                pass
+
+            if not scoped[key][dag]:
+                del scoped[key][dag]
+            if not scoped[key]:
+                del scoped[key]
+
+    await save_votes_scoped(guild_id, channel_id, scoped)
+
+
+async def get_guest_names_for_slot(
+    owner_user_id: int | str,
+    dag: str,
+    tijd: str,
+    guild_id: int | str,
+    channel_id: int | str,
+) -> list[str]:
+    """
+    Get all guest names added by a specific user for a given slot.
+
+    Args:
+        owner_user_id: The user ID who added the guests
+        dag: Day name (e.g., 'vrijdag')
+        tijd: Time slot (e.g., 'om 19:00 uur')
+        guild_id: Discord guild ID
+        channel_id: Discord channel ID
+
+    Returns:
+        List of guest names for this user and slot
+    """
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+    guest_names = []
+
+    prefix = f"{owner_user_id}_guest::"
+    for key, per_dag in scoped.items():
+        if not isinstance(key, str) or not key.startswith(prefix):
+            continue
+        # Extract guest name from key
+        guest_name = key[len(prefix):]
+        # Check if this guest has voted for this slot
+        if tijd in per_dag.get(dag, []):
+            guest_names.append(guest_name)
+
+    return sorted(guest_names)
 
 
 # === WAS_MISSCHIEN TRACKING ===============================================

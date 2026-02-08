@@ -166,6 +166,7 @@ COMMANDS = {
     "guest_added_list": "✅ Added: {names}",
     "guest_removed_list": "✅ Removed: {names}",
     "guest_not_found": "ℹ️ Not found: {names}",
+    "guest_not_allowed_past_deadline": "❌ Not allowed: {names}\nReason: the time slot is already past the deadline.",
     # Settings
     "setting_changed": "⚙️ Setting for {dag} changed to: **{mode}**.\n📌 Check the poll messages above to see the result.",
     "settings_all_changed": "⚙️ Settings for all days changed to: **{mode}**.\n📌 Check the poll messages above to see the result.",

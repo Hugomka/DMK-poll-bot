@@ -664,3 +664,161 @@ class TestPollStorage(BaseTestCase):
             "vrijdag", "om 19:00 uur", 1, [2, 3]
         )
         self.assertEqual(voters, [])
+
+
+class TestGuestVotesScoped(BaseTestCase):
+    """Tests for category-scoped guest vote functions."""
+
+    def setUp(self):
+        self.default_options = [
+            opt("vrijdag", "om 19:00 uur"),
+            opt("vrijdag", "om 20:30 uur"),
+            opt("zaterdag", "om 19:00 uur"),
+            opt("zaterdag", "om 20:30 uur"),
+        ]
+
+    async def test_add_guest_votes_with_scope_syncs_to_other_channels(self):
+        """Test that add_guest_votes syncs to other channels in scope."""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # Add guest vote with scope including channels 2 and 3
+            added, skipped = await poll_storage.add_guest_votes(
+                owner_user_id=123,
+                dag="vrijdag",
+                tijd="om 19:00 uur",
+                namen=["Mario"],
+                guild_id=1,
+                channel_id=2,
+                scope_channel_ids=[2, 3],
+            )
+
+            self.assertEqual(added, ["Mario"])
+            self.assertEqual(skipped, [])
+
+            # Check that the vote was synced to channel 3
+            scoped_ch3 = await poll_storage.load_votes(1, 3)
+            self.assertIn("123_guest::Mario", scoped_ch3)
+            self.assertIn("om 19:00 uur", scoped_ch3["123_guest::Mario"]["vrijdag"])
+
+    async def test_remove_guest_votes_with_scope_syncs_removal(self):
+        """Test that remove_guest_votes syncs removal to other channels."""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # First add guest votes to both channels
+            await poll_storage.add_guest_votes(
+                owner_user_id=123,
+                dag="vrijdag",
+                tijd="om 19:00 uur",
+                namen=["Mario"],
+                guild_id=1,
+                channel_id=2,
+                scope_channel_ids=[2, 3],
+            )
+
+            # Verify added to both
+            scoped_ch2 = await poll_storage.load_votes(1, 2)
+            scoped_ch3 = await poll_storage.load_votes(1, 3)
+            self.assertIn("123_guest::Mario", scoped_ch2)
+            self.assertIn("123_guest::Mario", scoped_ch3)
+
+            # Now remove from channel 2 with scope
+            removed, not_found = await poll_storage.remove_guest_votes(
+                owner_id=123,
+                dag="vrijdag",
+                tijd="om 19:00 uur",
+                namen=["Mario"],
+                guild_id=1,
+                channel_id=2,
+                scope_channel_ids=[2, 3],
+            )
+
+            self.assertEqual(removed, ["Mario"])
+
+            # Check removed from channel 3 as well
+            scoped_ch3_after = await poll_storage.load_votes(1, 3)
+            self.assertNotIn("123_guest::Mario", scoped_ch3_after)
+
+    async def test_get_guest_names_for_slot_returns_correct_names(self):
+        """Test get_guest_names_for_slot returns guest names for a slot."""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # Add multiple guests
+            await poll_storage.add_guest_votes(
+                owner_user_id=123,
+                dag="vrijdag",
+                tijd="om 19:00 uur",
+                namen=["Mario", "Luigi"],
+                guild_id=1,
+                channel_id=2,
+            )
+            # Add guest for different time
+            await poll_storage.add_guest_votes(
+                owner_user_id=123,
+                dag="vrijdag",
+                tijd="om 20:30 uur",
+                namen=["Peach"],
+                guild_id=1,
+                channel_id=2,
+            )
+
+            # Get guests for 19:00
+            names = await poll_storage.get_guest_names_for_slot(
+                123, "vrijdag", "om 19:00 uur", 1, 2
+            )
+            self.assertEqual(sorted(names), ["Luigi", "Mario"])
+
+            # Get guests for 20:30
+            names_2030 = await poll_storage.get_guest_names_for_slot(
+                123, "vrijdag", "om 20:30 uur", 1, 2
+            )
+            self.assertEqual(names_2030, ["Peach"])
+
+    async def test_get_guest_names_for_slot_empty_when_no_guests(self):
+        """Test get_guest_names_for_slot returns empty list when no guests."""
+        names = await poll_storage.get_guest_names_for_slot(
+            123, "vrijdag", "om 19:00 uur", 1, 2
+        )
+        self.assertEqual(names, [])
+
+    async def test_get_guest_names_for_slot_only_returns_owners_guests(self):
+        """Test get_guest_names_for_slot only returns guests for the owner."""
+        with patch(
+            "apps.utils.poll_storage.get_poll_options",
+            return_value=self.default_options,
+        ), patch("apps.utils.poll_storage.is_valid_option", return_value=True):
+            # User 123 adds Mario
+            await poll_storage.add_guest_votes(
+                owner_user_id=123,
+                dag="vrijdag",
+                tijd="om 19:00 uur",
+                namen=["Mario"],
+                guild_id=1,
+                channel_id=2,
+            )
+            # User 456 adds Luigi
+            await poll_storage.add_guest_votes(
+                owner_user_id=456,
+                dag="vrijdag",
+                tijd="om 19:00 uur",
+                namen=["Luigi"],
+                guild_id=1,
+                channel_id=2,
+            )
+
+            # Get guests for user 123 only
+            names_123 = await poll_storage.get_guest_names_for_slot(
+                123, "vrijdag", "om 19:00 uur", 1, 2
+            )
+            self.assertEqual(names_123, ["Mario"])
+
+            # Get guests for user 456 only
+            names_456 = await poll_storage.get_guest_names_for_slot(
+                456, "vrijdag", "om 19:00 uur", 1, 2
+            )
+            self.assertEqual(names_456, ["Luigi"])

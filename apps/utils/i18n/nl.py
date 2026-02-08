@@ -166,6 +166,7 @@ COMMANDS = {
     "guest_added_list": "✅ Toegevoegd: {names}",
     "guest_removed_list": "✅ Verwijderd: {names}",
     "guest_not_found": "ℹ️ Niet gevonden: {names}",
+    "guest_not_allowed_past_deadline": "❌ Niet toegestaan: {names}\nReden: het tijdslot is al voorbij de deadline.",
     # Settings
     "setting_changed": "⚙️ Instelling voor {dag} gewijzigd naar: **{mode}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
     "settings_all_changed": "⚙️ Instellingen voor alle dagen gewijzigd naar: **{mode}**.\n📌 Kijk hierboven bij de pollberichten om het resultaat te zien.",
