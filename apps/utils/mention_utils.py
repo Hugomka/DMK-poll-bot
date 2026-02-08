@@ -444,6 +444,86 @@ async def _remove_all_mentions_before_deadline(
         pass
 
 
+async def update_notification_remove_mention(
+    channel: Any,
+    user_id: int,
+    message_key: str = "notification_temp",
+) -> None:
+    """
+    Remove a specific user's mention from a notification message.
+
+    Called when a user confirms their vote via the "Stem nu" button.
+    This updates the notification in real-time to remove their mention.
+
+    Args:
+        channel: Het Discord kanaal object
+        user_id: De user ID die verwijderd moet worden
+        message_key: De storage key voor het bericht (standaard 'notification_temp')
+    """
+    import re
+
+    cid = getattr(channel, "id", 0)
+
+    # Haal het notificatiebericht op
+    msg_id = get_message_id(cid, message_key)
+    if not msg_id:
+        return
+
+    try:
+        from apps.utils.discord_client import fetch_message_or_none
+
+        message = await fetch_message_or_none(channel, msg_id)
+        if message is None:
+            clear_message_id(cid, message_key)
+            return
+
+        content = message.content
+        if not content:
+            return
+
+        # Verwijder de mention van deze user (<@user_id> of <@!user_id>)
+        mention_pattern = rf"<@!?{user_id}>"
+
+        # Check of deze user überhaupt in het bericht staat
+        if not re.search(mention_pattern, content):
+            return  # User not mentioned, nothing to do
+
+        # Verwijder de mention
+        new_content = re.sub(mention_pattern, "", content)
+
+        # Clean up: verwijder dubbele komma's, spaties, en leading/trailing komma's per regel
+        lines = new_content.split("\n")
+        cleaned_lines = []
+        for line in lines:
+            # Verwijder dubbele komma's en spaties rond komma's
+            line = re.sub(r",\s*,", ",", line)
+            line = re.sub(r"\s+,", ",", line)
+            line = re.sub(r",\s+", ", ", line)
+            # Verwijder leading/trailing komma's
+            line = line.strip().strip(",").strip()
+            # Verwijder dubbele spaties
+            line = re.sub(r"\s{2,}", " ", line)
+            cleaned_lines.append(line)
+
+        new_content = "\n".join(cleaned_lines)
+
+        # Check of er nog mentions over zijn
+        remaining_mentions = re.findall(r"<@!?\d+>", new_content)
+
+        if not remaining_mentions:
+            # Geen mentions meer - verwijder het hele bericht
+            await safe_call(message.delete)
+            clear_message_id(cid, message_key)
+            return
+
+        # Edit het bericht met de nieuwe content
+        # Behoud de view (knop) als die er is
+        await safe_call(message.edit, content=new_content)
+
+    except Exception as e:  # pragma: no cover
+        print(f"⚠️ Fout bij updaten notification (remove mention): {e}")
+
+
 async def update_non_voter_notification(channel: Any, dag: str, guild_id: int) -> None:
     """
     Update de non-voter notification real-time wanneer iemand stemt.

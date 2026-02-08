@@ -52,6 +52,7 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
 
         # Mock datetime om tijd check te laten passen
         from datetime import datetime
+
         fake_now = datetime.now().replace(hour=16)
 
         with patch.object(
@@ -65,37 +66,43 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "_is_deadline_mode", return_value=True
         ), patch.object(
-            scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]
+            scheduler,
+            "get_enabled_poll_days",
+            return_value=["vrijdag", "zaterdag", "zondag"],
         ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+            scheduler,
+            "get_setting",
+            return_value={"modus": "deadline", "tijd": "18:00"},
         ), patch.object(
-            scheduler, "send_non_voter_notification", new_callable=AsyncMock
-        ) as mock_nonvoter_notification, patch("datetime.datetime") as mock_dt:
+            scheduler, "send_temporary_mention", new_callable=AsyncMock
+        ) as mock_temp_mention, patch(
+            "datetime.datetime"
+        ) as mock_dt:
 
             mock_dt.now.return_value = fake_now
             # --- VRIJDAG ---
-            await scheduler.notify_non_voters(bot, "vrijdag")
+            await scheduler.notify_non_or_maybe_voters(bot, "vrijdag")
 
-            mock_nonvoter_notification.assert_awaited()
-            # Pak de mentions uit de eerste call
-            call_args = mock_nonvoter_notification.await_args_list[0]
-            mentions = call_args.kwargs.get("mentions_str", "")
+            mock_temp_mention.assert_awaited()
+            # Pak de text uit de eerste call (mentions worden nu in text opgenomen)
+            call_args = mock_temp_mention.await_args_list[0]
+            text = call_args.kwargs.get("text", "")
 
-            assert "<@1>" in mentions
-            assert "<@3>" in mentions
+            assert "<@1>" in text
+            assert "<@3>" in text
 
             # --- ZATERDAG ---
-            mock_nonvoter_notification.reset_mock()
-            await scheduler.notify_non_voters(bot, "zaterdag")
+            mock_temp_mention.reset_mock()
+            await scheduler.notify_non_or_maybe_voters(bot, "zaterdag")
 
-            # Pak de mentions uit de tweede call
-            call_args = mock_nonvoter_notification.await_args_list[0]
-            mentions = call_args.kwargs.get("mentions_str", "")
+            # Pak de text uit de tweede call
+            call_args = mock_temp_mention.await_args_list[0]
+            text = call_args.kwargs.get("text", "")
 
-            assert "<@1>" in mentions
-            assert "<@3>" not in mentions
+            assert "<@1>" in text
+            assert "<@3>" not in text
 
     async def test_notify_non_voters_safe_call_niet_aangeroepen_bij_geen_nonvoters(
         self,
@@ -116,16 +123,20 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "_is_deadline_mode", return_value=True
         ), patch.object(
-            scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]
+            scheduler,
+            "get_enabled_poll_days",
+            return_value=["vrijdag", "zaterdag", "zondag"],
         ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+            scheduler,
+            "get_setting",
+            return_value={"modus": "deadline", "tijd": "18:00"},
         ), patch.object(
-            scheduler, "send_non_voter_notification", new_callable=AsyncMock
-        ) as mock_nonvoter_notification:
-            await scheduler.notify_non_voters(bot, "vrijdag")
-            mock_nonvoter_notification.assert_not_awaited()
+            scheduler, "send_temporary_mention", new_callable=AsyncMock
+        ) as mock_temp_mention:
+            await scheduler.notify_non_or_maybe_voters(bot, "vrijdag")
+            mock_temp_mention.assert_not_awaited()
 
     async def test_notify_non_voters_skip_disabled_dagen(self):
         """Test dat notify_non_voters geen notificatie stuurt voor disabled dagen."""
@@ -146,16 +157,20 @@ class TestNotifyNonVoters(unittest.IsolatedAsyncioTestCase):
         ), patch.object(
             scheduler, "_is_deadline_mode", return_value=True
         ), patch.object(
-            scheduler, "get_enabled_poll_days", return_value=["zondag"]  # Alleen zondag enabled
+            scheduler,
+            "get_enabled_poll_days",
+            return_value=["zondag"],  # Alleen zondag enabled
         ), patch.object(
             scheduler, "load_votes", side_effect=fake_load_votes
         ), patch.object(
-            scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+            scheduler,
+            "get_setting",
+            return_value={"modus": "deadline", "tijd": "18:00"},
         ), patch.object(
-            scheduler, "send_non_voter_notification", new_callable=AsyncMock
-        ) as mock_nonvoter_notification:
+            scheduler, "send_temporary_mention", new_callable=AsyncMock
+        ) as mock_temp_mention:
             # Roep aan met vrijdag (die niet enabled is)
-            await scheduler.notify_non_voters(bot, "vrijdag")
+            await scheduler.notify_non_or_maybe_voters(bot, "vrijdag")
 
             # Notificatie mag NIET worden verstuurd omdat vrijdag disabled is
-            mock_nonvoter_notification.assert_not_awaited()
+            mock_temp_mention.assert_not_awaited()

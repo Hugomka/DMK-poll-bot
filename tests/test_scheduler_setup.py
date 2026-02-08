@@ -53,26 +53,25 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         # Assert: 17 jobs toegevoegd
         # 1. Dagelijkse update
         # 2. Wekelijkse reset
-        # 3-5. Herinneringen (vr/za/zo)
+        # 3-5. Herinneringen voor niet- en misschien-stemmers (vr/za/zo)
         # 6-8. Notificaties (vr/za/zo)
         # 9. Donderdag-herinnering
-        # 10-12. Misschien notificaties (vr/za/zo)
-        # 13-15. Convert Misschien (vr/za/zo)
-        # 16. Scheduled poll activation check (elke minuut)
-        # 17. Scheduled poll deactivation check (elke minuut)
-        # 18. Retry failed conversions (elke minuut)
-        # 19. Wekelijkse tenor sync (maandag 00:00)
-        # Totaal: 1 + 1 + 1 + 3 + 3 + 1 + 3 + 3 + 1 + 1 + 1 = 19
-        self.assertEqual(len(added_jobs), 19)
+        # 10-12. Convert Misschien (vr/za/zo)
+        # 13. Scheduled poll activation check (elke minuut)
+        # 14. Scheduled poll deactivation check (elke minuut)
+        # 15. Retry failed conversions (elke minuut)
+        # 16. Wekelijkse tenor sync (maandag 00:00)
+        # NOTE: Misschien voter notifications at 17:00 removed (now in 16:00 combined reminder)
+        # Totaal: 1 + 1 + 1 + 3 + 3 + 1 + 3 + 1 + 1 + 1 = 16
+        self.assertEqual(len(added_jobs), 16)
 
         # Controleer dat juiste functies zijn geregistreerd
         job_funcs = [j["func"] for j in added_jobs]
         self.assertIn(scheduler.update_all_polls, job_funcs)
         self.assertIn(scheduler.reset_polls, job_funcs)
-        self.assertIn(scheduler.notify_non_voters, job_funcs)
+        self.assertIn(scheduler.notify_non_or_maybe_voters, job_funcs)
         self.assertIn(scheduler.notify_voters_if_avond_gaat_door, job_funcs)
         self.assertIn(scheduler.notify_non_voters_thursday, job_funcs)
-        self.assertIn(scheduler.notify_misschien_voters, job_funcs)
         self.assertIn(scheduler.convert_remaining_misschien, job_funcs)
         self.assertIn(scheduler.activate_scheduled_polls, job_funcs)
         self.assertIn(scheduler.deactivate_scheduled_polls, job_funcs)
@@ -80,7 +79,7 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Controleer notify_non_voters voor vr/za/zo (3x)
         notify_non_voters_jobs = [
-            j for j in added_jobs if j["func"] == scheduler.notify_non_voters
+            j for j in added_jobs if j["func"] == scheduler.notify_non_or_maybe_voters
         ]
         self.assertEqual(len(notify_non_voters_jobs), 3)
 

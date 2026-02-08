@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from apps.scheduler import (
     convert_remaining_misschien,
     notify_misschien_voters,
-    notify_non_voters,
+    notify_non_or_maybe_voters,
     notify_non_voters_thursday,
     notify_voters_if_avond_gaat_door,
     update_all_polls,
@@ -45,7 +45,12 @@ class SchedulerPauseTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("apps.scheduler.load_votes")
     @patch("apps.scheduler.log_job")
     async def test_notify_non_voters_thursday_skips_paused_channel(
-        self, mock_log_job, mock_load_votes, mock_get_channels, mock_disabled, mock_paused
+        self,
+        mock_log_job,
+        mock_load_votes,
+        mock_get_channels,
+        mock_disabled,
+        mock_paused,
     ):
         """Test that notify_non_voters_thursday skips paused channels."""
         mock_get_channels.return_value = [self.mock_channel]
@@ -58,7 +63,6 @@ class SchedulerPauseTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify send was never called because channel is paused
         self.mock_channel.send.assert_not_called()
 
-
     @patch("apps.scheduler.is_paused")
     @patch("apps.scheduler.is_channel_disabled")
     @patch("apps.scheduler.get_channels")
@@ -66,7 +70,13 @@ class SchedulerPauseTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("apps.utils.poll_message.update_poll_message")
     @patch("apps.scheduler.log_job")
     async def test_update_all_polls_skips_paused_channel(
-        self, mock_log_job, mock_update, mock_get_msg_id, mock_get_channels, mock_disabled, mock_paused
+        self,
+        mock_log_job,
+        mock_update,
+        mock_get_msg_id,
+        mock_get_channels,
+        mock_disabled,
+        mock_paused,
     ):
         """Test that update_all_polls skips paused channels."""
         mock_get_channels.return_value = [self.mock_channel]
@@ -94,11 +104,10 @@ class SchedulerPauseTestCase(unittest.IsolatedAsyncioTestCase):
         mock_load_votes.return_value = {}
 
         # Call without channel parameter = scheduler mode
-        await notify_non_voters(self.mock_bot, channel=None)
+        await notify_non_or_maybe_voters(self.mock_bot, channel=None)
 
         # Verify send was never called because channel is paused
         self.mock_channel.send.assert_not_called()
-
 
     @patch("apps.scheduler.is_paused")
     @patch("apps.scheduler.is_channel_disabled")
@@ -106,7 +115,12 @@ class SchedulerPauseTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("apps.scheduler.load_votes")
     @patch("apps.scheduler.log_job")
     async def test_notify_voters_if_avond_gaat_door_skips_paused_channel(
-        self, mock_log_job, mock_load_votes, mock_get_channels, mock_disabled, mock_paused
+        self,
+        mock_log_job,
+        mock_load_votes,
+        mock_get_channels,
+        mock_disabled,
+        mock_paused,
     ):
         """Test that notify_voters_if_avond_gaat_door skips paused channels."""
         mock_get_channels.return_value = [self.mock_channel]
@@ -125,7 +139,12 @@ class SchedulerPauseTestCase(unittest.IsolatedAsyncioTestCase):
     @patch("apps.scheduler.load_votes")
     @patch("apps.scheduler.log_job")
     async def test_notify_misschien_voters_skips_paused_channel(
-        self, mock_log_job, mock_load_votes, mock_get_channels, mock_disabled, mock_paused
+        self,
+        mock_log_job,
+        mock_load_votes,
+        mock_get_channels,
+        mock_disabled,
+        mock_paused,
     ):
         """Test that notify_misschien_voters skips paused channels."""
         mock_get_channels.return_value = [self.mock_channel]

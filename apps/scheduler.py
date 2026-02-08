@@ -15,7 +15,6 @@ from apscheduler.triggers.cron import CronTrigger
 from apps.utils.discord_client import fetch_message_or_none, get_channels, safe_call
 from apps.utils.logger import log_job, log_startup
 from apps.utils.mention_utils import (
-    send_non_voter_notification,
     send_persistent_mention,
     send_temporary_mention,
 )
@@ -328,7 +327,9 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
 
             # Skip als GEEN van de dagen in 'deadline' modus staat
             # (donderdag-notificatie is alleen relevant voor deadline-scenario)
-            if not any(_is_deadline_mode(cid, dag) for dag in get_enabled_poll_days(cid)):
+            if not any(
+                _is_deadline_mode(cid, dag) for dag in get_enabled_poll_days(cid)
+            ):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -377,6 +378,7 @@ async def sync_tenor_links_weekly(bot=None) -> None:  # pragma: no cover
         log_job("tenor_sync", status="executed")
     except Exception as e:  # pragma: no cover
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Fout bij tenor sync: {e}")
         log_job("tenor_sync", status="failed")
@@ -534,7 +536,7 @@ async def _run_catch_up(bot) -> None:  # pragma: no cover
         if now < rem_occurrence:
             rem_occurrence -= timedelta(days=7)
         if should_run(last_rem, rem_occurrence):
-            await notify_non_voters(bot, dag)
+            await notify_non_or_maybe_voters(bot, dag)
             state[key] = now.isoformat()
             missed.append(f"reminder_{dag}")
             log_job("reminder", dag=dag, status="executed")
@@ -559,9 +561,7 @@ async def _run_catch_up(bot) -> None:  # pragma: no cover
     last_tenor_sync = state.get("tenor_sync")
     days_since_mon = (now.weekday() - 0) % 7  # 0 = maandag
     last_date_mon = (now - timedelta(days=days_since_mon)).date()
-    last_occurrence_mon = TZ.localize(
-        datetime.combine(last_date_mon, dt_time(0, 0))
-    )
+    last_occurrence_mon = TZ.localize(datetime.combine(last_date_mon, dt_time(0, 0)))
     if now < last_occurrence_mon:
         last_occurrence_mon -= timedelta(days=7)
     if should_run(last_tenor_sync, last_occurrence_mon):
@@ -612,13 +612,13 @@ async def retry_failed_operations(bot):
     """
     log_job("retry_operations", status="started")
 
+    from apps.utils.poll_storage import add_vote, remove_vote, reset_votes_scoped
     from apps.utils.retry_queue import (
         get_expired_conversions,
         get_pending_conversions,
         increment_retry_count,
         remove_from_queue,
     )
-    from apps.utils.poll_storage import add_vote, remove_vote, reset_votes_scoped
 
     # 1. Probeer pending operations opnieuw
     pending = get_pending_conversions()
@@ -638,12 +638,22 @@ async def retry_failed_operations(bot):
 
                 # Success - verwijder uit queue
                 remove_from_queue(key)
-                log_job("retry_operations", status=f"conversion_success: user={uid}, dag={dag}")
+                log_job(
+                    "retry_operations",
+                    status=f"conversion_success: user={uid}, dag={dag}",
+                )
 
                 # Update poll message
                 try:
                     all_channels = get_channels(bot)
-                    channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
+                    channel = next(
+                        (
+                            ch
+                            for ch in all_channels
+                            if str(getattr(ch, "id", "")) == cid
+                        ),
+                        None,
+                    )
                     if channel:
                         await schedule_poll_update(channel, dag, delay=0.0)
                 except Exception:  # pragma: no cover
@@ -655,7 +665,10 @@ async def retry_failed_operations(bot):
 
                 # Success - verwijder uit queue
                 remove_from_queue(key)
-                log_job("retry_operations", status=f"reset_success: guild={gid}, channel={cid}")
+                log_job(
+                    "retry_operations",
+                    status=f"reset_success: guild={gid}, channel={cid}",
+                )
 
         except Exception:  # pragma: no cover
             # Nog steeds gefaald - verhoog retry count
@@ -674,7 +687,9 @@ async def retry_failed_operations(bot):
         try:
             # Haal channel op
             all_channels = get_channels(bot)
-            channel = next((ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None)
+            channel = next(
+                (ch for ch in all_channels if str(getattr(ch, "id", "")) == cid), None
+            )
 
             if channel:
                 send = getattr(channel, "send", None)
@@ -686,7 +701,7 @@ async def retry_failed_operations(bot):
                             f"⚠️ **Fout bij misschien conversie:**\n"
                             f"Kan stem van <@{uid}> voor **{dag}** niet converteren naar 'niet meedoen'.\n"
                             f"Geprobeerd {retry_count + 1}x over 2 uur. Neem contact op met de beheerder.",
-                            delete_after=None
+                            delete_after=None,
                         )
                     elif operation_type == "reset":
                         await send(
@@ -694,16 +709,24 @@ async def retry_failed_operations(bot):
                             f"Kan stemmen niet resetten voor dit kanaal na poll sluiting.\n"
                             f"Geprobeerd {retry_count + 1}x over 2 uur. Oude stemmen blijven mogelijk zichtbaar.\n"
                             f"Neem contact op met de beheerder.",
-                            delete_after=None
+                            delete_after=None,
                         )
-                    log_job("retry_operations", status=f"timeout_error_sent: type={operation_type}")
+                    log_job(
+                        "retry_operations",
+                        status=f"timeout_error_sent: type={operation_type}",
+                    )
         except Exception:  # pragma: no cover
-            log_job("retry_operations", status=f"error_send_failed: type={operation_type}")
+            log_job(
+                "retry_operations", status=f"error_send_failed: type={operation_type}"
+            )
 
         # Verwijder uit queue (ook als error message faalt)
         remove_from_queue(key)
 
-    log_job("retry_operations", status=f"completed (pending={len(pending)}, expired={len(expired)})")
+    log_job(
+        "retry_operations",
+        status=f"completed (pending={len(pending)}, expired={len(expired)})",
+    )
 
 
 def setup_scheduler(bot) -> None:  # pragma: no cover
@@ -738,19 +761,19 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
     )
     # Herinneringen (vrijdag, zaterdag, zondag)
     scheduler.add_job(
-        notify_non_voters,
+        notify_non_or_maybe_voters,
         CronTrigger(day_of_week="fri", hour=REMINDER_HOUR, minute=0),
         args=[bot, "vrijdag"],
         name="Herinnering vrijdag",
     )
     scheduler.add_job(
-        notify_non_voters,
+        notify_non_or_maybe_voters,
         CronTrigger(day_of_week="sat", hour=REMINDER_HOUR, minute=0),
         args=[bot, "zaterdag"],
         name="Herinnering zaterdag",
     )
     scheduler.add_job(
-        notify_non_voters,
+        notify_non_or_maybe_voters,
         CronTrigger(day_of_week="sun", hour=REMINDER_HOUR, minute=0),
         args=[bot, "zondag"],
         name="Herinnering zondag",
@@ -780,25 +803,10 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         args=[bot],
         name="Herinnering donderdag",
     )
-    # Misschien voter notifications (17:00, after regular reminders at 16:00)
-    scheduler.add_job(
-        notify_misschien_voters,
-        CronTrigger(day_of_week="fri", hour=17, minute=0),
-        args=[bot, "vrijdag"],
-        name="Misschien notificatie vrijdag",
-    )
-    scheduler.add_job(
-        notify_misschien_voters,
-        CronTrigger(day_of_week="sat", hour=17, minute=0),
-        args=[bot, "zaterdag"],
-        name="Misschien notificatie zaterdag",
-    )
-    scheduler.add_job(
-        notify_misschien_voters,
-        CronTrigger(day_of_week="sun", hour=17, minute=0),
-        args=[bot, "zondag"],
-        name="Misschien notificatie zondag",
-    )
+    # NOTE: Misschien voter notifications at 17:00 have been removed.
+    # Maybe voters are now included in the 16:00 combined reminder notification
+    # (see notify_non_voters function).
+
     # Convert remaining Misschien votes to ❌ at 18:00
     scheduler.add_job(
         convert_remaining_misschien,
@@ -917,7 +925,7 @@ async def update_all_polls(bot) -> None:  # pragma: no cover
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def notify_non_voters(  # pragma: no cover
+async def notify_non_or_maybe_voters(  # pragma: no cover
     bot,
     dag: Optional[str] = None,
     channel: Optional[discord.TextChannel] = None,
@@ -972,15 +980,27 @@ async def notify_non_voters(  # pragma: no cover
     for guild in guilds_to_process:
         for ch in channels_for_guild(guild):
             cid = getattr(ch, "id", "0") or "0"
+            cid_int = int(cid) if cid != "0" else 0
 
-            # Check notification settings: skip als reminders disabled zijn (alleen voor scheduler)
-            if not channel:  # Scheduler-modus
-                if not is_notification_enabled(int(cid) if cid != "0" else 0, "reminders"):
+            # Check notification settings: check both reminders AND misschien settings
+            # In command mode (channel provided), always enable both notification types
+            if channel:
+                # Command mode: always allow both types
+                reminders_enabled = True
+                misschien_enabled = True
+            else:
+                # Scheduler mode: respect notification settings
+                reminders_enabled = is_notification_enabled(cid_int, "reminders")
+                misschien_enabled = is_notification_enabled(cid_int, "misschien")
+
+                # Skip if neither notification type is enabled
+                if not reminders_enabled and not misschien_enabled:
                     continue
 
                 # Reminder is altijd 2 uur vóór deadline (16:00, deadline is 18:00)
                 # Haal huidige tijd op in NL timezone
                 from datetime import datetime
+
                 now_nl = datetime.now(TZ)
 
                 # Controleer of het 16:00 is (check alleen uur)
@@ -1005,6 +1025,7 @@ async def notify_non_voters(  # pragma: no cover
 
             # Use category-scoped votes for dual language support
             from apps.utils.poll_settings import get_vote_scope_channels
+
             scope_ids = get_vote_scope_channels(ch)
             if len(scope_ids) > 1:
                 # Multiple channels share votes - use aggregated votes
@@ -1017,7 +1038,9 @@ async def notify_non_voters(  # pragma: no cover
             if dag:
                 try:
                     if len(scope_ids) > 1:
-                        leading_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                        leading_time = await calculate_leading_time_scoped(
+                            gid, scope_ids, dag
+                        )
                     else:
                         leading_time = await calculate_leading_time(gid, cid, dag)
                     if leading_time:
@@ -1055,51 +1078,111 @@ async def notify_non_voters(  # pragma: no cover
                                 voted_ids.add(owner)
                                 break
 
-            # Non-stemmers
+            # Non-stemmers (only if reminders enabled)
             to_mention = []
-            for m in all_members:
-                mid = getattr(m, "id", None)
-                if mid and mid not in voted_ids:
-                    to_mention.append(getattr(m, "mention", f"<@{mid}>"))
+            if reminders_enabled:
+                for m in all_members:
+                    mid = getattr(m, "id", None)
+                    if mid and mid not in voted_ids:
+                        to_mention.append(getattr(m, "mention", f"<@{mid}>"))
 
-            if not to_mention:
+            # Maybe-voters (only if misschien enabled)
+            maybe_mentions = []
+            if misschien_enabled and dag:
+                misschien_voter_ids = await _get_voted_ids(
+                    votes, dag=dag, vote_type="misschien"
+                )
+                for m in all_members:
+                    mid = getattr(m, "id", None)
+                    if mid and mid in misschien_voter_ids:
+                        maybe_mentions.append(getattr(m, "mention", f"<@{mid}>"))
+
+            # Skip if no one to notify
+            if not to_mention and not maybe_mentions:
                 continue
 
             # Tekst
-            from apps.utils.i18n import get_count_text, get_day_name, t
+            from apps.utils.i18n import get_day_name, t
 
-            count = len(to_mention)
-            count_text = get_count_text(int(cid) if cid != "0" else 0, count)
+            dag_display = get_day_name(cid_int, dag) if dag else ""
+
+            # Build notification text with separate sections for each group
+            # Format:
+            # 📣 DMK-poll – **zondag**
+            # @non_voter1, @non_voter2
+            # Als je nog niet gestemd hebt voor **zondag**, doe dat dan a.u.b. zo snel mogelijk.
+            # @maybe_voter1, @maybe_voter2
+            # Als je op **Misschien** hebt gestemd: wil je vanavond meedoen?
+            # Klik op **Stem nu** om je stem te bevestigen.
+
+            # Header line
             if dag:
-                dag_display = get_day_name(int(cid) if cid != "0" else 0, dag)
-                header = t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.reminder_day", dag=dag_display, count_text=count_text + " " + t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.not_voted_yet") + " ")
+                header = f"📣 DMK-poll – **{dag_display}**"
             else:
-                header = t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.reminder_weekend", count_text=count_text + " " + t(int(cid) if cid != "0" else 0, "NOTIFICATIONS.not_voted_yet") + " ")
-            footer = ""
+                header = "📣 DMK-poll – herinnering"
 
-            mentions_str = ", ".join(to_mention)
-            text = f"{header}\n{footer}"
+            text_parts = [header]
+
+            # Non-voters section
+            if to_mention:
+                non_voter_mentions = ", ".join(to_mention)
+                if dag:
+                    non_voter_text = t(
+                        cid_int,
+                        "NOTIFICATIONS.reminder_day",
+                        dag=dag_display,
+                        count_text="",
+                    )
+                    # Extract just the instruction part (after the header line)
+                    # "📣 DMK-poll – **{dag}**\n{count_text}Als je nog niet gestemd hebt..."
+                    # We want: "Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
+                    instruction = non_voter_text.split("\n", 1)[-1] if "\n" in non_voter_text else non_voter_text
+                else:
+                    instruction = t(
+                        cid_int,
+                        "NOTIFICATIONS.reminder_weekend",
+                        count_text="",
+                    ).split("\n", 1)[-1]
+                text_parts.append(non_voter_mentions)
+                text_parts.append(instruction)
+
+            # Maybe-voters section
+            if maybe_mentions:
+                maybe_mentions_str = ", ".join(maybe_mentions)
+                maybe_text = t(cid_int, "NOTIFICATIONS.maybe_confirm")
+                text_parts.append(maybe_mentions_str)
+                text_parts.append(maybe_text)
+
+            # Final text (mentions zijn al opgenomen in text_parts per sectie)
+            text = "\n".join(text_parts)
+
+            # Calculate leading time for "Stem nu" button (only if maybe-voters exist)
+            # Default to "20:30" if no clear winner (like tie-breaker behavior)
+            leading_time = "20:30"  # Default
+            if maybe_mentions and dag:
+                try:
+                    if len(scope_ids) > 1:
+                        calculated_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                    else:
+                        calculated_time = await calculate_leading_time(gid, cid, dag)
+                    if calculated_time:
+                        leading_time = calculated_time
+                except Exception:  # pragma: no cover
+                    pass  # Keep default "20:30"
 
             try:
-                # Als dag-specifiek: gebruik dynamische non-voter notification met deadline awareness
-                if dag:
-                    from apps.utils.poll_settings import get_setting
+                # Gebruik send_temporary_mention met optionele "Stem nu" knop
+                # De knop wordt ALTIJD getoond als er misschien-stemmers zijn
+                show_button = bool(maybe_mentions)
 
-                    # Haal deadline tijd op voor deze dag
-                    channel_id_int = int(cid) if cid != "0" else 0
-                    setting = get_setting(channel_id_int, dag)
-                    deadline_time = setting.get("tijd", "18:00")
-
-                    await send_non_voter_notification(
-                        ch,
-                        dag=dag,
-                        mentions_str=mentions_str,
-                        text=header,
-                        deadline_time_str=deadline_time,
-                    )
-                else:
-                    # Weekend-breed (legacy): gebruik tijdelijke mentions (5 seconden zichtbaar)
-                    await send_temporary_mention(ch, mentions=mentions_str, text=text)
+                await send_temporary_mention(
+                    ch,
+                    mentions="",  # Mentions zijn al in de text opgenomen per sectie
+                    text=text,
+                    show_button=show_button,
+                    dag=dag or "",
+                    leading_time=leading_time,
+                )
 
                 sent_any = True
             except Exception:  # pragma: no cover
@@ -1143,6 +1226,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
 
             # Use category-scoped votes for dual language support
             from apps.utils.poll_settings import get_vote_scope_channels
+
             scope_ids = get_vote_scope_channels(channel)
             guild_id = getattr(guild, "id", "0")
 
@@ -1183,6 +1267,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             # Bereken datum en converteer naar Hammertime
             # Gebruik rolling window om correcte datum te krijgen
             from apps.utils.poll_settings import get_enabled_rolling_window_days
+
             dagen_info = get_enabled_rolling_window_days(cid, dag_als_vandaag=None)
             datum_iso = None
             for day_info in dagen_info:
@@ -1196,7 +1281,7 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
                     await channel.send(
                         f"⚠️ **Fout bij beslissing aankondiging:** Dag '{dag}' niet gevonden in rolling window. "
                         f"Dit zou niet moeten gebeuren. Neem contact op met de beheerder.",
-                        delete_after=300
+                        delete_after=300,
                     )
                 except Exception:  # pragma: no cover
                     pass
@@ -1210,12 +1295,14 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
             channel_members = getattr(channel, "members", [])
             channel_member_ids = {str(getattr(m, "id", "")): m for m in channel_members}
 
-            totaal, mentions_str, participant_list = await build_doorgaan_participant_list(
-                dag,
-                winnaar_key,
-                guild,
-                scoped,
-                channel_member_ids,
+            totaal, mentions_str, participant_list = (
+                await build_doorgaan_participant_list(
+                    dag,
+                    winnaar_key,
+                    guild,
+                    scoped,
+                    channel_member_ids,
+                )
             )
 
             # Berichttekst - gebruik unified notification layout (5 uur lifetime) met Hammertime
@@ -1223,9 +1310,21 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
 
             dag_display = get_day_name(cid, dag)
             if participant_list:
-                text = t(cid, "NOTIFICATIONS.event_proceeding_with_count", totaal=totaal, participants=participant_list, dag=dag_display, tijd=winnaar_hammertime)
+                text = t(
+                    cid,
+                    "NOTIFICATIONS.event_proceeding_with_count",
+                    totaal=totaal,
+                    participants=participant_list,
+                    dag=dag_display,
+                    tijd=winnaar_hammertime,
+                )
             else:
-                text = t(cid, "NOTIFICATIONS.event_proceeding", dag=dag_display, tijd=winnaar_hammertime)
+                text = t(
+                    cid,
+                    "NOTIFICATIONS.event_proceeding",
+                    dag=dag_display,
+                    tijd=winnaar_hammertime,
+                )
 
             try:
                 await send_persistent_mention(channel, mentions_str, text)
@@ -1298,6 +1397,7 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
                 except Exception:  # pragma: no cover
                     # Beide pogingen gefaald - voeg toe aan retry queue
                     from apps.utils.retry_queue import add_failed_reset
+
                     add_failed_reset(str(gid), str(cid))
                     pass
 
@@ -1314,6 +1414,7 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
 
             # Wis bekende message IDs (alle weekdagen + stemmen)
             from apps.utils.constants import DAG_NAMEN
+
             for key in [*DAG_NAMEN, "stemmen"]:
                 try:
                     clear_message_id(cid, key)
@@ -1471,6 +1572,7 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
 
             # Use category-scoped votes for dual language support
             from apps.utils.poll_settings import get_vote_scope_channels
+
             scope_ids = get_vote_scope_channels(channel)
             if len(scope_ids) > 1:
                 # Multiple channels share votes - use aggregated votes
@@ -1479,7 +1581,9 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
                 votes = await load_votes(gid, cid) or {}
 
             # Vind "misschien" stemmers voor deze dag
-            misschien_voter_ids = await _get_voted_ids(votes, dag=dag, vote_type="misschien")
+            misschien_voter_ids = await _get_voted_ids(
+                votes, dag=dag, vote_type="misschien"
+            )
             misschien_voters = _get_non_voter_mentions(channel, set())
 
             # Filter alleen voor mensen die "misschien" hebben gestemd
@@ -1501,7 +1605,9 @@ async def notify_misschien_voters(bot, dag: str) -> None:  # pragma: no cover
             leading_time = None
             try:
                 if len(scope_ids) > 1:
-                    leading_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                    leading_time = await calculate_leading_time_scoped(
+                        gid, scope_ids, dag
+                    )
                 else:
                     leading_time = await calculate_leading_time(gid, cid, dag)
             except Exception:  # pragma: no cover
@@ -1554,7 +1660,15 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
     current_date = now.date().isoformat()  # YYYY-MM-DD
     current_time = now.strftime("%H:%M")
     current_weekday = now.weekday()
-    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+    weekday_names = [
+        "maandag",
+        "dinsdag",
+        "woensdag",
+        "donderdag",
+        "vrijdag",
+        "zaterdag",
+        "zondag",
+    ]
     current_dag = weekday_names[current_weekday]
 
     log_job("deactivate_scheduled_polls", status="executed")
@@ -1619,7 +1733,9 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                                 await safe_call(opening_msg.delete)
                             except Exception:  # pragma: no cover
                                 await safe_call(
-                                    opening_msg.edit, content="📴 Poll gesloten.", view=None
+                                    opening_msg.edit,
+                                    content="📴 Poll gesloten.",
+                                    view=None,
                                 )
                         clear_message_id(cid, "opening")
 
@@ -1633,8 +1749,12 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                             try:
                                 await safe_call(msg.delete)
                             except Exception:  # pragma: no cover
-                                afsluit_tekst = "📴 Deze poll is gesloten. Dank voor je deelname."
-                                await safe_call(msg.edit, content=afsluit_tekst, view=None)
+                                afsluit_tekst = (
+                                    "📴 Deze poll is gesloten. Dank voor je deelname."
+                                )
+                                await safe_call(
+                                    msg.edit, content=afsluit_tekst, view=None
+                                )
                         clear_message_id(cid, dag)
 
                     # 2) Stemmen-bericht verwijderen
@@ -1646,7 +1766,9 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                                 await safe_call(s_msg.delete)
                             except Exception:  # pragma: no cover
                                 await safe_call(
-                                    s_msg.edit, content="📴 Stemmen gesloten.", view=None
+                                    s_msg.edit,
+                                    content="📴 Stemmen gesloten.",
+                                    view=None,
                                 )
                         clear_message_id(cid, "stemmen")
 
@@ -1656,6 +1778,7 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                     # 3b) Celebration berichten verwijderen (embed + GIF)
                     try:
                         from apps.utils.poll_message import remove_celebration_message
+
                         await remove_celebration_message(channel, cid)
                     except Exception:  # pragma: no cover
                         pass
@@ -1663,6 +1786,7 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                     # 4) Archiveer huidige week's data voordat we deactiveren
                     try:
                         from apps.utils.archive import append_week_snapshot_scoped
+
                         gid = getattr(guild, "id", 0)
                         await append_week_snapshot_scoped(gid, cid, channel=channel)
                     except Exception as e:  # pragma: no cover
@@ -1689,10 +1813,14 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                     # Het kanaal moet automatisch weer geopend kunnen worden op de geplande tijd.
                     # Alleen handmatige /dmk-poll-stopzetten mag het kanaal permanent disablen.
 
-                    print(f"✅ Automatisch gedeactiveerd: kanaal {cid} volgens schedule")
+                    print(
+                        f"✅ Automatisch gedeactiveerd: kanaal {cid} volgens schedule"
+                    )
 
                 except Exception as e:  # pragma: no cover
-                    print(f"❌ Fout bij automatische deactivatie voor kanaal {cid}: {e}")
+                    print(
+                        f"❌ Fout bij automatische deactivatie voor kanaal {cid}: {e}"
+                    )
 
 
 async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
@@ -1710,12 +1838,23 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
     Prioriteit: handmatig > datum > wekelijks
     (Handmatige activatie wordt afgehandeld door /dmk-poll-on zelf)
     """
-    from apps.utils.poll_settings import clear_scheduled_activation, get_effective_activation
+    from apps.utils.poll_settings import (
+        clear_scheduled_activation,
+        get_effective_activation,
+    )
 
     now = datetime.now(TZ)
     current_time = now.strftime("%H:%M")
     current_weekday = now.weekday()
-    weekday_names = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+    weekday_names = [
+        "maandag",
+        "dinsdag",
+        "woensdag",
+        "donderdag",
+        "vrijdag",
+        "zaterdag",
+        "zondag",
+    ]
     current_dag = weekday_names[current_weekday]
 
     log_job("activate_scheduled_polls", status="executed")
@@ -1749,7 +1888,9 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                 # Parse scheduled datetime voor vergelijking
                 try:
                     scheduled_datetime_str = f"{scheduled_date} {scheduled_time}"
-                    scheduled_dt = datetime.strptime(scheduled_datetime_str, "%Y-%m-%d %H:%M")
+                    scheduled_dt = datetime.strptime(
+                        scheduled_datetime_str, "%Y-%m-%d %H:%M"
+                    )
                     scheduled_dt = scheduled_dt.replace(tzinfo=TZ)
 
                     # Check of scheduled tijd in het verleden ligt (gemist)
@@ -1776,7 +1917,9 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                 elif scheduled_dag == current_dag and scheduled_time < current_time:
                     # Check of kanaal poll messages heeft (dan is het al actief)
                     dagen = get_enabled_poll_days(cid)
-                    has_any_poll_message = any(get_message_id(cid, dag) for dag in dagen)
+                    has_any_poll_message = any(
+                        get_message_id(cid, dag) for dag in dagen
+                    )
                     if not has_any_poll_message:
                         # Geen poll messages: poll is niet actief, dus activeer nu (catch-up)
                         should_activate = True
@@ -1787,8 +1930,8 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                 # dus we moeten de activatie-logica hier dupliceren of een helper maken
                 try:
                     # Import hier om circular dependency te voorkomen
-                    from apps.utils.poll_message import update_poll_message
                     from apps.ui.poll_buttons import OneStemButtonView
+                    from apps.utils.poll_message import update_poll_message
 
                     # Kanaal activeren
                     set_channel_disabled(cid, False)
@@ -1796,6 +1939,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     # Unpause
                     try:
                         from apps.utils.poll_settings import set_paused
+
                         set_paused(cid, False)
                     except Exception:  # pragma: no cover
                         pass
@@ -1832,7 +1976,19 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         print(f"⚠️ Kon bot-berichten niet verwijderen: {e}")
 
                     # Wis alle message IDs na cleanup
-                    for key in ["opening", "vrijdag", "zaterdag", "zondag", "maandag", "dinsdag", "woensdag", "donderdag", "stemmen", "notification", "notification_persistent"]:
+                    for key in [
+                        "opening",
+                        "vrijdag",
+                        "zaterdag",
+                        "zondag",
+                        "maandag",
+                        "dinsdag",
+                        "woensdag",
+                        "donderdag",
+                        "stemmen",
+                        "notification",
+                        "notification_persistent",
+                    ]:
                         try:
                             clear_message_id(cid, key)
                         except Exception:  # pragma: no cover
@@ -1840,6 +1996,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
 
                     # STAP 2: Opening bericht (nu nieuw aanmaken met dynamisch gegenereerde tekst)
                     from apps.commands.poll_lifecycle import _load_opening_message
+
                     opening_text = _load_opening_message(channel_id=cid)
                     if send:
                         opening_msg = await safe_call(send, content=opening_text)
@@ -1864,8 +2021,9 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                             save_message_id(cid, key, s_msg.id)
 
                     # STAP 5: Bereken HammerTime voor de activatietijd (voor notificatie en mention)
-                    from apps.utils.time_zone_helper import TimeZoneHelper
                     from zoneinfo import ZoneInfo
+
+                    from apps.utils.time_zone_helper import TimeZoneHelper
 
                     hammertime_str = ""
                     if activation_type == "datum":
@@ -1879,13 +2037,18 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         now = datetime.now(ZoneInfo("Europe/Amsterdam"))
                         current_date_obj = now.date()
                         hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
-                            current_date_obj.strftime("%Y-%m-%d"), scheduled_time, style="t"
+                            current_date_obj.strftime("%Y-%m-%d"),
+                            scheduled_time,
+                            style="t",
                         )
 
                     # STAP 6: Notificatiebericht met HammerTime (altijd nieuw aanmaken na cleanup)
                     # Dit voorkomt dubbele notificatieberichten (Bug 4)
                     await create_notification_message(
-                        channel, activation_hammertime=hammertime_str if hammertime_str else None
+                        channel,
+                        activation_hammertime=(
+                            hammertime_str if hammertime_str else None
+                        ),
                     )
 
                     # STAP 7: Openingsmentions versturen met HammerTime
@@ -1894,7 +2057,9 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         from apps.utils.mention_utils import send_temporary_mention
 
                         if hammertime_str:
-                            opening_notification = t(cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str)
+                            opening_notification = t(
+                                cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str
+                            )
                         else:
                             opening_notification = t(cid, "NOTIFICATIONS.poll_opened")
 
@@ -1976,6 +2141,7 @@ async def convert_remaining_misschien(bot, dag: str) -> None:  # pragma: no cove
                     except Exception:  # pragma: no cover
                         # Voeg toe aan retry queue voor 2 uur retry window
                         from apps.utils.retry_queue import add_failed_conversion
+
                         add_failed_conversion(str(gid), str(cid), str(uid), dag)
                         continue
 

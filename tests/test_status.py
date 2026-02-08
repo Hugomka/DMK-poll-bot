@@ -881,13 +881,14 @@ class TestNotifyCommandEdgeCases(BaseTestCase):
         with patch("apps.commands.poll_status.is_channel_disabled", return_value=False), \
              patch("apps.commands.poll_status._is_denied_channel", return_value=False), \
              patch("apps.utils.poll_message.set_channel_disabled"), \
-             patch("apps.commands.poll_status.get_text_herinnering_dag", return_value="Herinnering voor vrijdag") as mock_get_text, \
-             patch("apps.utils.mention_utils.send_temporary_mention", new=AsyncMock()):
+             patch("apps.scheduler.notify_non_or_maybe_voters", new=AsyncMock(return_value=True)) as mock_notify:
 
             await self._invoke_notify(interaction, "Herinnering vrijdag")
 
-            # get_text_herinnering_dag moet zijn aangeroepen met "vrijdag"
-            mock_get_text.assert_called_once_with("vrijdag")
+            # notify_non_or_maybe_voters moet zijn aangeroepen met dag="vrijdag"
+            mock_notify.assert_called_once()
+            call_kwargs = mock_notify.call_args
+            self.assertEqual(call_kwargs.kwargs.get("dag"), "vrijdag")
 
     async def test_notify_herinnering_zaterdag(self):
         """Test dat notify Herinnering zaterdag correct afhandelt"""
@@ -900,13 +901,14 @@ class TestNotifyCommandEdgeCases(BaseTestCase):
         with patch("apps.commands.poll_status.is_channel_disabled", return_value=False), \
              patch("apps.commands.poll_status._is_denied_channel", return_value=False), \
              patch("apps.utils.poll_message.set_channel_disabled"), \
-             patch("apps.commands.poll_status.get_text_herinnering_dag", return_value="Herinnering voor zaterdag") as mock_get_text, \
-             patch("apps.utils.mention_utils.send_temporary_mention", new=AsyncMock()):
+             patch("apps.scheduler.notify_non_or_maybe_voters", new=AsyncMock(return_value=True)) as mock_notify:
 
             await self._invoke_notify(interaction, "Herinnering zaterdag")
 
-            # get_text_herinnering_dag moet zijn aangeroepen met "zaterdag"
-            mock_get_text.assert_called_once_with("zaterdag")
+            # notify_non_or_maybe_voters moet zijn aangeroepen met dag="zaterdag"
+            mock_notify.assert_called_once()
+            call_kwargs = mock_notify.call_args
+            self.assertEqual(call_kwargs.kwargs.get("dag"), "zaterdag")
 
     async def test_notify_herinnering_zondag(self):
         """Test dat notify Herinnering zondag correct afhandelt"""
@@ -919,11 +921,12 @@ class TestNotifyCommandEdgeCases(BaseTestCase):
         with patch("apps.commands.poll_status.is_channel_disabled", return_value=False), \
              patch("apps.commands.poll_status._is_denied_channel", return_value=False), \
              patch("apps.utils.poll_message.set_channel_disabled"), \
-             patch("apps.commands.poll_status.get_text_herinnering_dag", return_value="Herinnering voor zondag") as mock_get_text, \
-             patch("apps.utils.mention_utils.send_temporary_mention", new=AsyncMock()):
+             patch("apps.scheduler.notify_non_or_maybe_voters", new=AsyncMock(return_value=True)) as mock_notify:
 
             await self._invoke_notify(interaction, "Herinnering zondag")
 
-            # get_text_herinnering_dag moet zijn aangeroepen met "zondag"
-            mock_get_text.assert_called_once_with("zondag")
+            # notify_non_or_maybe_voters moet zijn aangeroepen met dag="zondag"
+            mock_notify.assert_called_once()
+            call_kwargs = mock_notify.call_args
+            self.assertEqual(call_kwargs.kwargs.get("dag"), "zondag")
 

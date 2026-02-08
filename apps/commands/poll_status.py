@@ -25,7 +25,6 @@ from apps.utils.notification_texts import (
     NOTIFICATION_TEXTS,
     format_opening_time_from_schedule,
     get_notification_by_name,
-    get_text_herinnering_dag,
     get_text_poll_gesloten,
 )
 from apps.utils.poll_message import (
@@ -324,13 +323,38 @@ class PollStatus(commands.Cog):
             elif notificatie:
                 notification_name = notificatie
 
-                # Dag-specifieke herinneringen gebruiken helper functie
-                if notificatie == "Herinnering vrijdag":
-                    notification_text = get_text_herinnering_dag("vrijdag")
-                elif notificatie == "Herinnering zaterdag":
-                    notification_text = get_text_herinnering_dag("zaterdag")
-                elif notificatie == "Herinnering zondag":
-                    notification_text = get_text_herinnering_dag("zondag")
+                # Dag-specifieke herinneringen: roep de echte notificatie functie aan
+                # met mentions voor niet-stemmers en misschien-stemmers
+                if notificatie in (
+                    "Herinnering vrijdag",
+                    "Herinnering zaterdag",
+                    "Herinnering zondag",
+                ):
+                    from apps.scheduler import notify_non_or_maybe_voters
+
+                    dag_map = {
+                        "Herinnering vrijdag": "vrijdag",
+                        "Herinnering zaterdag": "zaterdag",
+                        "Herinnering zondag": "zondag",
+                    }
+                    dag = dag_map[notificatie]
+
+                    # Roep de scheduler functie aan met dit kanaal
+                    result = await notify_non_or_maybe_voters(
+                        self.bot, dag=dag, channel=channel
+                    )
+
+                    if result:
+                        await interaction.followup.send(
+                            f"✅ Herinnering verstuurd voor **{dag}** met mentions voor niet-stemmers en misschien-stemmers.",
+                            ephemeral=True,
+                        )
+                    else:
+                        await interaction.followup.send(
+                            f"ℹ️ Geen herinnering verstuurd voor **{dag}** (iedereen heeft al gestemd).",
+                            ephemeral=True,
+                        )
+                    return
                 elif notificatie == "Poll gesloten":
                     # Poll gesloten moet dynamisch opening time gebruiken
                     act_schedule, _ = get_effective_activation(cid)

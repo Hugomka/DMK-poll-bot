@@ -43,7 +43,9 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -88,7 +90,9 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -132,10 +136,15 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value="19:00",
             ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -145,7 +154,7 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             ),
         ):
             # Scheduler-modus: geen channel parameter
-            result = await scheduler.notify_non_voters(bot, dag="vrijdag")
+            result = await scheduler.notify_non_or_maybe_voters(bot, dag="vrijdag")
 
         # Assert: send_temporary_mention NIET aangeroepen (altijd modus)
         mock_mention.assert_not_awaited()
@@ -178,6 +187,7 @@ class TestSchedulerDeadlineMode(BaseTestCase):
 
         # Mock datetime om tijd check te laten passen
         from datetime import datetime
+
         fake_now = datetime.now().replace(hour=16)
 
         with (
@@ -185,16 +195,25 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
-            patch.object(scheduler, "get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]),
+            patch.object(
+                scheduler,
+                "get_enabled_poll_days",
+                return_value=["vrijdag", "zaterdag", "zondag"],
+            ),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value="19:00",
             ),
             patch.object(
-                scheduler, "send_non_voter_notification", new_callable=AsyncMock
-            ) as mock_nonvoter_notification,
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_temp_mention,
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
@@ -202,10 +221,10 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             with patch("datetime.datetime") as mock_dt:
                 mock_dt.now.return_value = fake_now
                 # Scheduler-modus: geen channel parameter
-                result = await scheduler.notify_non_voters(bot, dag="vrijdag")
+                result = await scheduler.notify_non_or_maybe_voters(bot, dag="vrijdag")
 
-        # Assert: send_non_voter_notification WEL aangeroepen (dag-specifiek met deadline)
-        mock_nonvoter_notification.assert_awaited_once()
+        # Assert: send_temporary_mention WEL aangeroepen (dag-specifiek met deadline)
+        mock_temp_mention.assert_awaited_once()
         self.assertTrue(result)
 
     async def test_notify_misschien_voters_skips_altijd_mode(self):
@@ -240,10 +259,15 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value="19:00",
             ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -290,10 +314,15 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "is_notification_enabled", return_value=True),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
             patch.object(
-                scheduler, "calculate_leading_time", new_callable=AsyncMock, return_value="19:00"
+                scheduler,
+                "calculate_leading_time",
+                new_callable=AsyncMock,
+                return_value="19:00",
             ),
             patch.object(
                 scheduler, "send_temporary_mention", new_callable=AsyncMock
@@ -336,10 +365,16 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
-            patch("apps.utils.poll_storage.remove_vote", new_callable=AsyncMock) as mock_remove,
-            patch("apps.utils.poll_storage.add_vote", new_callable=AsyncMock) as mock_add,
+            patch(
+                "apps.utils.poll_storage.remove_vote", new_callable=AsyncMock
+            ) as mock_remove,
+            patch(
+                "apps.utils.poll_storage.add_vote", new_callable=AsyncMock
+            ) as mock_add,
             patch.object(scheduler, "schedule_poll_update", return_value=None),
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
@@ -379,10 +414,16 @@ class TestSchedulerDeadlineMode(BaseTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "is_paused", return_value=False),
             patch.object(scheduler, "get_message_id", return_value=999),
-            patch.object(scheduler, "load_votes", new_callable=AsyncMock, return_value=votes),
+            patch.object(
+                scheduler, "load_votes", new_callable=AsyncMock, return_value=votes
+            ),
             patch.object(scheduler, "get_setting", side_effect=fake_get_setting),
-            patch("apps.utils.poll_storage.remove_vote", new_callable=AsyncMock) as mock_remove,
-            patch("apps.utils.poll_storage.add_vote", new_callable=AsyncMock) as mock_add,
+            patch(
+                "apps.utils.poll_storage.remove_vote", new_callable=AsyncMock
+            ) as mock_remove,
+            patch(
+                "apps.utils.poll_storage.add_vote", new_callable=AsyncMock
+            ) as mock_add,
             patch.object(scheduler, "schedule_poll_update", return_value=None),
             patch.dict(
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False

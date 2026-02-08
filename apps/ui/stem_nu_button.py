@@ -208,7 +208,16 @@ class JaButton(Button):
                 view=None,
             )
 
-            # TODO: In toekomst: real-time update notificatiebericht (verwijder mention)
+            # Verwijder de mention van deze user uit het notificatiebericht
+            if interaction.channel is not None:
+                from apps.utils.mention_utils import update_notification_remove_mention
+
+                asyncio.create_task(
+                    update_notification_remove_mention(
+                        interaction.channel,
+                        int(self.parent_view.user_id),
+                    )
+                )
 
         except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in JaButton.callback: {e}")
@@ -266,7 +275,16 @@ class NeeButton(Button):
                 view=None,
             )
 
-            # TODO: In toekomst: real-time update notificatiebericht (verwijder mention)
+            # Verwijder de mention van deze user uit het notificatiebericht
+            if interaction.channel is not None:
+                from apps.utils.mention_utils import update_notification_remove_mention
+
+                asyncio.create_task(
+                    update_notification_remove_mention(
+                        interaction.channel,
+                        int(self.parent_view.user_id),
+                    )
+                )
 
         except Exception as e:  # pragma: no cover
             print(f"⚠️ Fout in NeeButton.callback: {e}")
