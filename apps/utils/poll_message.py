@@ -192,10 +192,14 @@ async def create_notification_message(
             clear_message_id(cid, key)
 
     # STAP 2: Maak nieuw notificatiebericht aan
+    from apps.utils.i18n import t
+
+    heading = t(cid, "NOTIFICATIONS.notification_heading")
     if activation_hammertime:
-        content = f":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet om {activation_hammertime}. Veel plezier met de stemmen! 🎮"
+        body = t(cid, "NOTIFICATIONS.poll_opened_at", tijd=activation_hammertime)
     else:
-        content = ":mega: Notificatie:\nDe DMK-poll-bot is zojuist aangezet. Veel plezier met de stemmen! 🎮"
+        body = t(cid, "NOTIFICATIONS.poll_opened")
+    content = f"{heading}\n{body}"
 
     send = getattr(channel, "send", None)
     if send is None:
@@ -241,7 +245,10 @@ async def update_notification_message(
         return
 
     # Build content
-    content = ":mega: Notificatie:\n"
+    from apps.utils.i18n import t
+
+    heading = t(cid, "NOTIFICATIONS.notification_heading")
+    content = f"{heading}\n"
     content += f"{mentions}\n" if mentions else "\n"
     content += f"{text}" if text else ""
 
@@ -263,6 +270,46 @@ async def clear_notification_mentions(channel: Any) -> None:
     Verwijder mentions uit het notificatiebericht (lijn 2 leegmaken).
     """
     await update_notification_message(channel, mentions="", text="", show_button=False)
+
+
+async def update_poll_messages_for_category(channel: Any, dag: str) -> None:
+    """
+    Update poll messages in all channels that share votes with this channel.
+
+    This function is used for category-based dual language support. When a vote
+    changes in one channel, all channels in the same category (that have active
+    polls) need to be updated to reflect the shared vote count.
+
+    For standalone channels (no category or single channel in category),
+    this behaves the same as update_poll_message().
+
+    Args:
+        channel: Discord TextChannel object
+        dag: The day to update (vrijdag, zaterdag, zondag, etc.)
+    """
+    from apps.utils.poll_settings import get_vote_scope_channels
+
+    scope_ids = get_vote_scope_channels(channel)
+
+    if len(scope_ids) == 1:
+        # Single channel, use existing flow
+        await update_poll_message(channel, dag)
+        return
+
+    # Multiple channels - update all in parallel
+    tasks: list[asyncio.Task] = []
+    guild = getattr(channel, "guild", None)
+    if not guild:
+        await update_poll_message(channel, dag)
+        return
+
+    for cid in scope_ids:
+        ch = guild.get_channel(cid)
+        if ch:
+            tasks.append(schedule_poll_update(ch, dag, delay=0.0))
+
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def schedule_poll_update(channel: Any, dag: str, delay: float = 0.3) -> asyncio.Task:
@@ -362,7 +409,7 @@ async def update_poll_message(channel: Any, dag: str | None = None) -> None:
                 datum_iso=datum_iso,  # Correcte datum uit rolling window
             )
 
-            decision = await build_decision_line(gid_val, cid_val, d, now)
+            decision = await build_decision_line(gid_val, cid_val, d, now, channel=channel)
             if decision:
                 content = content.rstrip() + ":arrow_up: " + decision + "\n\u200b"
 

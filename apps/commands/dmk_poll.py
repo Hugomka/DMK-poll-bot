@@ -50,7 +50,7 @@ async def setup(bot: commands.Bot) -> None:
     - PollLifecycle: /dmk-poll-on, /dmk-poll-reset, /dmk-poll-pauze, /dmk-poll-verwijderen
     - PollStatus: /dmk-poll-status, /dmk-poll-notify
     - PollArchive: /dmk-poll-archief
-    - PollGuests: /gast-add, /gast-remove
+    - PollGuests: /guest-add, /guest-remove
     - PollVotes: /dmk-poll-stemmen
     """
     # Registreer parent cog voor error handling
@@ -59,12 +59,12 @@ async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(parent)
 
     # Registreer alle child cogs
+    from apps.commands.poll_archive import setup as setup_archive
+    from apps.commands.poll_config import setup as setup_config
+    from apps.commands.poll_guests import setup as setup_guests
     from apps.commands.poll_lifecycle import setup as setup_lifecycle
     from apps.commands.poll_status import setup as setup_status
-    from apps.commands.poll_archive import setup as setup_archive
-    from apps.commands.poll_guests import setup as setup_guests
     from apps.commands.poll_votes import setup as setup_votes
-    from apps.commands.poll_config import setup as setup_config
 
     await setup_lifecycle(bot)
     await setup_status(bot)

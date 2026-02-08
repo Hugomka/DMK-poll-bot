@@ -2,6 +2,7 @@
 #
 # Centrale opslagplaats voor alle notificatieteksten in DMK-poll-bot
 # DRY principe: alle teksten op één plek voor makkelijk onderhoud
+# Now with i18n support for Dutch and English
 
 from datetime import datetime
 from typing import NamedTuple
@@ -16,32 +17,38 @@ class NotificationText(NamedTuple):
     content: str  # Volledige notificatietekst
 
 
-def get_text_herinnering_dag(dag: str, non_voters: list[str] | None = None) -> str:
+def get_text_herinnering_dag(
+    dag: str, non_voters: list[str] | None = None, channel_id: int | None = None
+) -> str:
     """Herinnering voor specifieke dag met optioneel aantal niet-stemmers."""
+    from apps.utils.i18n import get_count_text, get_day_name, t
+
+    # Use channel_id for translation, default to Dutch (0) if not provided
+    cid = channel_id or 0
+
     if non_voters:
-        count = len(non_voters)
-        count_text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd. "
+        count_text = get_count_text(cid, len(non_voters))
     else:
         count_text = ""
 
-    return (
-        f" DMK-poll - **{dag}**\n"
-        f"{count_text}Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
-    )
+    dag_display = get_day_name(cid, dag) if channel_id else dag
+    return t(cid, "NOTIFICATIONS.reminder_day", dag=dag_display, count_text=count_text)
 
 
-def get_text_herinnering_weekend(non_voters: list[str] | None = None) -> str:
+def get_text_herinnering_weekend(
+    non_voters: list[str] | None = None, channel_id: int | None = None
+) -> str:
     """Herinnering voor het weekend met optioneel aantal niet-stemmers."""
+    from apps.utils.i18n import get_count_text, t
+
+    cid = channel_id or 0
+
     if non_voters:
-        count = len(non_voters)
-        count_text = f"**{count} {'lid' if count == 1 else 'leden'}** {'heeft' if count == 1 else 'hebben'} nog niet gestemd. "
+        count_text = get_count_text(cid, len(non_voters))
     else:
         count_text = ""
 
-    return (
-        f"DMK-poll - herinnering\n"
-        f"{count_text}Als je nog niet gestemd hebt voor dit weekend, doe dat dan a.u.b. zo snel mogelijk."
-    )
+    return t(cid, "NOTIFICATIONS.reminder_weekend", count_text=count_text)
 
 
 def _get_next_tuesday_hammertime() -> str:
@@ -90,17 +97,73 @@ def _get_next_weekday_date(dag: str) -> str:
     return target_date.strftime("%Y-%m-%d")
 
 
-def get_text_poll_gesloten(opening_time: str | None = None) -> str:
+def get_text_poll_gesloten(
+    opening_time: str | None = None, channel_id: int | None = None
+) -> str:
     """Poll gesloten tekst met opening tijd. Default is volgende dinsdag 20:00 in Hammertime."""
+    from apps.utils.i18n import t
+
     if opening_time is None:
         opening_time = _get_next_tuesday_hammertime()
-    return (
-        f"Deze poll is gesloten en gaat pas **{opening_time}** weer open. "
-        "Dank voor je deelname."
-    )
+
+    cid = channel_id or 0
+    return t(cid, "NOTIFICATIONS.poll_closed", opening_time=opening_time)
 
 
-# Alle standaard notificatieteksten
+def get_text_poll_opened(channel_id: int | None = None) -> str:
+    """Poll geopend tekst."""
+    from apps.utils.i18n import t
+
+    cid = channel_id or 0
+    return t(cid, "NOTIFICATIONS.poll_opened")
+
+
+def get_text_poll_reset(channel_id: int | None = None) -> str:
+    """Poll gereset tekst."""
+    from apps.utils.i18n import t
+
+    cid = channel_id or 0
+    return t(cid, "NOTIFICATIONS.poll_reset")
+
+
+def get_text_celebration(channel_id: int | None = None) -> str:
+    """Celebration tekst (iedereen heeft gestemd)."""
+    from apps.utils.i18n import t
+
+    cid = channel_id or 0
+    title = t(cid, "NOTIFICATIONS.celebration_title")
+    desc = t(cid, "NOTIFICATIONS.celebration_description")
+    return f"{title}\n{desc}"
+
+
+def get_text_event_proceeding(
+    dag: str,
+    tijd: str,
+    totaal: int | None = None,
+    participants: str | None = None,
+    channel_id: int | None = None,
+) -> str:
+    """Doorgaan notification tekst."""
+    from apps.utils.i18n import get_day_name, get_time_label, t
+
+    cid = channel_id or 0
+    dag_display = get_day_name(cid, dag)
+    tijd_display = get_time_label(cid, tijd)
+
+    if totaal and participants:
+        return t(
+            cid,
+            "NOTIFICATIONS.event_proceeding_with_count",
+            dag=dag_display,
+            tijd=tijd_display,
+            totaal=totaal,
+            participants=participants,
+        )
+    return t(cid, "NOTIFICATIONS.event_proceeding", dag=dag_display, tijd=tijd_display)
+
+
+# Alle standaard notificatieteksten (for backwards compatibility, uses Dutch)
+# Note: For localized texts, use the get_text_* functions with channel_id
 NOTIFICATION_TEXTS = [
     NotificationText(
         name="Poll geopend",

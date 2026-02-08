@@ -90,16 +90,16 @@ class TestPollButtonCallbacks(BaseTestCase):
             new_callable=AsyncMock,
             return_value=MagicMock(),
         ) as create_view_mock, patch(
-            f"{MODULE}.update_poll_message", new_callable=AsyncMock
+            f"{MODULE}.update_poll_messages_for_category", new_callable=AsyncMock
         ) as update_mock:
             await self.button.callback(cast(Any, interaction))
-            # geef de event loop een tick zodat de task (update_poll_message) kan afronden
+            # geef de event loop een tick zodat de task (update_poll_messages_for_category) kan afronden
             import asyncio
 
             await asyncio.sleep(0)
 
             toggle_mock.assert_awaited_once_with(
-                "42", "vrijdag", "om 19:00 uur", 7, 123
+                "42", "vrijdag", "om 19:00 uur", 7, 123, channel=interaction.channel
             )
             create_view_mock.assert_awaited_once_with("42", 7, 123, dag="vrijdag")
             update_mock.assert_awaited_once_with(interaction.channel, "vrijdag")

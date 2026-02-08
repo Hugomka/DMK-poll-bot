@@ -69,6 +69,49 @@ def set_visibility(channel_id: int, dag: str, modus: str, tijd: str = "18:00"):
     return instelling
 
 
+def is_slot_past_deadline(channel_id: int, dag: str, tijd: str, now: datetime) -> bool:
+    """
+    Bepaalt of een tijdslot voorbij de deadline is (voor guest votes).
+
+    Een slot is "past deadline" als:
+    - De dag al voorbij is, OF
+    - Het is dezelfde dag EN de starttijd van het slot is al geweest
+
+    Args:
+        channel_id: Discord channel ID
+        dag: Dagnaam (e.g., 'vrijdag', 'zaterdag')
+        tijd: Tijdslot string (e.g., 'om 19:00 uur' of '19:00')
+        now: Huidige datetime
+
+    Returns:
+        True als het slot al voorbij is, anders False
+    """
+    target_idx = DAYS_INDEX.get(dag.lower())
+    if target_idx is None:
+        return False  # Onbekende dag
+
+    huidige_idx = now.weekday()
+
+    # Als de dag al voorbij is deze week → past deadline
+    if huidige_idx > target_idx:
+        return True
+
+    # Als de dag nog moet komen → niet past deadline
+    if huidige_idx < target_idx:
+        return False
+
+    # Zelfde dag: check of de starttijd van het slot al geweest is
+    # Extraheer uur en minuut uit tijd string (bijv. "om 19:00 uur" -> 19, 0)
+    tijd_clean = tijd.replace("om ", "").replace(" uur", "").strip()
+    try:
+        uur, minuut = map(int, tijd_clean.split(":"))
+    except ValueError:
+        return False  # Kan tijd niet parsen
+
+    slot_time = time(uur, minuut)
+    return now.time() >= slot_time
+
+
 def should_hide_counts(channel_id: int, dag: str, now: datetime) -> bool:
     """
     Bepaalt of stemaantallen verborgen moeten worden.
@@ -512,6 +555,50 @@ def get_effective_deactivation(channel_id: int) -> tuple[dict | None, bool]:
 
 
 # ========================================================================
+# Language Settings (per channel)
+# ========================================================================
+
+SUPPORTED_LANGUAGES = {"nl", "en"}
+DEFAULT_LANGUAGE = "nl"
+
+
+def get_language(channel_id: int) -> str:
+    """
+    Get language preference for a channel.
+
+    Returns:
+        Language code ('nl' or 'en'), default: 'nl'
+    """
+    data = _load_data()
+    return data.get(str(channel_id), {}).get("__language__", DEFAULT_LANGUAGE)
+
+
+def set_language(channel_id: int, language: str) -> str:
+    """
+    Set language preference for a channel.
+
+    Args:
+        channel_id: The channel ID
+        language: 'nl' or 'en'
+
+    Returns:
+        The new language setting
+
+    Raises:
+        ValueError: If language is not supported
+    """
+    if language not in SUPPORTED_LANGUAGES:
+        raise ValueError(
+            f"Unsupported language: {language}. Supported: {', '.join(SUPPORTED_LANGUAGES)}"
+        )
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+    ch["__language__"] = language
+    _save_data(data)
+    return language
+
+
+# ========================================================================
 # Notification Settings (per channel)
 # ========================================================================
 
@@ -586,6 +673,38 @@ def toggle_notification_setting(channel_id: int, key: str) -> bool:
 
     _save_data(data)
     return new_status
+
+
+def set_notification_setting(channel_id: int, key: str, enabled: bool) -> None:
+    """
+    Zet een specifieke notificatie instelling aan of uit.
+
+    Args:
+        channel_id: Het kanaal ID
+        key: poll_opened | poll_reset | poll_closed | reminders |
+             thursday_reminder | misschien | doorgaan | celebration
+        enabled: True = enabled, False = disabled
+    """
+    data = _load_data()
+    ch = data.setdefault(str(channel_id), {})
+    notif_states = ch.setdefault("__notification_states__", {})
+
+    # Als __notification_states__ leeg is (eerste keer), initialiseer alles expliciet
+    if not notif_states:
+        defaults = {
+            "poll_opened": True,
+            "poll_reset": True,
+            "poll_closed": True,
+            "reminders": False,
+            "thursday_reminder": False,
+            "misschien": False,
+            "doorgaan": True,
+            "celebration": True,
+        }
+        notif_states.update(defaults)
+
+    notif_states[key] = enabled
+    _save_data(data)
 
 
 def is_notification_enabled(channel_id: int, key: str) -> bool:
@@ -888,6 +1007,136 @@ def get_enabled_poll_days(channel_id: int) -> list[str]:
         Lijst van enabled dagen (bijv. ['vrijdag', 'zondag'])
     """
     return [dag for dag in WEEK_DAYS if not is_day_completely_disabled(channel_id, dag)]
+
+
+# ========================================================================
+# Category-Based Vote Scope (Dual Language Support)
+# ========================================================================
+
+
+def get_activated_channels_in_category(guild, category_id: int) -> list[int]:
+    """
+    Return list of channel IDs in this category that have active polls.
+
+    A channel is considered active if:
+    - It's in the specified category
+    - It's not permanently disabled (via /dmk-poll-stopzetten)
+    - It has settings and is not paused
+
+    Args:
+        guild: Discord guild object
+        category_id: The Discord category ID
+
+    Returns:
+        List of channel IDs with active polls in this category
+    """
+    from apps.utils.poll_message import is_channel_disabled
+
+    activated = []
+    for channel in guild.text_channels:
+        if channel.category_id != category_id:
+            continue
+        if is_channel_disabled(channel.id):
+            continue
+        # Check if channel has been activated (has poll settings and not paused)
+        settings = _load_data().get(str(channel.id), {})
+        if settings and not settings.get("__paused__", True):
+            activated.append(channel.id)
+    return activated
+
+
+def get_vote_scope_channels(channel) -> list[int]:
+    """
+    Get all channel IDs that share votes with this channel.
+
+    Returns [channel.id] for standalone channels (no category or only one active
+    channel in category).
+    Returns all activated channel IDs in the same category for linked channels.
+
+    Args:
+        channel: Discord TextChannel object
+
+    Returns:
+        List of channel IDs that share votes
+    """
+    channel_id = getattr(channel, "id", None)
+    if channel_id is None:
+        return []  # Invalid channel object
+
+    category_id = getattr(channel, "category_id", None)
+    if not category_id:
+        return [channel_id]  # No category = standalone
+
+    guild = getattr(channel, "guild", None)
+    if not guild:
+        return [channel_id]
+
+    # Get all activated channels in this category
+    linked = get_activated_channels_in_category(guild, category_id)
+
+    # Only share votes if there are multiple active channels
+    return linked if len(linked) > 1 else [channel_id]
+
+
+# Settings that should be synced across linked channels in the same category.
+# Everything except __language__ which is intentionally per-channel for dual language support.
+SYNCED_SETTINGS = [
+    "__poll_options__",
+    "__period_settings__",
+    "__reminder_time__",
+    "__notification_states__",
+    "__paused__",
+    "__scheduled_activation__",
+]
+
+
+def sync_settings_to_category(channel) -> None:
+    """
+    Sync all shared settings from this channel to all linked channels in the category.
+
+    When settings are changed in one channel, this function copies them to all other
+    channels in the same category that share votes. This ensures consistent behavior
+    across language variants.
+
+    Settings synced: poll options, period settings, reminder time, notification states,
+    paused state, and scheduled activation.
+
+    Settings NOT synced: language (intentionally different per channel).
+
+    Args:
+        channel: Discord TextChannel object
+    """
+    scope_ids = get_vote_scope_channels(channel)
+    if len(scope_ids) <= 1:
+        return  # No other channels to sync
+
+    channel_id = getattr(channel, "id", None)
+    if channel_id is None:
+        return
+
+    source_id = str(channel_id)
+    data = _load_data()
+    source_settings = data.get(source_id, {})
+
+    if not source_settings:
+        return
+
+    for cid in scope_ids:
+        if cid != channel_id:
+            target_id = str(cid)
+            if target_id not in data:
+                data[target_id] = {}
+            for key in SYNCED_SETTINGS:
+                if key in source_settings:
+                    value = source_settings[key]
+                    # Deep copy dicts, shallow copy other values
+                    data[target_id][key] = value.copy() if isinstance(value, dict) else value
+
+    _save_data(data)
+
+
+# Backwards compatibility alias
+sync_poll_options_to_category = sync_settings_to_category
 
 
 def get_enabled_period_days(

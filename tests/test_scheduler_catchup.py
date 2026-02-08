@@ -264,7 +264,7 @@ class SchedulerCatchupTestCase(unittest.IsolatedAsyncioTestCase):
             patch.object(scheduler, "_write_state") as mock_write,
             patch.object(scheduler, "update_all_polls", new_callable=AsyncMock),
             patch.object(
-                scheduler, "notify_non_voters", new_callable=AsyncMock
+                scheduler, "notify_non_or_maybe_voters", new_callable=AsyncMock
             ) as mock_reminder,
             patch.object(scheduler, "log_job"),
             patch.object(scheduler, "log_startup") as mock_log_startup,
@@ -272,7 +272,7 @@ class SchedulerCatchupTestCase(unittest.IsolatedAsyncioTestCase):
 
             await scheduler._run_catch_up(bot)
 
-        # Assert: notify_non_voters aangeroepen voor vrijdag
+        # Assert: notify_non_or_maybe_voters aangeroepen voor vrijdag
         mock_reminder.assert_any_await(bot, "vrijdag")
         # Assert: state key reminder_vrijdag gezet
         call_args = mock_write.call_args[0][0]

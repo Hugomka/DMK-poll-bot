@@ -70,8 +70,8 @@ class TestCommandDefaults(unittest.TestCase):
     def test_public_default_commands(self):
         public_cmds = {
             # (cog_class, attr_name): expected_slash_name
-            (PollGuests, "gast_add"): "gast-add",
-            (PollGuests, "gast_remove"): "gast-remove",
+            (PollGuests, "guest_add"): "guest-add",
+            (PollGuests, "guest_remove"): "guest-remove",
         }
         for (cog_class, attr), expected_name in public_cmds.items():
             cmd = _get_cmd(cog_class, attr)

@@ -204,8 +204,8 @@ class JaButtonTestCase(unittest.IsolatedAsyncioTestCase):
             "123456", "vrijdag", "om 19:00 uur", 789, 456
         )
 
-        # Verify poll update was scheduled
-        mock_create_task.assert_called_once()
+        # Verify poll update and notification update were scheduled
+        self.assertEqual(mock_create_task.call_count, 2)
 
         # Verify confirmation message
         self.mock_interaction.response.edit_message.assert_called_once()
@@ -299,8 +299,8 @@ class NeeButtonTestCase(unittest.IsolatedAsyncioTestCase):
             "123456", "vrijdag", "niet meedoen", 789, 456
         )
 
-        # Verify poll update was scheduled
-        mock_create_task.assert_called_once()
+        # Verify poll update and notification update were scheduled
+        self.assertEqual(mock_create_task.call_count, 2)
 
         # Verify confirmation message
         self.mock_interaction.response.edit_message.assert_called_once()

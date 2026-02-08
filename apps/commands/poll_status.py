@@ -16,12 +16,15 @@ from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.celebration_gif import get_celebration_gif_url
 from apps.utils.constants import DAG_NAMEN
-from apps.utils.message_builder import build_grouped_names_for, get_non_voters_for_day
+from apps.utils.message_builder import (
+    build_grouped_names_for,
+    get_non_voters_for_day,
+    get_was_misschien_for_day,
+)
 from apps.utils.notification_texts import (
     NOTIFICATION_TEXTS,
     format_opening_time_from_schedule,
     get_notification_by_name,
-    get_text_herinnering_dag,
     get_text_poll_gesloten,
 )
 from apps.utils.poll_message import (
@@ -35,7 +38,7 @@ from apps.utils.poll_settings import (
     get_setting,
     is_paused,
 )
-from apps.utils.poll_storage import get_was_misschien_count, load_votes
+from apps.utils.poll_storage import load_votes
 
 
 def _is_denied_channel(channel) -> bool:
@@ -73,7 +76,8 @@ class PollStatus(commands.Cog):
     async def _status_impl(self, interaction: discord.Interaction) -> None:
         channel = interaction.channel
         if channel is None:
-            await interaction.followup.send("❌ Geen kanaal gevonden.", ephemeral=True)
+            from apps.utils.i18n import t
+            await interaction.followup.send(f"❌ {t(0, 'ERRORS.no_channel')}", ephemeral=True)
             return
 
         # Guild ophalen (uit interaction of uit channel), en IDs veilig casten naar int
@@ -91,11 +95,13 @@ class PollStatus(commands.Cog):
         except Exception:  # pragma: no cover
             cid_val = 0
 
+        from apps.utils.i18n import get_day_name, t
+
         # Helper function to format schedule information
         def format_schedule(schedule: Optional[dict], is_default: bool) -> str:
-            """Format a schedule dict into a readable Dutch string with default label."""
+            """Format a schedule dict into a readable string with default label."""
             if not schedule:
-                return "Geen"
+                return t(cid_val, "STATUS.no_schedule")
 
             typ = schedule.get("type")
             tijd = schedule.get("tijd", "??:??")
@@ -106,43 +112,44 @@ class PollStatus(commands.Cog):
                     # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
                     datum_obj = datetime.strptime(datum, "%Y-%m-%d")
                     datum_display = datum_obj.strftime("%d-%m-%Y")
-                    dag_naam = DAG_NAMEN[datum_obj.weekday()]
+                    dag_naam = get_day_name(cid_val, DAG_NAMEN[datum_obj.weekday()])
                     result = f"{dag_naam} {datum_display} om {tijd}"
                 except Exception:  # pragma: no cover
                     result = f"{datum} om {tijd}"
             elif typ == "wekelijks":
                 dag = schedule.get("dag", "?")
-                result = f"elke {dag} om {tijd}"
+                dag_display = get_day_name(cid_val, dag)
+                result = f"elke {dag_display} om {tijd}"
             else:  # pragma: no cover
-                result = "Onbekend"
+                result = "Unknown"
 
             # Add default label if this is a default schedule
-            if is_default and result != "Geen":
-                result += "  *(default)*"
+            if is_default and result != t(cid_val, "STATUS.no_schedule"):
+                result += f"  *{t(cid_val, 'STATUS.default_label')}*"
 
             return result
 
         try:
-            pauze_txt = "Ja" if is_paused(cid_val) else "Nee"
+            pauze_txt = t(cid_val, "STATUS.yes") if is_paused(cid_val) else t(cid_val, "STATUS.no")
 
             # Retrieve effective schedule information (with fallback to defaults)
             act_sched, act_is_default = get_effective_activation(cid_val)
             deact_sched, deact_is_default = get_effective_deactivation(cid_val)
 
             embed = discord.Embed(
-                title="📊 DMK-poll status",
-                description=f"⏸️ Pauze: **{pauze_txt}**",
+                title=t(cid_val, "STATUS.status_title"),
+                description=f"{t(cid_val, 'STATUS.pause_label')}: **{pauze_txt}**",
                 color=discord.Color.blurple(),
             )
 
             # Add schedule fields with default labels
             embed.add_field(
-                name="🗓️ Geplande activatie",
+                name=t(cid_val, "STATUS.activation_field"),
                 value=format_schedule(act_sched, act_is_default),
                 inline=False,
             )
             embed.add_field(
-                name="🗑️ Geplande deactivatie",
+                name=t(cid_val, "STATUS.deactivation_field"),
                 value=format_schedule(deact_sched, deact_is_default),
                 inline=False,
             )
@@ -169,9 +176,9 @@ class PollStatus(commands.Cog):
                 datum_iso = day_info["datum_iso"]
                 instelling = get_setting(cid_val, dag)
                 zicht_txt = (
-                    "altijd zichtbaar"
+                    t(cid_val, "STATUS.visibility_always")
                     if (instelling or {}).get("modus") == "altijd"
-                    else f"deadline {(instelling or {}).get('tijd', '18:00')}"
+                    else t(cid_val, "STATUS.visibility_deadline", tijd=(instelling or {}).get('tijd', '18:00'))
                 )
 
                 regels: list[str] = []
@@ -190,10 +197,14 @@ class PollStatus(commands.Cog):
 
                     # Insert was_misschien after misschien option
                     if opt.tijd == "misschien":
-                        was_misschien = await get_was_misschien_count(
-                            dag, gid_val, cid_val
+                        was_misschien_count, was_misschien_text = (
+                            await get_was_misschien_for_day(
+                                dag, guild, gid_val, cid_val
+                            )
                         )
-                        regel = f"💤 was misschien — **{was_misschien}** stemmen"
+                        regel = f"💤 was misschien — **{was_misschien_count}** stemmen"
+                        if was_misschien_text:
+                            regel += f":  {was_misschien_text}"
                         regels.append(regel)
 
                 # Voeg niet-stemmers toe (altijd tonen) - at the end
@@ -205,15 +216,16 @@ class PollStatus(commands.Cog):
                     regel += f":  {non_voter_text}"
                 regels.append(regel)
 
-                value = "\n".join(regels) if regels else "_(geen opties gevonden)_"
+                value = "\n".join(regels) if regels else t(cid_val, "UI.no_options")
 
                 # Voeg datum toe in Hammertime format (D = long date)
                 datum_hammertime = TimeZoneHelper.nl_tijd_naar_hammertime(
                     datum_iso, "18:00", style="D"
                 )
+                dag_display = get_day_name(cid_val, dag)
 
                 embed.add_field(
-                    name=f"{dag.capitalize()} ({datum_hammertime}) — {zicht_txt}",
+                    name=f"{dag_display.capitalize()} ({datum_hammertime}) — {zicht_txt}",
                     value=value,
                     inline=False,
                 )
@@ -225,7 +237,7 @@ class PollStatus(commands.Cog):
             )
 
         except Exception as e:  # pragma: no cover
-            await interaction.followup.send(f"❌ Er ging iets mis: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ {t(cid_val, 'ERRORS.generic_error', error=str(e))}", ephemeral=True)
 
     # -----------------------------
     # /dmk-poll-notify
@@ -311,13 +323,38 @@ class PollStatus(commands.Cog):
             elif notificatie:
                 notification_name = notificatie
 
-                # Dag-specifieke herinneringen gebruiken helper functie
-                if notificatie == "Herinnering vrijdag":
-                    notification_text = get_text_herinnering_dag("vrijdag")
-                elif notificatie == "Herinnering zaterdag":
-                    notification_text = get_text_herinnering_dag("zaterdag")
-                elif notificatie == "Herinnering zondag":
-                    notification_text = get_text_herinnering_dag("zondag")
+                # Dag-specifieke herinneringen: roep de echte notificatie functie aan
+                # met mentions voor niet-stemmers en misschien-stemmers
+                if notificatie in (
+                    "Herinnering vrijdag",
+                    "Herinnering zaterdag",
+                    "Herinnering zondag",
+                ):
+                    from apps.scheduler import notify_non_or_maybe_voters
+
+                    dag_map = {
+                        "Herinnering vrijdag": "vrijdag",
+                        "Herinnering zaterdag": "zaterdag",
+                        "Herinnering zondag": "zondag",
+                    }
+                    dag = dag_map[notificatie]
+
+                    # Roep de scheduler functie aan met dit kanaal
+                    result = await notify_non_or_maybe_voters(
+                        self.bot, dag=dag, channel=channel
+                    )
+
+                    if result:
+                        await interaction.followup.send(
+                            f"✅ Herinnering verstuurd voor **{dag}** met mentions voor niet-stemmers en misschien-stemmers.",
+                            ephemeral=True,
+                        )
+                    else:
+                        await interaction.followup.send(
+                            f"ℹ️ Geen herinnering verstuurd voor **{dag}** (iedereen heeft al gestemd).",
+                            ephemeral=True,
+                        )
+                    return
                 elif notificatie == "Poll gesloten":
                     # Poll gesloten moet dynamisch opening time gebruiken
                     act_schedule, _ = get_effective_activation(cid)

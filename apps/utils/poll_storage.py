@@ -173,9 +173,30 @@ async def add_vote(
 
 
 async def toggle_vote(
-    user_id: str, dag: str, tijd: str, guild_id: int | str, channel_id: int | str
+    user_id: str,
+    dag: str,
+    tijd: str,
+    guild_id: int | str,
+    channel_id: int | str,
+    channel: Any = None,
 ) -> list:
+    """
+    Toggle a vote for a user on a specific day/time.
+
+    If channel is provided and the channel is part of a category with multiple
+    active poll channels, the vote will be synced across all linked channels.
+    """
     gid, cid = str(guild_id), str(channel_id)
+
+    # Get all channels that share votes (for category-based dual language support)
+    if channel:
+        from apps.utils.poll_settings import get_vote_scope_channels
+
+        scope_ids = get_vote_scope_channels(channel)
+    else:
+        scope_ids = [int(channel_id)]
+
+    # Perform the toggle on the primary channel
     scoped = await load_votes(gid, cid)
     uid = str(user_id)
     user = scoped.setdefault(uid, _empty_days())
@@ -199,7 +220,30 @@ async def toggle_vote(
     user[dag] = day_votes
     scoped[uid] = user
     await save_votes_scoped(gid, cid, scoped)
+
+    # Sync vote to all other linked channels in the category
+    if len(scope_ids) > 1:
+        for other_cid in scope_ids:
+            if other_cid != int(channel_id):
+                await _sync_user_vote_to_channel(gid, str(other_cid), uid, dag, day_votes)
+
     return day_votes
+
+
+async def _sync_user_vote_to_channel(
+    guild_id: str, channel_id: str, user_id: str, dag: str, day_votes: list
+) -> None:
+    """
+    Sync a user's votes for a specific day to another channel.
+
+    This is used for category-based vote sharing to keep all linked channels
+    in sync when a vote changes.
+    """
+    scoped = await load_votes(guild_id, channel_id)
+    user = scoped.setdefault(user_id, _empty_days())
+    user[dag] = day_votes.copy()  # Copy to avoid shared references
+    scoped[user_id] = user
+    await save_votes_scoped(guild_id, channel_id, scoped)
 
 
 async def remove_vote(
@@ -332,6 +376,7 @@ async def add_guest_votes(
     namen: list[str],
     guild_id: int | str,
     channel_id: int | str,
+    scope_channel_ids: list[int] | None = None,
 ) -> tuple[list[str], list[str]]:
     if not is_valid_option(dag, tijd):
         return ([], namen or [])
@@ -362,7 +407,43 @@ async def add_guest_votes(
         toegevoegd.append(naam)
 
     await save_votes_scoped(gid, cid, scoped)
+
+    # Sync to other channels in the same category
+    if scope_channel_ids and len(scope_channel_ids) > 1:
+        for other_cid in scope_channel_ids:
+            if other_cid != int(channel_id):
+                await _sync_guest_votes_to_channel(
+                    gid, str(other_cid), str(owner_user_id), dag, tijd, toegevoegd
+                )
+
     return (toegevoegd, overgeslagen)
+
+
+async def _sync_guest_votes_to_channel(
+    guild_id: str,
+    channel_id: str,
+    owner_user_id: str,
+    dag: str,
+    tijd: str,
+    added_names: list[str],
+) -> None:
+    """
+    Sync guest votes to another channel.
+    """
+    scoped = await load_votes(guild_id, channel_id)
+
+    for naam in added_names:
+        key = _guest_id(owner_user_id, naam)
+        per_dag = scoped.get(key, {})
+        bestaande = per_dag.get(dag, [])
+
+        if tijd not in bestaande:
+            nieuw = set(bestaande)
+            nieuw.add(tijd)
+            per_dag[dag] = sorted(list(nieuw))
+            scoped[key] = per_dag
+
+    await save_votes_scoped(guild_id, channel_id, scoped)
 
 
 async def remove_guest_votes(
@@ -372,6 +453,7 @@ async def remove_guest_votes(
     namen: list[str],
     guild_id: int | str,
     channel_id: int | str,
+    scope_channel_ids: list[int] | None = None,
 ) -> tuple[list[str], list[str]]:
     gid, cid = str(guild_id), str(channel_id)
     scoped = await load_votes(gid, cid)
@@ -394,7 +476,82 @@ async def remove_guest_votes(
             nietgevonden.append(naam)
 
     await save_votes_scoped(gid, cid, scoped)
+
+    # Sync to other channels in the same category
+    if scope_channel_ids and len(scope_channel_ids) > 1:
+        for other_cid in scope_channel_ids:
+            if other_cid != int(channel_id):
+                await _sync_guest_removal_to_channel(
+                    gid, str(other_cid), str(owner_id), dag, tijd, verwijderd
+                )
+
     return verwijderd, nietgevonden
+
+
+async def _sync_guest_removal_to_channel(
+    guild_id: str,
+    channel_id: str,
+    owner_id: str,
+    dag: str,
+    tijd: str,
+    removed_names: list[str],
+) -> None:
+    """
+    Sync guest vote removal to another channel.
+    """
+    scoped = await load_votes(guild_id, channel_id)
+
+    for naam in removed_names:
+        key = f"{owner_id}_guest::{naam}"
+        if key in scoped and tijd in scoped[key].get(dag, []):
+            try:
+                scoped[key][dag].remove(tijd)
+            except ValueError:
+                pass
+
+            if not scoped[key][dag]:
+                del scoped[key][dag]
+            if not scoped[key]:
+                del scoped[key]
+
+    await save_votes_scoped(guild_id, channel_id, scoped)
+
+
+async def get_guest_names_for_slot(
+    owner_user_id: int | str,
+    dag: str,
+    tijd: str,
+    guild_id: int | str,
+    channel_id: int | str,
+) -> list[str]:
+    """
+    Get all guest names added by a specific user for a given slot.
+
+    Args:
+        owner_user_id: The user ID who added the guests
+        dag: Day name (e.g., 'vrijdag')
+        tijd: Time slot (e.g., 'om 19:00 uur')
+        guild_id: Discord guild ID
+        channel_id: Discord channel ID
+
+    Returns:
+        List of guest names for this user and slot
+    """
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+    guest_names = []
+
+    prefix = f"{owner_user_id}_guest::"
+    for key, per_dag in scoped.items():
+        if not isinstance(key, str) or not key.startswith(prefix):
+            continue
+        # Extract guest name from key
+        guest_name = key[len(prefix):]
+        # Check if this guest has voted for this slot
+        if tijd in per_dag.get(dag, []):
+            guest_names.append(guest_name)
+
+    return sorted(guest_names)
 
 
 # === WAS_MISSCHIEN TRACKING ===============================================
@@ -427,6 +584,24 @@ async def get_was_misschien_count(
     Returns:
     - Count of was_misschien votes for this day
     """
+    user_ids = await get_was_misschien_user_ids(dag, guild_id, channel_id)
+    return len(user_ids)
+
+
+async def get_was_misschien_user_ids(
+    dag: str, guild_id: int | str, channel_id: int | str
+) -> list[str]:
+    """
+    Get the user IDs of members whose "misschien" votes were converted.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+
+    Returns:
+    - List of user IDs (as strings)
+    """
     gid, cid = str(guild_id), str(channel_id)
     scoped = await load_votes(gid, cid)
 
@@ -435,28 +610,33 @@ async def get_was_misschien_count(
         per_dag = scoped[tracking_id]
         if isinstance(per_dag, dict) and dag in per_dag:
             tijden = per_dag[dag]
-            if isinstance(tijden, list) and len(tijden) > 0:
-                # The count is stored as the first element
-                try:
-                    return int(tijden[0])
-                except (ValueError, TypeError):  # pragma: no cover
-                    return 0
+            if isinstance(tijden, list):
+                # Backwards compatibility: old format stored count as single element
+                # New format stores list of user IDs
+                if len(tijden) == 1:
+                    try:
+                        # Als het een getal is, is het de oude count-only format
+                        int(tijden[0])
+                        return []  # Geen user IDs beschikbaar in oude format
+                    except (ValueError, TypeError):
+                        pass  # Niet een getal, dus waarschijnlijk een user ID
+                return list(tijden)
 
-    return 0
+    return []
 
 
-async def set_was_misschien_count(
-    dag: str, count: int, guild_id: int | str, channel_id: int | str
+async def set_was_misschien_user_ids(
+    dag: str, user_ids: list[str], guild_id: int | str, channel_id: int | str
 ) -> None:
     """
-    Set the was_misschien count for a specific day.
+    Set the user IDs of members whose "misschien" votes were converted.
 
     This is called when the deadline passes and "misschien" votes are
     converted to "niet meedoen".
 
     Parameters:
     - dag: 'vrijdag' | 'zaterdag' | 'zondag'
-    - count: Number of misschien votes that were converted
+    - user_ids: List of user IDs that were converted
     - guild_id: Discord guild ID
     - channel_id: Discord channel ID
     """
@@ -467,7 +647,37 @@ async def set_was_misschien_count(
     if tracking_id not in scoped:
         scoped[tracking_id] = _empty_days()
 
-    # Store the count as a list with a single element (to match the vote structure)
+    # Store the user IDs as a list
+    scoped[tracking_id][dag] = list(user_ids)
+
+    await save_votes_scoped(gid, cid, scoped)
+
+
+async def set_was_misschien_count(
+    dag: str, count: int, guild_id: int | str, channel_id: int | str
+) -> None:
+    """
+    DEPRECATED: Use set_was_misschien_user_ids instead.
+
+    Set the was_misschien count for a specific day.
+    This function is kept for backwards compatibility but stores no user IDs.
+
+    Parameters:
+    - dag: 'vrijdag' | 'zaterdag' | 'zondag'
+    - count: Number of misschien votes that were converted
+    - guild_id: Discord guild ID
+    - channel_id: Discord channel ID
+    """
+    # Backwards compatibility: create dummy list with count placeholders
+    # Deze functie zou niet meer aangeroepen moeten worden
+    gid, cid = str(guild_id), str(channel_id)
+    scoped = await load_votes(gid, cid)
+
+    tracking_id = _was_misschien_id(cid)
+    if tracking_id not in scoped:
+        scoped[tracking_id] = _empty_days()
+
+    # Store the count as a list with a single element (old format)
     scoped[tracking_id][dag] = [str(count)]
 
     await save_votes_scoped(gid, cid, scoped)
@@ -635,3 +845,177 @@ async def get_non_voters_for_day(
             continue
 
     return len(non_voter_ids), non_voter_ids
+
+
+# === CATEGORY-BASED VOTE SCOPE (DUAL LANGUAGE SUPPORT) =======================
+
+
+async def load_votes_for_scope(
+    guild_id: int | str, scope_channel_ids: list[int]
+) -> Dict[str, Any]:
+    """
+    Load and merge votes from multiple channels in the same category.
+
+    Votes are merged by user_id. If the same user voted in multiple channels,
+    only the first occurrence is kept (typically from their "home" channel).
+
+    Parameters:
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+
+    Returns:
+    - Merged dict of {user_id -> {dag: [tijden]}}
+    """
+    merged: Dict[str, Any] = {}
+    for channel_id in scope_channel_ids:
+        channel_votes = await load_votes(guild_id, channel_id)
+        for user_id, votes in channel_votes.items():
+            # Skip special tracking entries (they're channel-specific)
+            if isinstance(user_id, str) and user_id.startswith("_"):
+                continue
+            # First occurrence wins (user's home channel)
+            if user_id not in merged:
+                merged[user_id] = votes
+    return merged
+
+
+async def get_counts_for_day_scoped(
+    dag: str, guild_id: int | str, scope_channel_ids: list[int]
+) -> Dict[str, int]:
+    """
+    Get vote counts aggregated across all channels in the scope.
+
+    Parameters:
+    - dag: Day name (vrijdag, zaterdag, zondag, etc.)
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+
+    Returns:
+    - Dict of {tijd: count} for all time options on this day
+    """
+    all_votes = await load_votes_for_scope(guild_id, scope_channel_ids)
+    counts: Dict[str, int] = {}
+
+    for o in get_poll_options():
+        if o.dag != dag:
+            continue
+        c = 0
+        for per_user in all_votes.values():
+            tijden = per_user.get(dag, [])
+            if isinstance(tijden, list) and o.tijd in tijden:
+                c += 1
+        counts[o.tijd] = c
+
+    return counts
+
+
+async def calculate_leading_time_scoped(
+    guild_id: int | str, scope_channel_ids: list[int], dag: str
+) -> str | None:
+    """
+    Determine the winning time (19:00 or 20:30) aggregated across all scope channels.
+
+    Rules:
+    - Only "om 19:00 uur" and "om 20:30 uur" count
+    - Tie-breaker: 20:30 wins on ties
+    - Returns "19:00", "20:30", or None if no votes
+
+    Parameters:
+    - guild_id: Guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+    - dag: The day (vrijdag, zaterdag, zondag)
+
+    Returns:
+    - "19:00", "20:30", or None if no votes
+    """
+    T19 = "om 19:00 uur"
+    T2030 = "om 20:30 uur"
+
+    counts = await get_counts_for_day_scoped(dag, guild_id, scope_channel_ids)
+    c19 = counts.get(T19, 0)
+    c2030 = counts.get(T2030, 0)
+
+    if c19 == 0 and c2030 == 0:
+        return None
+
+    if c2030 >= c19:
+        return "20:30"
+    else:
+        return "19:00"
+
+
+async def get_non_voters_for_day_scoped(
+    dag: str, guild_id: int | str, scope_channel_ids: list[int], channels: list
+) -> tuple[int, list[str]]:
+    """
+    Get users who haven't voted across any channel in the scope.
+
+    A user is considered a non-voter only if they haven't voted in ANY of the
+    linked channels.
+
+    Parameters:
+    - dag: Day name
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+    - channels: List of Discord channel objects (to get members)
+
+    Returns:
+    - (count, list of user_ids) of non-voters for this day
+    """
+    # Get all users who HAVE voted in any scope channel
+    voted_users: set[str] = set()
+
+    for cid in scope_channel_ids:
+        votes = await load_votes(guild_id, cid)
+        for user_id, user_votes in votes.items():
+            # Skip special tracking entries
+            if isinstance(user_id, str) and user_id.startswith("_"):
+                continue
+            # Handle guest votes - count the owner as having voted
+            actual_uid = (
+                user_id.split("_guest::", 1)[0]
+                if isinstance(user_id, str) and "_guest::" in user_id
+                else user_id
+            )
+            if dag in user_votes and user_votes[dag]:
+                voted_users.add(str(actual_uid))
+
+    # Get all members from all channels (union of all members)
+    all_members: set[str] = set()
+    for channel in channels:
+        members = getattr(channel, "members", [])
+        for member in members:
+            if getattr(member, "bot", False):
+                continue
+            member_id = str(getattr(member, "id", ""))
+            if member_id:
+                all_members.add(member_id)
+
+    non_voter_ids = list(all_members - voted_users)
+    return len(non_voter_ids), non_voter_ids
+
+
+async def get_voters_for_time_scoped(
+    dag: str, tijd: str, guild_id: int | str, scope_channel_ids: list[int]
+) -> list[str]:
+    """
+    Get user IDs who voted for a specific time slot across all scope channels.
+
+    Parameters:
+    - dag: Day name
+    - tijd: Time slot (e.g., "om 19:00 uur")
+    - guild_id: Discord guild ID
+    - scope_channel_ids: List of channel IDs that share votes
+
+    Returns:
+    - List of user_ids who voted for this time
+    """
+    all_votes = await load_votes_for_scope(guild_id, scope_channel_ids)
+    voter_ids: list[str] = []
+
+    for user_id, per_user in all_votes.items():
+        tijden = per_user.get(dag, [])
+        if isinstance(tijden, list) and tijd in tijden:
+            voter_ids.append(str(user_id))
+
+    return voter_ids

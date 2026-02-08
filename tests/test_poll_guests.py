@@ -6,13 +6,18 @@ Tests voor poll_guests.py om coverage te verhogen van 53% naar 80%+
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from discord import app_commands
-
-from apps.commands.poll_guests import PollGuests
+from apps.commands.poll_guests import (
+    PollGuests,
+    slot_autocomplete,
+    guest_names_autocomplete,
+    ALL_SLOTS,
+)
 from tests.base import BaseTestCase
 
 
-def _mk_interaction(channel: Any = None, guild: Any = None, user: Any = None) -> Any:
+def _mk_interaction(
+    channel: Any = None, guild: Any = None, user: Any = None, namespace: Any = None
+) -> Any:
     """Maakt een interaction-mock met response.defer en followup.send."""
     interaction = MagicMock()
     interaction.channel = channel
@@ -20,19 +25,125 @@ def _mk_interaction(channel: Any = None, guild: Any = None, user: Any = None) ->
     interaction.user = user or MagicMock(id=999)
     interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()
+    if namespace is not None:
+        interaction.namespace = namespace
+    else:
+        interaction.namespace = MagicMock()
     return interaction
 
 
-def _mk_choice(name: str, value: str) -> Any:
-    """Maakt een app_commands.Choice mock."""
-    choice = MagicMock(spec=app_commands.Choice)
-    choice.name = name
-    choice.value = value
-    return choice
+class TestSlotAutocomplete(BaseTestCase):
+    """Tests voor slot_autocomplete function"""
+
+    async def test_autocomplete_returns_only_enabled_slots(self):
+        """Test dat autocomplete alleen enabled slots teruggeeft"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        # Mock get_poll_option_state to only enable vrijdag 19:00 and zaterdag 20:30
+        def mock_option_state(channel_id, dag, tijd):
+            return (dag == "vrijdag" and tijd == "19:00") or (
+                dag == "zaterdag" and tijd == "20:30"
+            )
+
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            side_effect=mock_option_state,
+        ):
+            choices = await slot_autocomplete(interaction, "")
+
+        # Should only return 2 choices
+        assert len(choices) == 2
+        values = [c.value for c in choices]
+        assert "vrijdag|om 19:00 uur" in values
+        assert "zaterdag|om 20:30 uur" in values
+
+    async def test_autocomplete_filters_by_current_input(self):
+        """Test dat autocomplete filtert op basis van huidige input"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        # Enable all slots
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=True,
+        ):
+            # Filter by "zater" should only return zaterdag slots
+            choices = await slot_autocomplete(interaction, "zater")
+
+        assert len(choices) == 2
+        for choice in choices:
+            assert "zaterdag" in choice.value.lower()
+
+    async def test_autocomplete_case_insensitive_filter(self):
+        """Test dat autocomplete case-insensitieve filtering gebruikt"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=True,
+        ):
+            # Filter by "VRIJDAG" (uppercase) should still match
+            choices = await slot_autocomplete(interaction, "VRIJDAG")
+
+        assert len(choices) == 2
+        for choice in choices:
+            assert "vrijdag" in choice.value.lower()
+
+    async def test_autocomplete_empty_when_all_disabled(self):
+        """Test dat autocomplete lege lijst geeft als alles disabled is"""
+        channel = MagicMock()
+        channel.id = 123
+        interaction = _mk_interaction(channel=channel)
+
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=False,
+        ):
+            choices = await slot_autocomplete(interaction, "")
+
+        assert len(choices) == 0
+
+    async def test_autocomplete_handles_missing_channel(self):
+        """Test dat autocomplete werkt zonder channel"""
+        interaction = _mk_interaction(channel=None)
+
+        # Should use channel_id 0 and not crash
+        with patch(
+            "apps.commands.poll_guests.get_poll_option_state",
+            return_value=True,
+        ):
+            choices = await slot_autocomplete(interaction, "")
+
+        # Should return all 14 slots when all enabled
+        assert len(choices) == 14
+
+    async def test_all_slots_constant_has_14_entries(self):
+        """Test dat ALL_SLOTS constant 14 entries heeft (7 dagen x 2 tijden)"""
+        assert len(ALL_SLOTS) == 14
+
+        # Check structure
+        for dag, tijd, display_name in ALL_SLOTS:
+            assert dag in [
+                "maandag",
+                "dinsdag",
+                "woensdag",
+                "donderdag",
+                "vrijdag",
+                "zaterdag",
+                "zondag",
+            ]
+            assert tijd in ["19:00", "20:30"]
+            assert dag.capitalize() in display_name
+            assert tijd in display_name
 
 
 class TestPollGuestsAdd(BaseTestCase):
-    """Tests voor /gast-add command"""
+    """Tests voor /guest-add command"""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -69,9 +180,9 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
-        await self._run(self.cog.gast_add, interaction, slot, "")
+        await self._run(self.cog.guest_add, interaction, slot, "")
 
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
@@ -86,9 +197,9 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 20:30", "zaterdag|om 20:30 uur")
+        slot = "zaterdag|om 20:30 uur"
 
-        await self._run(self.cog.gast_add, interaction, slot, "  ,  ,  ")
+        await self._run(self.cog.guest_add, interaction, slot, "  ,  ,  ")
 
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
@@ -103,18 +214,24 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario", "Luigi"], [])),
         ) as mock_add, patch(
             "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
-        ) as mock_update:
-            await self._run(self.cog.gast_add, interaction, slot, "Mario, Luigi")
+        ) as mock_update, patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario, Luigi")
 
         # add_guest_votes moet zijn aangeroepen met juiste parameters
-        mock_add.assert_awaited_once_with(789, "vrijdag", "om 19:00 uur", ["Mario", "Luigi"], 456, 123)
+        mock_add.assert_awaited_once_with(
+            789, "vrijdag", "om 19:00 uur", ["Mario", "Luigi"], 456, 123, scope_channel_ids=[123]
+        )
 
         # update_poll_message moet zijn aangeroepen
         mock_update.assert_awaited_once_with(channel=channel, dag="vrijdag")
@@ -138,13 +255,19 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 19:00", "zaterdag|om 19:00 uur")
+        slot = "zaterdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=([], ["Peach", "Toad"])),
-        ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Peach, Toad")
+        ), patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Peach, Toad")
 
         # Moet bevestiging sturen met overgeslagen lijst
         interaction.followup.send.assert_awaited_once()
@@ -165,13 +288,19 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zondag 20:30", "zondag|om 20:30 uur")
+        slot = "zondag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario"], ["Luigi"])),
-        ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario, Luigi")
+        ), patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario, Luigi")
 
         # Moet beide secties tonen
         interaction.followup.send.assert_awaited_once()
@@ -192,13 +321,19 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 20:30", "vrijdag|om 20:30 uur")
+        slot = "vrijdag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=([], [])),
-        ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario")
+        ), patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario")
 
         # Moet (niets gewijzigd) tonen
         interaction.followup.send.assert_awaited_once()
@@ -214,13 +349,19 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario", "Luigi", "Peach"], [])),
-        ) as mock_add, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario; Luigi; Peach")
+        ) as mock_add, patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario; Luigi; Peach")
 
         # Moet gesplitst zijn op puntkomma
         mock_add.assert_awaited_once()
@@ -237,13 +378,19 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 19:00", "zaterdag|om 19:00 uur")
+        slot = "zaterdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario", "Luigi"], [])),
-        ) as mock_add, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario, Luigi; Peach")
+        ) as mock_add, patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario, Luigi; Peach")
 
         # Moet gesplitst zijn op beide
         mock_add.assert_awaited_once()
@@ -260,13 +407,19 @@ class TestPollGuestsAdd(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=None, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.add_guest_votes",
             new=AsyncMock(return_value=(["Mario"], [])),
-        ) as mock_add, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_add, interaction, slot, "Mario")
+        ) as mock_add, patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=False
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario")
 
         # Moet guild "0" gebruiken
         mock_add.assert_awaited_once()
@@ -274,9 +427,31 @@ class TestPollGuestsAdd(BaseTestCase):
         guild_id = call_args[0][4]
         assert guild_id == "0"
 
+    async def test_gast_add_blocked_by_deadline(self):
+        """Test dat guests niet toegevoegd kunnen worden na deadline"""
+        channel = MagicMock()
+        channel.id = 123
+        guild = MagicMock()
+        guild.id = 456
+        user = MagicMock()
+        user.id = 789
+        interaction = _mk_interaction(channel=channel, guild=guild, user=user)
+        slot = "vrijdag|om 19:00 uur"
+
+        with patch(
+            "apps.commands.poll_guests.is_slot_past_deadline", return_value=True
+        ):
+            await self._run(self.cog.guest_add, interaction, slot, "Mario")
+
+        # Moet deadline error tonen
+        interaction.followup.send.assert_awaited_once()
+        content = self._last_content(interaction.followup.send)
+        assert "Niet toegestaan" in content or "Not allowed" in content
+        assert "deadline" in content.lower()
+
 
 class TestPollGuestsRemove(BaseTestCase):
-    """Tests voor /gast-remove command"""
+    """Tests voor /guest-remove command"""
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -313,9 +488,9 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
-        await self._run(self.cog.gast_remove, interaction, slot, "")
+        await self._run(self.cog.guest_remove, interaction, slot, "")
 
         interaction.followup.send.assert_awaited_once()
         content = self._last_content(interaction.followup.send)
@@ -330,18 +505,22 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=(["Mario", "Luigi"], [])),
         ) as mock_remove, patch(
             "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
-        ) as mock_update:
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario, Luigi")
+        ) as mock_update, patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario, Luigi")
 
         # remove_guest_votes moet zijn aangeroepen met juiste parameters
-        mock_remove.assert_awaited_once_with(789, "vrijdag", "om 19:00 uur", ["Mario", "Luigi"], 456, 123)
+        mock_remove.assert_awaited_once_with(
+            789, "vrijdag", "om 19:00 uur", ["Mario", "Luigi"], 456, 123, scope_channel_ids=[123]
+        )
 
         # update_poll_message moet zijn aangeroepen
         mock_update.assert_awaited_once_with(channel=channel, dag="vrijdag")
@@ -365,13 +544,17 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zaterdag 20:30", "zaterdag|om 20:30 uur")
+        slot = "zaterdag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=([], ["Peach", "Toad"])),
-        ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Peach, Toad")
+        ), patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_remove, interaction, slot, "Peach, Toad")
 
         # Moet bevestiging sturen met niet gevonden lijst
         interaction.followup.send.assert_awaited_once()
@@ -391,13 +574,17 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Zondag 19:00", "zondag|om 19:00 uur")
+        slot = "zondag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=(["Mario"], ["Luigi"])),
-        ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario, Luigi")
+        ), patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario, Luigi")
 
         # Moet beide secties tonen
         interaction.followup.send.assert_awaited_once()
@@ -418,13 +605,17 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=guild, user=user)
-        slot = _mk_choice("Vrijdag 20:30", "vrijdag|om 20:30 uur")
+        slot = "vrijdag|om 20:30 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=([], [])),
-        ), patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario")
+        ), patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario")
 
         # Moet (niets gewijzigd) tonen
         interaction.followup.send.assert_awaited_once()
@@ -438,19 +629,133 @@ class TestPollGuestsRemove(BaseTestCase):
         user = MagicMock()
         user.id = 789
         interaction = _mk_interaction(channel=channel, guild=None, user=user)
-        slot = _mk_choice("Vrijdag 19:00", "vrijdag|om 19:00 uur")
+        slot = "vrijdag|om 19:00 uur"
 
         with patch(
             "apps.commands.poll_guests.remove_guest_votes",
             new=AsyncMock(return_value=(["Mario"], [])),
-        ) as mock_remove, patch("apps.commands.poll_guests.update_poll_message", new=AsyncMock()):
-            await self._run(self.cog.gast_remove, interaction, slot, "Mario")
+        ) as mock_remove, patch(
+            "apps.commands.poll_guests.update_poll_message", new=AsyncMock()
+        ), patch(
+            "apps.commands.poll_guests.get_vote_scope_channels", return_value=[123]
+        ):
+            await self._run(self.cog.guest_remove, interaction, slot, "Mario")
 
         # Moet guild "0" gebruiken
         mock_remove.assert_awaited_once()
         call_args = mock_remove.call_args
         guild_id = call_args[0][4]
         assert guild_id == "0"
+
+
+class TestGuestNamesAutocomplete(BaseTestCase):
+    """Tests voor guest_names_autocomplete function"""
+
+    async def test_autocomplete_returns_guest_names_for_slot(self):
+        """Test dat autocomplete guest namen teruggeeft voor geselecteerd slot"""
+        channel = MagicMock()
+        channel.id = 123
+        guild = MagicMock()
+        guild.id = 456
+        user = MagicMock()
+        user.id = 789
+
+        namespace = MagicMock()
+        namespace.slot = "vrijdag|om 19:00 uur"
+
+        interaction = _mk_interaction(
+            channel=channel, guild=guild, user=user, namespace=namespace
+        )
+
+        with patch(
+            "apps.commands.poll_guests.get_guest_names_for_slot",
+            new=AsyncMock(return_value=["Mario", "Luigi", "Peach"]),
+        ) as mock_get:
+            choices = await guest_names_autocomplete(interaction, "")
+
+        mock_get.assert_awaited_once_with(789, "vrijdag", "om 19:00 uur", 456, 123)
+        assert len(choices) == 3
+        names = [c.value for c in choices]
+        assert "Mario" in names
+        assert "Luigi" in names
+        assert "Peach" in names
+
+    async def test_autocomplete_filters_by_input(self):
+        """Test dat autocomplete filtert op huidige input"""
+        channel = MagicMock()
+        channel.id = 123
+        guild = MagicMock()
+        guild.id = 456
+        user = MagicMock()
+        user.id = 789
+
+        namespace = MagicMock()
+        namespace.slot = "vrijdag|om 19:00 uur"
+
+        interaction = _mk_interaction(
+            channel=channel, guild=guild, user=user, namespace=namespace
+        )
+
+        with patch(
+            "apps.commands.poll_guests.get_guest_names_for_slot",
+            new=AsyncMock(return_value=["Mario", "Luigi", "Peach"]),
+        ):
+            choices = await guest_names_autocomplete(interaction, "Mar")
+
+        assert len(choices) == 1
+        assert choices[0].value == "Mario"
+
+    async def test_autocomplete_returns_empty_without_slot(self):
+        """Test dat autocomplete lege lijst geeft zonder slot"""
+        channel = MagicMock()
+        channel.id = 123
+
+        namespace = MagicMock()
+        namespace.slot = None
+
+        interaction = _mk_interaction(channel=channel, namespace=namespace)
+
+        choices = await guest_names_autocomplete(interaction, "")
+
+        assert len(choices) == 0
+
+    async def test_autocomplete_returns_empty_with_invalid_slot(self):
+        """Test dat autocomplete lege lijst geeft bij ongeldige slot"""
+        channel = MagicMock()
+        channel.id = 123
+
+        namespace = MagicMock()
+        namespace.slot = "invalid_slot_no_pipe"
+
+        interaction = _mk_interaction(channel=channel, namespace=namespace)
+
+        choices = await guest_names_autocomplete(interaction, "")
+
+        assert len(choices) == 0
+
+    async def test_autocomplete_returns_empty_when_no_guests(self):
+        """Test dat autocomplete lege lijst geeft als er geen guests zijn"""
+        channel = MagicMock()
+        channel.id = 123
+        guild = MagicMock()
+        guild.id = 456
+        user = MagicMock()
+        user.id = 789
+
+        namespace = MagicMock()
+        namespace.slot = "vrijdag|om 19:00 uur"
+
+        interaction = _mk_interaction(
+            channel=channel, guild=guild, user=user, namespace=namespace
+        )
+
+        with patch(
+            "apps.commands.poll_guests.get_guest_names_for_slot",
+            new=AsyncMock(return_value=[]),
+        ):
+            choices = await guest_names_autocomplete(interaction, "")
+
+        assert len(choices) == 0
 
 
 class TestPollGuestsSetup(BaseTestCase):

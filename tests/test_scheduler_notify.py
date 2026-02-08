@@ -42,23 +42,26 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
             patch.object(
-                scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+                scheduler,
+                "get_setting",
+                return_value={"modus": "deadline", "tijd": "18:00"},
             ),
             patch.object(
-                scheduler, "send_non_voter_notification", new_callable=AsyncMock
-            ) as mock_nonvoter_notification,
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_temp_mention,
         ):
-            result = await scheduler.notify_non_voters(
+            result = await scheduler.notify_non_or_maybe_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         self.assertTrue(result)
-        mock_nonvoter_notification.assert_awaited_once()
-        # Controleer dat de mentions user 200 bevat (niet-stemmer)
-        args, kwargs = mock_nonvoter_notification.call_args
-        mentions = kwargs.get("mentions_str", args[2] if len(args) > 2 else "")
-        self.assertIn("<@200>", mentions)
-        self.assertNotIn("<@100>", mentions)
+        mock_temp_mention.assert_awaited_once()
+        # Controleer dat de text user 200 bevat (niet-stemmer)
+        # Mentions worden nu in de text opgenomen
+        args, kwargs = mock_temp_mention.call_args
+        text = kwargs.get("text", args[2] if len(args) > 2 else "")
+        self.assertIn("<@200>", text)
+        self.assertNotIn("<@100>", text)
 
     async def test_notify_non_voters_without_dag_weekend_mode(self):
         """Test notify_non_voters zonder dag (weekend-breed)."""
@@ -105,6 +108,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         # Mock datetime om tijd check te laten passen
         from datetime import datetime
+
         fake_now = datetime.now()
         fake_now = fake_now.replace(hour=16)  # Match default reminder tijd
 
@@ -126,14 +130,15 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         ):
             with patch("datetime.datetime") as mock_dt:
                 mock_dt.now.return_value = fake_now
-                result = await scheduler.notify_non_voters(bot, dag=None)
+                result = await scheduler.notify_non_or_maybe_voters(bot, dag=None)
 
         self.assertTrue(result)
         mock_mention.assert_awaited_once()
+        # Mentions worden nu in de text opgenomen, niet in mentions parameter
         args, kwargs = mock_mention.call_args
-        mentions = kwargs.get("mentions", args[1] if len(args) > 1 else "")
-        self.assertIn("<@200>", mentions)
-        self.assertNotIn("<@100>", mentions)
+        text = kwargs.get("text", args[2] if len(args) > 2 else "")
+        self.assertIn("<@200>", text)
+        self.assertNotIn("<@100>", text)
 
     async def test_notify_non_voters_guest_vote_owner_extraction(self):
         """Test dat gast-stemmen correct worden toegewezen aan de eigenaar."""
@@ -167,21 +172,24 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
             patch.object(
-                scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+                scheduler,
+                "get_setting",
+                return_value={"modus": "deadline", "tijd": "18:00"},
             ),
             patch.object(
-                scheduler, "send_non_voter_notification", new_callable=AsyncMock
-            ) as mock_nonvoter_notification,
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_temp_mention,
         ):
-            result = await scheduler.notify_non_voters(
+            result = await scheduler.notify_non_or_maybe_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         self.assertTrue(result)
-        args, kwargs = mock_nonvoter_notification.call_args
-        mentions = kwargs.get("mentions_str", args[2] if len(args) > 2 else "")
-        self.assertIn("<@200>", mentions)
-        self.assertNotIn("<@100>", mentions)
+        # Mentions worden nu in de text opgenomen
+        args, kwargs = mock_temp_mention.call_args
+        text = kwargs.get("text", args[2] if len(args) > 2 else "")
+        self.assertIn("<@200>", text)
+        self.assertNotIn("<@100>", text)
 
     async def test_notify_non_voters_no_non_voters(self):
         """Test notify_non_voters als iedereen al heeft gestemd."""
@@ -211,18 +219,20 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
             patch.object(
-                scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+                scheduler,
+                "get_setting",
+                return_value={"modus": "deadline", "tijd": "18:00"},
             ),
             patch.object(
-                scheduler, "send_non_voter_notification", new_callable=AsyncMock
-            ) as mock_nonvoter_notification,
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_temp_mention,
         ):
-            result = await scheduler.notify_non_voters(
+            result = await scheduler.notify_non_or_maybe_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         self.assertFalse(result)
-        mock_nonvoter_notification.assert_not_awaited()
+        mock_temp_mention.assert_not_awaited()
 
     # --- Nieuwe, eenvoudige tests zonder skip om coverage te verhogen ---
 
@@ -690,21 +700,24 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
             patch.object(
-                scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+                scheduler,
+                "get_setting",
+                return_value={"modus": "deadline", "tijd": "18:00"},
             ),
             patch.object(
-                scheduler, "send_non_voter_notification", new_callable=AsyncMock
-            ) as mock_nonvoter_notification,
+                scheduler, "send_temporary_mention", new_callable=AsyncMock
+            ) as mock_temp_mention,
         ):
-            result = await scheduler.notify_non_voters(
+            result = await scheduler.notify_non_or_maybe_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 
         # User 200 moet in de lijst staan (ongeldige data = niet gestemd)
+        # Mentions worden nu in de text opgenomen
         self.assertTrue(result)
-        args, kwargs = mock_nonvoter_notification.call_args
-        mentions = kwargs.get("mentions_str", args[2] if len(args) > 2 else "")
-        self.assertIn("<@200>", mentions)
+        args, kwargs = mock_temp_mention.call_args
+        text = kwargs.get("text", args[2] if len(args) > 2 else "")
+        self.assertIn("<@200>", text)
 
     # --- Extra tests voor notify_voters_if_avond_gaat_door ---
 
@@ -973,7 +986,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
 
         channel = Channel(10)
 
-        result = await scheduler.notify_non_voters(
+        result = await scheduler.notify_non_or_maybe_voters(
             None, "vrijdag", cast(discord.TextChannel, channel)
         )
 
@@ -1014,7 +1027,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.dict(os.environ, {"DENY_CHANNEL_NAMES": "general"}, clear=False),
         ):
-            result = await scheduler.notify_non_voters(bot, "vrijdag")
+            result = await scheduler.notify_non_or_maybe_voters(bot, "vrijdag")
 
         # Assert: False (geen berichten verstuurd)
         self.assertFalse(result)
@@ -1060,7 +1073,7 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
                 os.environ, {"ALLOW_FROM_PER_CHANNEL_ONLY": "true"}, clear=False
             ),
         ):
-            result = await scheduler.notify_non_voters(bot, "vrijdag")
+            result = await scheduler.notify_non_or_maybe_voters(bot, "vrijdag")
 
         # Assert: False (geen berichten verstuurd)
         self.assertFalse(result)
@@ -1092,18 +1105,24 @@ class TestSchedulerNotify(unittest.IsolatedAsyncioTestCase):
         # User 100 heeft gestemd, 200 niet
         votes = {"100": {"vrijdag": ["om 19:00 uur"]}}
 
-        async def fake_nonvoter_notification(*_args, **_kwargs):
+        async def fake_temp_mention(*_args, **_kwargs):
             raise RuntimeError("boom")
 
         with (
             patch.object(scheduler, "load_votes", return_value=votes),
             patch.object(
-                scheduler, "get_setting", return_value={"modus": "deadline", "tijd": "18:00"}
+                scheduler,
+                "get_setting",
+                return_value={"modus": "deadline", "tijd": "18:00"},
             ),
-            patch.object(scheduler, "send_non_voter_notification", side_effect=fake_nonvoter_notification),
+            patch.object(
+                scheduler,
+                "send_temporary_mention",
+                side_effect=fake_temp_mention,
+            ),
         ):
             # Mag niet crashen, functie slikt de exception
-            result = await scheduler.notify_non_voters(
+            result = await scheduler.notify_non_or_maybe_voters(
                 None, "vrijdag", cast(discord.TextChannel, channel)
             )
 

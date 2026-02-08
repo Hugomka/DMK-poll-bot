@@ -139,8 +139,9 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=100
             )
 
-            # Verwacht "DMK-poll voor Vrijdag (<t:TIMESTAMP:D>):"
-            self.assertIn("Vrijdag (<t:", message)
+            # Verwacht poll title met dag en hammertime
+            # Language-agnostic: check for hammertime format, not specific day name
+            self.assertIn("(<t:", message)
             self.assertIn(":D>)", message)
 
     async def test_build_message_shows_correct_date_for_each_day(self):
@@ -179,10 +180,12 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 "vrijdag", guild_id=1, channel_id=100, pauze=True
             )
 
-            # Verwacht "DMK-poll voor Vrijdag (<t:TIMESTAMP:D>): - (Gepauzeerd)"
-            self.assertIn("Vrijdag (<t:", message)
+            # Verwacht poll title met dag, hammertime en gepauzeerd status
+            # Language-agnostic: check for hammertime format
+            self.assertIn("(<t:", message)
             self.assertIn(":D>)", message)
-            self.assertIn("Gepauzeerd", message)
+            # Check for paused indicator (Dutch "Gepauzeerd" or English "Paused")
+            self.assertTrue("Gepauzeerd" in message or "Paused" in message)
 
     async def test_build_message_shows_dates_for_all_weekdays(self):
         """Test dat alle weekdagen (maandag t/m zondag) datums tonen in Hammertime format."""
@@ -200,9 +203,9 @@ class TestBuildPollMessageWithDates(BaseTestCase):
                 message = await build_poll_message_for_day_async(
                     dag, guild_id=1, channel_id=100
                 )
-                # Check dat elke dag Hammertime format heeft
+                # Check dat elke dag Hammertime format heeft (language-agnostic)
                 self.assertIn(
-                    f"{dag.capitalize()} (<t:",
+                    "(<t:",
                     message,
                     f"{dag} should show Hammertime format",
                 )

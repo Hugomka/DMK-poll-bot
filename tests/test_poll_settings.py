@@ -783,6 +783,33 @@ class TestReminderTime(TestPollSettings):
         assert poll_settings.get_reminder_time(123) == "15:00"
 
 
+class TestNotificationSettings(TestPollSettings):
+    """Tests voor notification settings"""
+
+    async def test_set_notification_setting_enables(self):
+        """Test dat set_notification_setting een notificatie kan inschakelen"""
+        # Default is False voor reminders
+        assert poll_settings.is_notification_enabled(123, "reminders") is False
+
+        # Zet aan
+        poll_settings.set_notification_setting(123, "reminders", True)
+
+        # Check dat het nu aan is
+        assert poll_settings.is_notification_enabled(123, "reminders") is True
+
+    async def test_set_notification_setting_disables(self):
+        """Test dat set_notification_setting een notificatie kan uitschakelen"""
+        # Zet eerst aan
+        poll_settings.set_notification_setting(123, "doorgaan", True)
+        assert poll_settings.is_notification_enabled(123, "doorgaan") is True
+
+        # Zet uit
+        poll_settings.set_notification_setting(123, "doorgaan", False)
+
+        # Check dat het nu uit is
+        assert poll_settings.is_notification_enabled(123, "doorgaan") is False
+
+
 if __name__ == "__main__":
     import unittest
 

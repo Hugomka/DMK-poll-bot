@@ -11,6 +11,6 @@ Elke week organiseren we DMK-avonden op vrijdag, zaterdag en zondag. Stem hieron
 • Je kunt je stem altijd aanpassen
 
 👥 **Gasten meebrengen?**  
-Gebruik `/gast-add` om gasten toe te voegen aan je stem.
+Gebruik `/guest-add` om gasten toe te voegen aan je stem.
 
 Veel plezier! 🎉
