@@ -61,6 +61,7 @@ async def build_decision_line(
     # Use category-scoped counts for dual language support
     if channel:
         from apps.utils.poll_settings import get_vote_scope_channels
+
         scope_ids = get_vote_scope_channels(channel)
         if len(scope_ids) > 1:
             # Multiple channels share votes - use aggregated counts
@@ -80,5 +81,5 @@ async def build_decision_line(
         return t(chan_int, "NOTIFICATIONS.decision_happening_2030", count=c2030)
     elif c19 >= MIN_STEMMEN:
         return t(chan_int, "NOTIFICATIONS.decision_happening_1900", count=c19)
-    else:
+    else:  # pragma: no cover
         return t(chan_int, "NOTIFICATIONS.decision_not_happening")

@@ -117,6 +117,85 @@ class TestDecision(BaseTestCase):
         line = await build_decision_line(1, 12345, FRI, now)
         self.assertIsNone(line)
 
+    async def test_invalid_dag_returns_none(self):
+        """Test dat een ongeldige dagnaam None teruggeeft (line 52)"""
+        now = self._dt(2025, 8, 22, 19, 0)  # vrijdag
+
+        line = await build_decision_line(1, 12345, "onbekende_dag", now)
+        self.assertIsNone(line)
+
+    async def test_with_channel_uses_scoped_counts(self):
+        """Test dat channel parameter category-scoped counts gebruikt (lines 63-69)"""
+        from unittest.mock import MagicMock, patch, AsyncMock
+
+        set_visibility(12345, FRI, modus="deadline", tijd="18:00")
+        now = self._dt(2025, 8, 22, 19, 0)
+
+        # Create mock channel with category containing multiple channels
+        mock_channel = MagicMock()
+        mock_channel.id = 12345
+
+        # Mock get_vote_scope_channels at its source (poll_settings)
+        with patch(
+            "apps.utils.poll_settings.get_vote_scope_channels",
+            return_value=[12345, 67890],
+        ), patch(
+            "apps.logic.decision.get_counts_for_day_scoped",
+            new=AsyncMock(return_value={T19: 7, T2030: 3}),
+        ) as mock_scoped:
+            line = await build_decision_line(1, 12345, FRI, now, channel=mock_channel)
+
+        # Should have used scoped counts
+        mock_scoped.assert_awaited_once_with(FRI, 1, [12345, 67890])
+        self.assertIsNotNone(line)
+        assert line is not None
+        self.assertIn("19:00", line)
+
+    async def test_with_channel_single_scope_uses_regular_counts(self):
+        """Test dat single scope channel reguliere counts gebruikt (line 69)"""
+        from unittest.mock import MagicMock, patch, AsyncMock
+
+        set_visibility(12345, FRI, modus="deadline", tijd="18:00")
+        now = self._dt(2025, 8, 22, 19, 0)
+
+        mock_channel = MagicMock()
+        mock_channel.id = 12345
+
+        # Mock get_vote_scope_channels to return only one channel
+        with patch(
+            "apps.utils.poll_settings.get_vote_scope_channels",
+            return_value=[12345],
+        ), patch(
+            "apps.logic.decision.get_counts_for_day",
+            new=AsyncMock(return_value={T19: 8, T2030: 2}),
+        ) as mock_regular:
+            line = await build_decision_line(1, 12345, FRI, now, channel=mock_channel)
+
+        # Should have used regular counts (not scoped)
+        mock_regular.assert_awaited_once_with(FRI, 1, 12345)
+        self.assertIsNotNone(line)
+        assert line is not None
+        self.assertIn("19:00", line)
+
+    async def test_edge_case_c19_below_threshold_c2030_zero(self):
+        """Test edge case waar c19 < MIN maar > c2030 (line 84)"""
+        set_visibility(12345, FRI, modus="deadline", tijd="18:00")
+        now = self._dt(2025, 8, 22, 19, 0)
+
+        # 5 op 19:00, 0 op 20:30 → geen van beide haalt drempel
+        # c2030 (0) >= max(c19=5, MIN=6) → False
+        # c19 (5) >= MIN (6) → False
+        # → fallback line 84
+        votes = {}
+        for i in range(1, 6):
+            votes[str(i)] = {FRI: [T19]}
+
+        await self._set_votes(votes)
+        line = await build_decision_line(1, 12345, FRI, now)
+        self.assertIsNotNone(line)
+        assert line is not None
+        self.assertIn("Gaat niet door", line)
+
 
 if __name__ == "__main__":
     unittest.main()
