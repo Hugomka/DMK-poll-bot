@@ -539,7 +539,12 @@ class PollLifecycle(commands.Cog):
             except Exception:  # pragma: no cover
                 pass
 
-            # Eerste bericht: Opening met @everyone (dynamisch gegenereerd)
+            # Eerste bericht: Opening (dynamisch gegenereerd)
+            # De opening tekst bevat @everyone als header (i18n), maar die
+            # is puur decoratief — de echte @everyone-ping gebeurt via
+            # send_temporary_mention / create_notification_message.
+            # allowed_mentions.none() voorkomt een dubbele ping.
+            no_mentions = discord.AllowedMentions.none()
             opening_text = _load_opening_message(channel_id=channel.id)
 
             send = _get_attr(channel, "send")
@@ -553,14 +558,14 @@ class PollLifecycle(commands.Cog):
                 else:
                     # Bericht bestaat niet meer, maak nieuw aan
                     opening_msg = (
-                        await safe_call(send, content=opening_text) if send else None
+                        await safe_call(send, content=opening_text, allowed_mentions=no_mentions) if send else None
                     )
                     if opening_msg is not None:
                         save_message_id(channel.id, "opening", opening_msg.id)
             else:
                 # Maak nieuw opening bericht
                 opening_msg = (
-                    await safe_call(send, content=opening_text) if send else None
+                    await safe_call(send, content=opening_text, allowed_mentions=no_mentions) if send else None
                 )
                 if opening_msg is not None:
                     save_message_id(channel.id, "opening", opening_msg.id)

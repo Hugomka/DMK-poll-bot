@@ -54,7 +54,6 @@ class TestLoadOpeningMessage(BaseTestCase):
 
         # Moet generic message bevatten
         assert "Welkom bij de DMK-poll" in result
-        assert "@everyone" in result
         assert "Stemmen" in result
 
     async def test_load_opening_message_with_channel_settings(self):

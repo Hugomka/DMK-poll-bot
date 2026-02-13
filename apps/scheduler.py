@@ -21,7 +21,7 @@ from apps.utils.mention_utils import (
 from apps.utils.message_builder import build_doorgaan_participant_list
 from apps.utils.poll_message import (
     clear_message_id,
-    create_notification_message,
+
     get_message_id,
     is_channel_disabled,
     save_message_id,
@@ -1383,6 +1383,13 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
             if is_paused(cid):
                 continue
 
+            # Skip als activate_scheduled_polls dit kanaal al heeft afgehandeld
+            # (voorkomt dubbele @everyone notificatie bij gelijktijdige uitvoering)
+            activated = state.get("activated_channels_this_reset", {})
+            if str(cid) in activated:
+                any_reset = True  # activate_scheduled_polls heeft al gereset
+                continue
+
             # Reset votes voor dit specifieke kanaal
             try:
                 await reset_votes_scoped(gid, cid)
@@ -1443,6 +1450,8 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
     # State bijwerken (nu is er wél gereset)
     try:
         state["reset_polls"] = now.isoformat()
+        # Ruim coördinatie-state op (niet meer nodig na reset)
+        state.pop("activated_channels_this_reset", None)
         _write_state(state)
     except Exception:  # pragma: no cover
         pass
@@ -1995,11 +2004,20 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                             pass
 
                     # STAP 2: Opening bericht (nu nieuw aanmaken met dynamisch gegenereerde tekst)
+                    # De opening tekst bevat @everyone als header (i18n), maar die
+                    # is puur decoratief — de echte @everyone-ping gebeurt in STAP 7.
+                    # allowed_mentions.none() voorkomt een dubbele ping.
+                    import discord as _discord
+
                     from apps.commands.poll_lifecycle import _load_opening_message
 
                     opening_text = _load_opening_message(channel_id=cid)
                     if send:
-                        opening_msg = await safe_call(send, content=opening_text)
+                        opening_msg = await safe_call(
+                            send,
+                            content=opening_text,
+                            allowed_mentions=_discord.AllowedMentions.none(),
+                        )
                         if opening_msg is not None:
                             save_message_id(cid, "opening", opening_msg.id)
 
@@ -2042,32 +2060,56 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                             style="t",
                         )
 
-                    # STAP 6: Notificatiebericht met HammerTime (altijd nieuw aanmaken na cleanup)
-                    # Dit voorkomt dubbele notificatieberichten (Bug 4)
-                    await create_notification_message(
-                        channel,
-                        activation_hammertime=(
-                            hammertime_str if hammertime_str else None
-                        ),
-                    )
+                    # STAP 6: (verwijderd) create_notification_message werd direct
+                    # vervangen door STAP 7's send_temporary_mention, waardoor
+                    # een overbodige channel.send() + onnodig unread indicator ontstond.
 
                     # STAP 7: Openingsmentions versturen met HammerTime
-                    try:
-                        from apps.utils.i18n import t
-                        from apps.utils.mention_utils import send_temporary_mention
+                    # Skip @everyone als reset_polls al eerder in dit resetvenster heeft gedraaid
+                    # (voorkomt dubbele @everyone notificatie)
+                    skip_mention = False
+                    if _within_reset_window(now):
+                        rstate = _read_state()
+                        lr = rstate.get("reset_polls")
+                        if lr:
+                            try:
+                                lr_dt = datetime.fromisoformat(str(lr))
+                                if lr_dt.tzinfo is None:
+                                    lr_dt = TZ.localize(lr_dt)
+                                if (now - lr_dt).total_seconds() < 300:
+                                    skip_mention = True
+                            except Exception:  # pragma: no cover
+                                pass
 
-                        if hammertime_str:
-                            opening_notification = t(
-                                cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str
+                    if not skip_mention:
+                        try:
+                            from apps.utils.i18n import t
+                            from apps.utils.mention_utils import send_temporary_mention
+
+                            if hammertime_str:
+                                opening_notification = t(
+                                    cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str
+                                )
+                            else:
+                                opening_notification = t(cid, "NOTIFICATIONS.poll_opened")
+
+                            await send_temporary_mention(
+                                channel, mentions="@everyone", text=opening_notification
                             )
-                        else:
-                            opening_notification = t(cid, "NOTIFICATIONS.poll_opened")
+                        except Exception as e:  # pragma: no cover
+                            print(f"⚠️ Openingsbericht versturen mislukt: {e}")
 
-                        await send_temporary_mention(
-                            channel, mentions="@everyone", text=opening_notification
-                        )
-                    except Exception as e:  # pragma: no cover
-                        print(f"⚠️ Openingsbericht versturen mislukt: {e}")
+                    # Registreer activatie voor coördinatie met reset_polls
+                    # (voorkomt dat reset_polls opnieuw @everyone stuurt)
+                    if _within_reset_window(now):
+                        try:
+                            act_state = _read_state()
+                            activated = act_state.get("activated_channels_this_reset", {})
+                            activated[str(cid)] = now.isoformat()
+                            act_state["activated_channels_this_reset"] = activated
+                            _write_state(act_state)
+                        except Exception:  # pragma: no cover
+                            pass
 
                     print(f"✅ Automatisch geactiveerd: kanaal {cid} volgens schedule")
 
