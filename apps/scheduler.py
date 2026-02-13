@@ -1900,7 +1900,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     scheduled_dt = datetime.strptime(
                         scheduled_datetime_str, "%Y-%m-%d %H:%M"
                     )
-                    scheduled_dt = scheduled_dt.replace(tzinfo=TZ)
+                    scheduled_dt = TZ.localize(scheduled_dt)
 
                     # Check of scheduled tijd in het verleden ligt (gemist)
                     if now >= scheduled_dt:
