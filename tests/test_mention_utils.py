@@ -583,5 +583,175 @@ class SeparateKeyTestCase(unittest.IsolatedAsyncioTestCase):
         # This test is kept for documentation but behavior has changed
 
 
+class UpdateNotificationRemoveMentionTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test update_notification_remove_mention function."""
+
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_no_message_id_returns_early(self, mock_get_msg_id):
+        """No stored message ID → early return without fetching."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = None
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+        mock_get_msg_id.assert_called_once_with(456, "notification_temp")
+
+    @patch("apps.utils.mention_utils.clear_message_id")
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_message_not_found_clears_id(self, mock_get_msg_id, mock_fetch, mock_clear):
+        """Message no longer exists → clear stored ID and return."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = 999
+        mock_fetch.return_value = None
+
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+        mock_clear.assert_called_once_with(456, "notification_temp")
+
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_empty_content_returns_early(self, mock_get_msg_id, mock_fetch):
+        """Message has no content → return without editing."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = 999
+        msg = MagicMock()
+        msg.content = ""
+        mock_fetch.return_value = msg
+
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_user_not_mentioned_returns_early(self, mock_get_msg_id, mock_fetch):
+        """User not in message content → return without editing."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = 999
+        msg = MagicMock()
+        msg.content = ":mega: Notificatie:\n<@222>, <@333>\nPlease vote!"
+        mock_fetch.return_value = msg
+
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+        # Message should NOT have been edited (user 111 not mentioned)
+        msg.edit.assert_not_called()
+
+    @patch("apps.utils.mention_utils.safe_call")
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_remove_one_mention_others_remain(self, mock_get_msg_id, mock_fetch, mock_safe_call):
+        """Remove one user's mention, others remain → edit message."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = 999
+        msg = MagicMock()
+        msg.content = ":mega: Notificatie:\n<@111>, <@222>\nPlease vote!"
+        msg.edit = AsyncMock()
+        mock_fetch.return_value = msg
+
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+        # Message should be edited with user 111 removed
+        mock_safe_call.assert_called_once()
+        call_kwargs = mock_safe_call.call_args[1]
+        new_content = call_kwargs["content"]
+        self.assertNotIn("<@111>", new_content)
+        self.assertIn("<@222>", new_content)
+
+    @patch("apps.utils.mention_utils.clear_message_id")
+    @patch("apps.utils.mention_utils.safe_call")
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_remove_last_mention_deletes_message(
+        self, mock_get_msg_id, mock_fetch, mock_safe_call, mock_clear
+    ):
+        """Remove the last mention → delete entire message."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = 999
+        msg = MagicMock()
+        msg.content = ":mega: Notificatie:\n<@111>\nPlease vote!"
+        msg.delete = AsyncMock()
+        mock_fetch.return_value = msg
+
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+        # Message should be deleted (no mentions left)
+        mock_safe_call.assert_called_once_with(msg.delete)
+        mock_clear.assert_called_once_with(456, "notification_temp")
+
+    @patch("apps.utils.mention_utils.safe_call")
+    @patch("apps.utils.discord_client.fetch_message_or_none")
+    @patch("apps.utils.mention_utils.get_message_id")
+    async def test_remove_mention_with_nick_format(self, mock_get_msg_id, mock_fetch, mock_safe_call):
+        """Remove mention with nickname format <@!user_id>."""
+        from apps.utils.mention_utils import update_notification_remove_mention
+
+        mock_get_msg_id.return_value = 999
+        msg = MagicMock()
+        msg.content = ":mega: Notificatie:\n<@!111>, <@222>\nPlease vote!"
+        msg.edit = AsyncMock()
+        mock_fetch.return_value = msg
+
+        channel = MagicMock()
+        channel.id = 456
+
+        await update_notification_remove_mention(channel, user_id=111)
+
+        mock_safe_call.assert_called_once()
+        new_content = mock_safe_call.call_args[1]["content"]
+        self.assertNotIn("<@!111>", new_content)
+        self.assertIn("<@222>", new_content)
+
+
+class SendTemporaryMentionEdgeCasesTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test edge cases for send_temporary_mention."""
+
+    async def test_no_send_method_returns_early(self):
+        """Channel without send method → return without sending."""
+        channel = MagicMock(spec=[])  # No send attribute
+        channel.id = 456
+
+        await send_temporary_mention(channel, "@user1", "Vote!")
+
+    @patch("apps.utils.mention_utils.save_message_id")
+    @patch("apps.utils.mention_utils.get_message_id")
+    @patch("apps.utils.mention_utils.safe_call")
+    async def test_safe_call_returns_none(self, mock_safe_call, mock_get_msg_id, mock_save_msg_id):
+        """safe_call returns None (send failed) → no tasks scheduled."""
+        mock_get_msg_id.return_value = None
+        mock_safe_call.return_value = None
+
+        channel = MagicMock()
+        channel.id = 456
+        channel.send = AsyncMock()
+
+        await send_temporary_mention(channel, "@user1", "Vote!")
+
+        # save_message_id should NOT have been called
+        mock_save_msg_id.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
