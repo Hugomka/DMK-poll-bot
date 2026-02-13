@@ -2003,21 +2003,38 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         except Exception:  # pragma: no cover
                             pass
 
-                    # STAP 2: Opening bericht (nu nieuw aanmaken met dynamisch gegenereerde tekst)
-                    # De opening tekst bevat @everyone als header (i18n), maar die
-                    # is puur decoratief — de echte @everyone-ping gebeurt in STAP 7.
-                    # allowed_mentions.none() voorkomt een dubbele ping.
+                    # STAP 2: Opening bericht met @everyone (zichtbaar, permanent)
+                    # De @everyone in de i18n header is de daadwerkelijke ping.
+                    # Als reset_polls al eerder heeft gedraaid in dit resetvenster,
+                    # onderdruk de ping met AllowedMentions.none() (tekst blijft zichtbaar).
                     import discord as _discord
 
                     from apps.commands.poll_lifecycle import _load_opening_message
 
+                    suppress_ping = False
+                    if _within_reset_window(now):
+                        rstate = _read_state()
+                        lr = rstate.get("reset_polls")
+                        if lr:
+                            try:
+                                lr_dt = datetime.fromisoformat(str(lr))
+                                if lr_dt.tzinfo is None:
+                                    lr_dt = TZ.localize(lr_dt)
+                                if (now - lr_dt).total_seconds() < 300:
+                                    suppress_ping = True
+                            except Exception:  # pragma: no cover
+                                pass
+
                     opening_text = _load_opening_message(channel_id=cid)
                     if send:
-                        opening_msg = await safe_call(
-                            send,
-                            content=opening_text,
-                            allowed_mentions=_discord.AllowedMentions.none(),
-                        )
+                        if suppress_ping:
+                            opening_msg = await safe_call(
+                                send,
+                                content=opening_text,
+                                allowed_mentions=_discord.AllowedMentions.none(),
+                            )
+                        else:
+                            opening_msg = await safe_call(send, content=opening_text)
                         if opening_msg is not None:
                             save_message_id(cid, "opening", opening_msg.id)
 
@@ -2038,66 +2055,10 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         if s_msg is not None:
                             save_message_id(cid, key, s_msg.id)
 
-                    # STAP 5: Bereken HammerTime voor de activatietijd (voor notificatie en mention)
-                    from zoneinfo import ZoneInfo
-
-                    from apps.utils.time_zone_helper import TimeZoneHelper
-
-                    hammertime_str = ""
-                    if activation_type == "datum":
-                        scheduled_date = schedule.get("datum")
-                        if scheduled_date:
-                            hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
-                                scheduled_date, scheduled_time, style="t"
-                            )
-                    elif activation_type == "wekelijks":
-                        # Voor wekelijkse activatie: gebruik vandaag als datum
-                        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
-                        current_date_obj = now.date()
-                        hammertime_str = TimeZoneHelper.nl_tijd_naar_hammertime(
-                            current_date_obj.strftime("%Y-%m-%d"),
-                            scheduled_time,
-                            style="t",
-                        )
-
-                    # STAP 6: (verwijderd) create_notification_message werd direct
-                    # vervangen door STAP 7's send_temporary_mention, waardoor
-                    # een overbodige channel.send() + onnodig unread indicator ontstond.
-
-                    # STAP 7: Openingsmentions versturen met HammerTime
-                    # Skip @everyone als reset_polls al eerder in dit resetvenster heeft gedraaid
-                    # (voorkomt dubbele @everyone notificatie)
-                    skip_mention = False
-                    if _within_reset_window(now):
-                        rstate = _read_state()
-                        lr = rstate.get("reset_polls")
-                        if lr:
-                            try:
-                                lr_dt = datetime.fromisoformat(str(lr))
-                                if lr_dt.tzinfo is None:
-                                    lr_dt = TZ.localize(lr_dt)
-                                if (now - lr_dt).total_seconds() < 300:
-                                    skip_mention = True
-                            except Exception:  # pragma: no cover
-                                pass
-
-                    if not skip_mention:
-                        try:
-                            from apps.utils.i18n import t
-                            from apps.utils.mention_utils import send_temporary_mention
-
-                            if hammertime_str:
-                                opening_notification = t(
-                                    cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str
-                                )
-                            else:
-                                opening_notification = t(cid, "NOTIFICATIONS.poll_opened")
-
-                            await send_temporary_mention(
-                                channel, mentions="@everyone", text=opening_notification
-                            )
-                        except Exception as e:  # pragma: no cover
-                            print(f"⚠️ Openingsbericht versturen mislukt: {e}")
+                    # STAP 5+6+7: (verwijderd) @everyone-ping zit nu in het
+                    # welkomstbericht (STAP 2), zodat de @everyone altijd zichtbaar
+                    # blijft. HammerTime-berekening en send_temporary_mention zijn
+                    # niet meer nodig.
 
                     # Registreer activatie voor coördinatie met reset_polls
                     # (voorkomt dat reset_polls opnieuw @everyone stuurt)

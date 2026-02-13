@@ -350,7 +350,7 @@ class RemoveMentionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_view = MagicMock()
 
         await _remove_mentions_after_delay(
-            mock_message, 5.0, "Please vote!", mock_view, True, 123  # channel_id for i18n
+            mock_message, 5.0, "<@111>, <@222>", "Please vote!", mock_view, True, 123
         )
 
         # Verify sleep was called

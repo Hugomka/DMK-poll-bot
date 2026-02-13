@@ -237,7 +237,7 @@ ARCHIVE = {
 
 # Opening message parts
 OPENING = {
-    "header": "# 🎮 **Welcome to the DMK poll!**\n\n",
+    "header": "@everyone\n# 🎮 **Welcome to the DMK poll!**\n\n",
     "intro": "Every week we organize DMK evenings on {dagen}. Vote below on the evenings you want to join! Votes remain hidden until the deadline of {deadline}.",
     "reminder_note": "If you haven't voted yet, you'll get a reminder 2 hours before the deadline.",
     "maybe_note": "Did you vote 'maybe'? You'll get a reminder 1 hour before the deadline to confirm your participation. If you don't vote by then, your vote will automatically be changed to 'not joining'.",
