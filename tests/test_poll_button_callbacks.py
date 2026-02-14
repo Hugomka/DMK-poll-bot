@@ -101,7 +101,7 @@ class TestPollButtonCallbacks(BaseTestCase):
             toggle_mock.assert_awaited_once_with(
                 "42", "vrijdag", "om 19:00 uur", 7, 123, channel=interaction.channel
             )
-            create_view_mock.assert_awaited_once_with("42", 7, 123, dag="vrijdag")
+            create_view_mock.assert_awaited_once_with("42", 7, 123, dag="vrijdag", datum=None)
             update_mock.assert_awaited_once_with(interaction.channel, "vrijdag")
             self.assertEqual(len(dummy_response.edited), 1)
             edited_content, _ = dummy_response.edited[0]

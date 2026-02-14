@@ -1158,8 +1158,9 @@ def get_enabled_period_days(
         {'dag': 'zondag', 'datum_iso': '2026-01-11'},
     ]
     """
-    from apps.utils.period_dates import get_period_days
+    from apps.utils.period_dates import TZ, get_period_days
 
+    now = reference_date or datetime.now(TZ)
     enabled_days = []
 
     # Check beide periodes
@@ -1168,8 +1169,12 @@ def get_enabled_period_days(
         if not settings.get("enabled", False):
             continue  # Skip disabled periods
 
+        # Skip periodes waarvan de poll nog niet geopend is
+        if not is_period_currently_open(settings, now):
+            continue
+
         # Haal datums voor deze periode op
-        period_dates = get_period_days(period, reference_date)
+        period_dates = get_period_days(period, now)
 
         # Filter op enabled dagen (volgens poll option settings)
         for dag, datum_iso in period_dates.items():
@@ -1183,6 +1188,49 @@ def get_enabled_period_days(
     enabled_days.sort(key=lambda x: x["datum_iso"])
 
     return enabled_days
+
+
+# Weekdag-index voor minuten-berekening (ma=0 t/m zo=6)
+_WEEKDAG_INDEX = {
+    "maandag": 0, "dinsdag": 1, "woensdag": 2, "donderdag": 3,
+    "vrijdag": 4, "zaterdag": 5, "zondag": 6,
+}
+
+
+def is_period_currently_open(settings: dict, now: datetime) -> bool:
+    """
+    Bepaal of een periode momenteel geopend is op basis van open/close instellingen.
+
+    Converteert open_day/open_time en close_day/close_time naar "minuten sinds
+    maandag 00:00" en checkt of *now* binnen het venster valt.
+    Bij wrap-around (open > close): actief als now >= open OR now < close.
+    """
+    open_day = settings.get("open_day", "")
+    open_time = settings.get("open_time", "00:00")
+    close_day = settings.get("close_day", "")
+    close_time = settings.get("close_time", "00:00")
+
+    if open_day not in _WEEKDAG_INDEX or close_day not in _WEEKDAG_INDEX:
+        return False
+
+    def _to_week_minutes(day_name: str, time_str: str) -> int:
+        day_idx = _WEEKDAG_INDEX[day_name]
+        try:
+            h, m = (int(x) for x in time_str.split(":", 1))
+        except (ValueError, TypeError):
+            h, m = 0, 0
+        return day_idx * 24 * 60 + h * 60 + m
+
+    open_min = _to_week_minutes(open_day, open_time)
+    close_min = _to_week_minutes(close_day, close_time)
+    now_min = now.weekday() * 24 * 60 + now.hour * 60 + now.minute
+
+    if open_min < close_min:
+        # Geen wrap-around: open_min <= now < close_min
+        return open_min <= now_min < close_min
+    else:
+        # Wrap-around: now >= open_min OR now < close_min
+        return now_min >= open_min or now_min < close_min
 
 
 # ========================================================================

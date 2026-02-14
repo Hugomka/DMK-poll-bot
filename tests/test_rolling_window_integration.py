@@ -13,8 +13,8 @@ class TestPeriodSystemIntegration(BaseTestCase):
 
     def test_period_system_returns_correct_days_for_vr_zo_period(self):
         """Test dat period system correcte dagen retourneert voor vr-zo periode."""
-        # Dinsdag 2 december 2025, 07:15
-        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Woensdag 3 december 2025, 07:15 (binnen vr-zo open-venster: di 20:00 - ma 00:00)
+        tuesday = datetime(2025, 12, 3, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         channel_id = 12345
 
         # Setup: Enable vr-zo period with all days
@@ -75,7 +75,8 @@ class TestPeriodSystemIntegration(BaseTestCase):
 
     def test_period_system_with_both_periods_enabled(self):
         """Test dat beide periodes tegelijk kunnen werken."""
-        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Woensdag: beide periodes open (vr-zo sinds di 20:00, ma-do sinds vr 20:00)
+        tuesday = datetime(2025, 12, 3, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         channel_id = 12345
 
         # Setup: Enable both periods with all days
@@ -97,7 +98,8 @@ class TestPeriodSystemIntegration(BaseTestCase):
 
     def test_period_system_skips_disabled_days(self):
         """Test dat disabled dagen binnen een periode worden geskipt."""
-        tuesday = datetime(2025, 12, 2, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Woensdag: binnen vr-zo open-venster
+        tuesday = datetime(2025, 12, 3, 7, 15, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
         channel_id = 12345
 
         # Setup: Enable vr-zo period but disable zaterdag

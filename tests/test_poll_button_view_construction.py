@@ -81,7 +81,7 @@ class TestPollButtonViewConstruction(BaseTestCase):
         votes = {"zaterdag": []}
 
         def visible_side_effect(
-            channel_id: int, dag: str, tijd: str, now: datetime
+            channel_id: int, dag: str, tijd: str, now: datetime, **kwargs: object
         ) -> bool:
             # Alleen 20:30 zichtbaar
             return tijd == "om 20:30 uur"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from discord import ButtonStyle, Interaction
@@ -237,10 +237,11 @@ def _get_timezone_legend(dag: str, channel_id: int) -> str:
 
 
 class PollButton(Button):
-    def __init__(self, dag: str, tijd: str, label: str, stijl: ButtonStyle):
+    def __init__(self, dag: str, tijd: str, label: str, stijl: ButtonStyle, datum: date | None = None):
         super().__init__(label=label, style=stijl, custom_id=f"{dag}:{tijd}")
         self.dag = dag
         self.tijd = tijd
+        self.datum = datum
 
     async def callback(self, interaction: Interaction):
         try:
@@ -284,7 +285,7 @@ class PollButton(Button):
                     pass
 
             # ✅ Check zichtbaarheid
-            if not is_vote_button_visible(channel_id, self.dag, self.tijd, now):
+            if not is_vote_button_visible(channel_id, self.dag, self.tijd, now, datum=self.datum):
                 # Bewerk hetzelfde bericht en stop
                 closed_msg = f"❌ {t(channel_id, 'UI.vote_closed')}"
                 try:
@@ -315,7 +316,7 @@ class PollButton(Button):
 
             # ✅ Vernieuw eigen ephemeral view (zelfde bericht)
             new_view = await create_poll_button_view(
-                user_id, guild_id, channel_id, dag=self.dag
+                user_id, guild_id, channel_id, dag=self.dag, datum=self.datum
             )
 
             # Toon korte status in hetzelfde bericht (geen followup-spam)
@@ -368,7 +369,7 @@ class PollButton(Button):
                 )
                 channel_id = int(interaction.channel_id or 0)
                 new_view = await create_poll_button_view(
-                    user_id, guild_id, channel_id, dag=self.dag
+                    user_id, guild_id, channel_id, dag=self.dag, datum=self.datum
                 )
                 header = _get_header_tmpl(channel_id, self.dag)
                 legenda = _get_timezone_legend(self.dag, channel_id)
@@ -398,6 +399,7 @@ class PollButtonView(View):
         channel_id: int,
         filter_dag: str | None = None,
         now: datetime | None = None,
+        filter_datum: date | None = None,
     ):
         super().__init__(timeout=180)  # Iets ruimer
         now = now or datetime.now(ZoneInfo("Europe/Amsterdam"))
@@ -412,21 +414,21 @@ class PollButtonView(View):
                 if not get_poll_option_state(channel_id, option.dag, tijd_short):
                     continue  # Skip disabled opties
 
-            if not is_vote_button_visible(channel_id, option.dag, option.tijd, now):
+            if not is_vote_button_visible(channel_id, option.dag, option.tijd, now, datum=filter_datum):
                 continue
 
             selected = option.tijd in votes.get(option.dag, [])
             stijl = ButtonStyle.success if selected else ButtonStyle.secondary
             label = f"✅ {option.label}" if selected else option.label
-            self.add_item(PollButton(option.dag, option.tijd, label, stijl))
+            self.add_item(PollButton(option.dag, option.tijd, label, stijl, datum=filter_datum))
 
 
 async def create_poll_button_view(
-    user_id: str, guild_id: int, channel_id: int, dag: str | None = None
+    user_id: str, guild_id: int, channel_id: int, dag: str | None = None, datum: date | None = None
 ) -> PollButtonView:
     votes = await get_user_votes(user_id, guild_id, channel_id)
     now = datetime.now(ZoneInfo("Europe/Amsterdam"))
-    return PollButtonView(votes, channel_id, filter_dag=dag, now=now)
+    return PollButtonView(votes, channel_id, filter_dag=dag, now=now, filter_datum=datum)
 
 
 async def create_poll_button_views_per_day(
@@ -446,13 +448,12 @@ async def create_poll_button_views_per_day(
         datum_iso = day_info["datum_iso"]
 
         # Check if date is in the past
-        from datetime import datetime as dt_class
-        dag_datum = dt_class.strptime(datum_iso, "%Y-%m-%d").replace(tzinfo=now.tzinfo)
-        if dag_datum.date() < now.date():
+        dag_date = date.fromisoformat(datum_iso)
+        if dag_date < now.date():
             # Skip dagen in het verleden - die zijn alleen zichtbaar, niet stembaar
             continue
 
-        view = PollButtonView(votes, channel_id, filter_dag=dag, now=now)
+        view = PollButtonView(votes, channel_id, filter_dag=dag, now=now, filter_datum=dag_date)
         if view.children:  # Alleen tonen als er knoppen zijn
             header = _get_header_tmpl(channel_id, dag)
             # Voeg tijdzone legenda toe

@@ -11,8 +11,11 @@ from apps.utils.poll_settings import (
     set_period_settings,
     get_enabled_periods,
     get_enabled_period_days,
+    is_period_currently_open,
 )
 from tests.base import BaseTestCase
+
+AMS = ZoneInfo("Europe/Amsterdam")
 
 
 class TestPeriodSettingsFunctions(BaseTestCase):
@@ -285,8 +288,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
         data = {
             str(self.test_channel_id): {
                 "__period_settings__": {
-                    "vr-zo": {"enabled": True},
-                    "ma-do": {"enabled": False}
+                    "vr-zo": {"enabled": True, "open_day": "dinsdag", "open_time": "20:00", "close_day": "maandag", "close_time": "00:00"},
+                    "ma-do": {"enabled": False, "open_day": "vrijdag", "open_time": "20:00", "close_day": "vrijdag", "close_time": "00:00"}
                 },
                 "__poll_options__": {
                     "vrijdag_19:00": True,
@@ -299,8 +302,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
             }
         }
 
-        # Test op maandag 5 januari 2026
-        reference_date = datetime(2026, 1, 5, 12, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Test op woensdag 7 januari 2026 (binnen vr-zo open-venster: di 20:00 - ma 00:00)
+        reference_date = datetime(2026, 1, 7, 12, 0, 0, tzinfo=AMS)
 
         mock_data = json.dumps(data)
         with patch("builtins.open", mock_open(read_data=mock_data)):
@@ -323,8 +326,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
         data = {
             str(self.test_channel_id): {
                 "__period_settings__": {
-                    "vr-zo": {"enabled": False},
-                    "ma-do": {"enabled": True}
+                    "vr-zo": {"enabled": False, "open_day": "dinsdag", "open_time": "20:00", "close_day": "maandag", "close_time": "00:00"},
+                    "ma-do": {"enabled": True, "open_day": "vrijdag", "open_time": "20:00", "close_day": "vrijdag", "close_time": "00:00"}
                 },
                 "__poll_options__": {
                     "maandag_19:00": True,
@@ -339,8 +342,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
             }
         }
 
-        # Test op maandag 5 januari 2026
-        reference_date = datetime(2026, 1, 5, 12, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Test op maandag 5 januari 2026 (binnen ma-do open-venster: vr 20:00 - vr 00:00)
+        reference_date = datetime(2026, 1, 5, 12, 0, 0, tzinfo=AMS)
 
         mock_data = json.dumps(data)
         with patch("builtins.open", mock_open(read_data=mock_data)):
@@ -364,8 +367,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
         data = {
             str(self.test_channel_id): {
                 "__period_settings__": {
-                    "vr-zo": {"enabled": True},
-                    "ma-do": {"enabled": True}
+                    "vr-zo": {"enabled": True, "open_day": "dinsdag", "open_time": "20:00", "close_day": "maandag", "close_time": "00:00"},
+                    "ma-do": {"enabled": True, "open_day": "vrijdag", "open_time": "20:00", "close_day": "vrijdag", "close_time": "00:00"}
                 },
                 "__poll_options__": {
                     "maandag_19:00": True,
@@ -386,7 +389,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
             }
         }
 
-        reference_date = datetime(2026, 1, 5, 12, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Woensdag 7 jan 2026: beide periodes open (vr-zo sinds di 20:00, ma-do sinds vr 20:00)
+        reference_date = datetime(2026, 1, 7, 12, 0, 0, tzinfo=AMS)
 
         mock_data = json.dumps(data)
         with patch("builtins.open", mock_open(read_data=mock_data)):
@@ -401,8 +405,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
         data = {
             str(self.test_channel_id): {
                 "__period_settings__": {
-                    "vr-zo": {"enabled": True},
-                    "ma-do": {"enabled": False}
+                    "vr-zo": {"enabled": True, "open_day": "dinsdag", "open_time": "20:00", "close_day": "maandag", "close_time": "00:00"},
+                    "ma-do": {"enabled": False, "open_day": "vrijdag", "open_time": "20:00", "close_day": "vrijdag", "close_time": "00:00"}
                 },
                 "__poll_options__": {
                     "vrijdag_19:00": True,
@@ -415,7 +419,8 @@ class TestPeriodSettingsFunctions(BaseTestCase):
             }
         }
 
-        reference_date = datetime(2026, 1, 5, 12, 0, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        # Woensdag 7 jan 2026 (binnen vr-zo open-venster)
+        reference_date = datetime(2026, 1, 7, 12, 0, 0, tzinfo=AMS)
 
         mock_data = json.dumps(data)
         with patch("builtins.open", mock_open(read_data=mock_data)):
@@ -428,6 +433,96 @@ class TestPeriodSettingsFunctions(BaseTestCase):
         self.assertIn("vrijdag", dag_namen)
         self.assertIn("zondag", dag_namen)
         self.assertNotIn("zaterdag", dag_namen)
+
+
+class TestIsPeriodCurrentlyOpen(BaseTestCase):
+    """Test is_period_currently_open met default vr-zo en ma-do instellingen."""
+
+    def setUp(self):
+        super().setUp()
+        # Default vr-zo: open dinsdag 20:00, close maandag 00:00
+        self.vr_zo = {
+            "enabled": True,
+            "open_day": "dinsdag",
+            "open_time": "20:00",
+            "close_day": "maandag",
+            "close_time": "00:00",
+        }
+        # Default ma-do: open vrijdag 20:00, close vrijdag 00:00
+        self.ma_do = {
+            "enabled": True,
+            "open_day": "vrijdag",
+            "open_time": "20:00",
+            "close_day": "vrijdag",
+            "close_time": "00:00",
+        }
+
+    def test_dinsdag_1800_vr_zo_gesloten(self):
+        """Dinsdag 18:00: vr-zo nog niet open (opent pas 20:00)."""
+        now = datetime(2026, 1, 6, 18, 0, tzinfo=AMS)  # Dinsdag
+        self.assertFalse(is_period_currently_open(self.vr_zo, now))
+
+    def test_dinsdag_1800_ma_do_open(self):
+        """Dinsdag 18:00: ma-do is open (opende vrijdag 20:00)."""
+        now = datetime(2026, 1, 6, 18, 0, tzinfo=AMS)  # Dinsdag
+        self.assertTrue(is_period_currently_open(self.ma_do, now))
+
+    def test_dinsdag_2100_beide_open(self):
+        """Dinsdag 21:00: beide periodes open."""
+        now = datetime(2026, 1, 6, 21, 0, tzinfo=AMS)  # Dinsdag
+        self.assertTrue(is_period_currently_open(self.vr_zo, now))
+        self.assertTrue(is_period_currently_open(self.ma_do, now))
+
+    def test_vrijdag_1200_vr_zo_open_ma_do_gesloten(self):
+        """Vrijdag 12:00: vr-zo open, ma-do gesloten (sloot vrijdag 00:00)."""
+        now = datetime(2026, 1, 9, 12, 0, tzinfo=AMS)  # Vrijdag
+        self.assertTrue(is_period_currently_open(self.vr_zo, now))
+        self.assertFalse(is_period_currently_open(self.ma_do, now))
+
+    def test_vrijdag_2100_beide_open(self):
+        """Vrijdag 21:00: beide periodes open (ma-do opende 20:00)."""
+        now = datetime(2026, 1, 9, 21, 0, tzinfo=AMS)  # Vrijdag
+        self.assertTrue(is_period_currently_open(self.vr_zo, now))
+        self.assertTrue(is_period_currently_open(self.ma_do, now))
+
+    def test_maandag_0100_ma_do_open_vr_zo_gesloten(self):
+        """Maandag 01:00: ma-do open, vr-zo gesloten (sloot maandag 00:00)."""
+        now = datetime(2026, 1, 5, 1, 0, tzinfo=AMS)  # Maandag
+        self.assertFalse(is_period_currently_open(self.vr_zo, now))
+        self.assertTrue(is_period_currently_open(self.ma_do, now))
+
+    def test_zaterdag_1800_beide_open(self):
+        """Zaterdag 18:00: beide open (vr-zo sinds di 20:00, ma-do sinds vr 20:00)."""
+        now = datetime(2026, 1, 10, 18, 0, tzinfo=AMS)  # Zaterdag
+        self.assertTrue(is_period_currently_open(self.vr_zo, now))
+        self.assertTrue(is_period_currently_open(self.ma_do, now))
+
+    def test_maandag_0000_exact_close_vr_zo(self):
+        """Maandag 00:00 exact: vr-zo net gesloten."""
+        now = datetime(2026, 1, 5, 0, 0, tzinfo=AMS)  # Maandag 00:00
+        self.assertFalse(is_period_currently_open(self.vr_zo, now))
+
+    def test_vrijdag_0000_exact_close_ma_do(self):
+        """Vrijdag 00:00 exact: ma-do net gesloten."""
+        now = datetime(2026, 1, 9, 0, 0, tzinfo=AMS)  # Vrijdag 00:00
+        self.assertFalse(is_period_currently_open(self.ma_do, now))
+
+    def test_dinsdag_2000_exact_open_vr_zo(self):
+        """Dinsdag 20:00 exact: vr-zo opent nu."""
+        now = datetime(2026, 1, 6, 20, 0, tzinfo=AMS)  # Dinsdag 20:00
+        self.assertTrue(is_period_currently_open(self.vr_zo, now))
+
+    def test_vrijdag_2000_exact_open_ma_do(self):
+        """Vrijdag 20:00 exact: ma-do opent nu."""
+        now = datetime(2026, 1, 9, 20, 0, tzinfo=AMS)  # Vrijdag 20:00
+        self.assertTrue(is_period_currently_open(self.ma_do, now))
+
+    def test_ongeldige_dag_returns_false(self):
+        """Ongeldige dag in settings retourneert False."""
+        bad_settings = {"open_day": "foobar", "open_time": "20:00",
+                        "close_day": "maandag", "close_time": "00:00"}
+        now = datetime(2026, 1, 7, 12, 0, tzinfo=AMS)
+        self.assertFalse(is_period_currently_open(bad_settings, now))
 
 
 if __name__ == "__main__":

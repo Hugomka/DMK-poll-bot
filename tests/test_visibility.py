@@ -1,7 +1,7 @@
 # tests/test_visibility.py
 
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -206,6 +206,74 @@ class TestVisibilityButtons(BaseTestCase):
             self.assertFalse(
                 is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", now)
             )
+
+
+    # ---- Twee-periodesysteem: datum-parameter ----
+
+    async def test_cross_period_maandag_visible_on_zaterdag_with_datum(self):
+        """Op zaterdag moet maandag (volgende week) zichtbaar zijn als datum is meegegeven."""
+        # Zaterdag 16 aug 2025
+        now = datetime(2025, 8, 16, 22, 0, tzinfo=AMS)
+        # Maandag 18 aug 2025 (volgende week, in de toekomst)
+        maandag_datum = date(2025, 8, 18)
+        self.assertTrue(
+            is_vote_button_visible(
+                self.channel_id, "maandag", "om 19:00 uur", now, datum=maandag_datum
+            )
+        )
+
+    async def test_cross_period_maandag_hidden_on_zaterdag_without_datum(self):
+        """Zonder datum valt maandag (index 0) < zaterdag (index 5) → verborgen (backwards compat)."""
+        now = datetime(2025, 8, 16, 22, 0, tzinfo=AMS)
+        self.assertFalse(
+            is_vote_button_visible(
+                self.channel_id, "maandag", "om 19:00 uur", now
+            )
+        )
+
+    async def test_datum_in_past_returns_false(self):
+        """Een dag met een datum in het verleden moet onzichtbaar zijn."""
+        now = datetime(2025, 8, 16, 12, 0, tzinfo=AMS)  # Zaterdag
+        vrijdag_datum = date(2025, 8, 15)  # Gisteren
+        self.assertFalse(
+            is_vote_button_visible(
+                self.channel_id, self.vrijdag, "om 19:00 uur", now, datum=vrijdag_datum
+            )
+        )
+
+    async def test_datum_today_falls_through_to_time_logic(self):
+        """Datum == vandaag moet doorvallen naar de zelfde-dag tijdlogica."""
+        # Vrijdag 15 aug, 18:59 → 19:00-knop nog zichtbaar
+        now_before = datetime(2025, 8, 15, 18, 59, tzinfo=AMS)
+        today = date(2025, 8, 15)
+        self.assertTrue(
+            is_vote_button_visible(
+                self.channel_id, self.vrijdag, "om 19:00 uur", now_before, datum=today
+            )
+        )
+        # Vrijdag 15 aug, 19:00 → 19:00-knop uit
+        now_after = datetime(2025, 8, 15, 19, 0, tzinfo=AMS)
+        self.assertFalse(
+            is_vote_button_visible(
+                self.channel_id, self.vrijdag, "om 19:00 uur", now_after, datum=today
+            )
+        )
+
+    async def test_cross_period_all_weekdays_visible_on_zaterdag(self):
+        """Op zaterdag moeten alle ma-do dagen zichtbaar zijn met juiste datums."""
+        now = datetime(2025, 8, 16, 22, 0, tzinfo=AMS)  # Zaterdag
+        for dag, dag_date in [
+            ("maandag", date(2025, 8, 18)),
+            ("dinsdag", date(2025, 8, 19)),
+            ("woensdag", date(2025, 8, 20)),
+            ("donderdag", date(2025, 8, 21)),
+        ]:
+            with self.subTest(dag=dag):
+                self.assertTrue(
+                    is_vote_button_visible(
+                        self.channel_id, dag, "om 19:00 uur", now, datum=dag_date
+                    )
+                )
 
 
 if __name__ == "__main__":

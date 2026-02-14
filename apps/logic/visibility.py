@@ -1,6 +1,6 @@
 # apps/logic/visibility.py
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 
 from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_settings import get_setting
@@ -48,7 +48,13 @@ def _has_explicit_setting(channel_id: int, dag: str) -> bool:
         return False
 
 
-def is_vote_button_visible(channel_id: int, dag: str, tijd: str, now: datetime) -> bool:
+def is_vote_button_visible(
+    channel_id: int,
+    dag: str,
+    tijd: str,
+    now: datetime,
+    datum: date | None = None,
+) -> bool:
     """
     Bepaalt of een stemknop zichtbaar is (alleen knoplogica, niet aantallen).
 
@@ -60,19 +66,33 @@ def is_vote_button_visible(channel_id: int, dag: str, tijd: str, now: datetime) 
           ALLE knoppen uit (admin-keuze)
         * Normale tijden: zichtbaar tot eigen tijd (19:00 / 20:30 / 23:30)
         * Specials ('misschien', 'niet meedoen'): zichtbaar zolang er nog een komend tijdslot is
+
+    Als *datum* (de werkelijke kalenderdatum van de dag) is meegegeven, wordt die
+    gebruikt voor de verleden/toekomst-check in plaats van weekdag-indices.  Dit is
+    essentieel voor het twee-periodesysteem, waar ma-do dagen op vrijdag-zondag in
+    de toekomst liggen ondanks een lagere weekdag-index.
     """
     if dag not in WEEKDAG_INDEX:
         return False
 
-    dag_index = WEEKDAG_INDEX[dag]
-    now_index = now.weekday()
+    # Vergelijk op werkelijke datum als die beschikbaar is
+    if datum is not None:
+        today = now.date()
+        if datum < today:
+            return False
+        elif datum > today:
+            return True
+        # datum == today → doorvallen naar zelfde-dag-logica
+    else:
+        dag_index = WEEKDAG_INDEX[dag]
+        now_index = now.weekday()
 
-    # Voorbije dag → knoppen uit
-    if dag_index < now_index:
-        return False
-    # Toekomstige dag → knoppen aan
-    elif dag_index > now_index:
-        return True
+        # Voorbije dag → knoppen uit
+        if dag_index < now_index:
+            return False
+        # Toekomstige dag → knoppen aan
+        elif dag_index > now_index:
+            return True
 
     # Zelfde dag → alleen deadline afdwingen als admin dit expliciet heeft gezet
     if _has_explicit_setting(channel_id, dag):
