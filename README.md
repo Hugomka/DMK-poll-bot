@@ -1,3 +1,5 @@
+**🇳🇱 Nederlands** | [🇺🇸 English](README_EN.md)
+
 # DMK-poll-bot 🇳🇱
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B%20%7C%203.13-blue.svg)
