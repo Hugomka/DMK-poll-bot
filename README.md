@@ -461,34 +461,34 @@ De bot gebruikt APScheduler voor automatische taken:
 |---|---|---|---|
 | **00:00** | Maandag | Tenor GIF sync | Sync tenor-links.template.json naar tenor-links.json (alleen bij wijzigingen) |
 | **20:00** | Dinsdag | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
-| **16:00** | Vrijdag, Zaterdag, Zondag | Herinnering niet-stemmers | Mention sturen naar leden die nog niet gestemd hebben voor die dag (tijdelijk, 5 sec) |
-| **17:00** | Vrijdag, Zaterdag, Zondag | Misschien-bevestiging | "Stem Nu" knop sturen naar Misschien-stemmers met leidende tijd |
+| **16:00** | Geconfigureerde dagen* | Herinnering niet-stemmers & misschien | Mention sturen naar leden die nog niet gestemd hebben én misschien-stemmers voor die dag (tijdelijk, 5 sec) |
 | **18:00** | Dagelijks | Poll-update | Aantallen tonen, beslissingsregel toevoegen onder de poll |
-| **18:00** | Vrijdag, Zaterdag, Zondag | Misschien-conversie | Resterende "misschien"-stemmen omzetten naar "niet meedoen" |
-| **18:05** | Vrijdag, Zaterdag, Zondag | Doorgaan-notificatie | Mentions van stemmers op winnende tijd (≥6), persistente mentions (5 uur) |
-| **20:00** | Donderdag | Vroege herinnering | Mention naar leden die nog helemaal niet gestemd hebben (tijdelijk, 5 sec) |
+| **18:00** | Geconfigureerde dagen* | Misschien-conversie | Resterende "misschien"-stemmen omzetten naar "niet meedoen" |
+| **18:05** | Geconfigureerde dagen* | Doorgaan-notificatie | Mentions van stemmers op winnende tijd (≥6), persistente mentions (5 uur) |
+| **20:00** | Geconfigureerd (standaard: donderdag)* | Weekend-herinnering | Mention naar leden die nog helemaal niet gestemd hebben (tijdelijk, 5 sec) |
 | **Elke minuut** | Continu | Scheduled poll activation | Activeer geplande polls op basis van activatietijd |
 | **Elke minuut** | Continu | Scheduled poll deactivation | Deactiveer geplande polls op basis van deactivatietijd |
+| **Elke minuut** | Continu | Retry failed operations | Hervoer mislukte conversies en resets |
+
+\* *Geconfigureerde dagen zijn instelbaar via `poll_settings.json` (standaard: alle weekdagen). Per kanaal worden alleen dagen met actieve polls verwerkt.*
 
 ### Notificatiesysteem
 
 De bot heeft een slim notificatiesysteem met privacy in gedachten:
 
 1. **Tijdelijke mentions** (5 seconden zichtbaar):
-   - Herinneringen voor niet-stemmers (16:00 vrijdag/zaterdag/zondag)
-   - Vroege herinneringen (20:00 donderdag)
+   - Herinneringen voor niet-stemmers en misschien-stemmers (16:00, geconfigureerde dagen)
+   - Weekend-herinnering (20:00, geconfigureerd — standaard donderdag)
    - Reset-meldingen (@everyone)
    - Gebruikers krijgen wel een notificatie op hun apparaat, maar de mention verdwijnt snel uit het kanaal
    - Na 1 uur wordt het hele bericht automatisch verwijderd
 
 2. **Persistente mentions** (5 uur zichtbaar):
-   - "Gaat door"-berichten voor deelnemers (18:05 vrijdag/zaterdag/zondag)
+   - "Gaat door"-berichten voor deelnemers (18:05, geconfigureerde dagen)
    - Blijven zichtbaar voor 5 uur, daarna wordt het hele bericht automatisch verwijderd
    - Dit zorgt ervoor dat deelnemers gedurende de dag kunnen zien wie er meedoet
 
-3. **Misschien-bevestiging** (17:00):
-   - Om 17:00 krijgen stemmers met "misschien" een "Stem Nu" knop met de leidende tijd
-   - Kunnen bevestigen (Ja → winnende tijd) of afzeggen (Nee → niet meedoen)
+3. **Misschien-conversie** (18:00):
    - Om 18:00 worden resterende "misschien"-stemmen automatisch omgezet naar "niet meedoen"
 
 ### Catch-up mechanisme
@@ -596,8 +596,8 @@ Toggle 8 automatische notificaties per kanaal:
 | 📂 **Poll geopend** | di 20:00 | ✅ Aan | Wanneer nieuwe poll wordt geplaatst |
 | 🔄 **Poll gereset** | di 20:00 | ✅ Aan | Wanneer poll wordt gereset voor nieuwe week |
 | 🔒 **Poll gesloten** | ma 00:00 | ✅ Aan | Wanneer poll wordt gesloten |
-| ⏰ **Herinnering stemmen** | vr/za/zo 16:00 | ❌ Uit | Herinnering voor niet-stemmers (per dag) |
-| 🕐 **Herinnering donderdag** | do 20:00 | ❌ Uit | Vroege herinnering voor wie helemaal niet gestemd heeft |
+| ⏰ **Herinnering stemmen** | Geconfigureerde dagen 16:00 | ❌ Uit | Herinnering voor niet-stemmers (per dag) |
+| 🕐 **Weekend-herinnering** | Geconfigureerd (standaard: do 20:00) | ❌ Uit | Herinnering voor wie helemaal niet gestemd heeft |
 | ❓ **Herinnering misschien** | 17:00 | ❌ Uit | Bevestiging voor misschien-stemmers met "Stem Nu" knop |
 | ✅ **Doorgaan** | 18:00 | ✅ Aan | "Gaat door" bericht met mentions van deelnemers |
 | 🎉 **Felicitatie** | automaat | ✅ Aan | Wanneer iedereen heeft gestemd (celebration GIF) |

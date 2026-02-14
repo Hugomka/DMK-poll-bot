@@ -50,20 +50,13 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         ):
             scheduler.setup_scheduler(bot)
 
-        # Assert: 17 jobs toegevoegd
-        # 1. Dagelijkse update
-        # 2. Wekelijkse reset
-        # 3-5. Herinneringen voor niet- en misschien-stemmers (vr/za/zo)
-        # 6-8. Notificaties (vr/za/zo)
-        # 9. Donderdag-herinnering
-        # 10-12. Convert Misschien (vr/za/zo)
-        # 13. Scheduled poll activation check (elke minuut)
-        # 14. Scheduled poll deactivation check (elke minuut)
-        # 15. Retry failed conversions (elke minuut)
-        # 16. Wekelijkse tenor sync (maandag 00:00)
-        # NOTE: Misschien voter notifications at 17:00 removed (now in 16:00 combined reminder)
-        # Totaal: 1 + 1 + 1 + 3 + 3 + 1 + 3 + 1 + 1 + 1 = 16
-        self.assertEqual(len(added_jobs), 16)
+        # Dynamisch op basis van REMINDER_DAYS (standaard: vr/za/zo = 3 dagen)
+        # Per dag: herinnering + notificatie + convert misschien = 3 jobs
+        # Vaste jobs: dagelijkse update + wekelijkse reset + tenor sync +
+        #   vroege herinnering + activation + deactivation + retry = 7
+        num_days = len(scheduler.REMINDER_DAYS)
+        expected_jobs = num_days * 3 + 7
+        self.assertEqual(len(added_jobs), expected_jobs)
 
         # Controleer dat juiste functies zijn geregistreerd
         job_funcs = [j["func"] for j in added_jobs]
@@ -77,30 +70,28 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn(scheduler.deactivate_scheduled_polls, job_funcs)
         self.assertIn(scheduler.sync_tenor_links_weekly, job_funcs)
 
-        # Controleer notify_non_voters voor vr/za/zo (3x)
+        # Controleer notify_non_or_maybe_voters per geconfigureerde dag
         notify_non_voters_jobs = [
             j for j in added_jobs if j["func"] == scheduler.notify_non_or_maybe_voters
         ]
-        self.assertEqual(len(notify_non_voters_jobs), 3)
+        self.assertEqual(len(notify_non_voters_jobs), num_days)
 
-        # Controleer notify_voters_if_avond_gaat_door voor vr/za/zo (3x)
+        # Controleer notify_voters_if_avond_gaat_door per geconfigureerde dag
         notify_voters_jobs = [
             j
             for j in added_jobs
             if j["func"] == scheduler.notify_voters_if_avond_gaat_door
         ]
-        self.assertEqual(len(notify_voters_jobs), 3)
+        self.assertEqual(len(notify_voters_jobs), num_days)
 
         # Controleer dat de juiste dagen zijn meegegeven
         notify_non_voters_args = [j["args"] for j in notify_non_voters_jobs]
-        self.assertIn([bot, "vrijdag"], notify_non_voters_args)
-        self.assertIn([bot, "zaterdag"], notify_non_voters_args)
-        self.assertIn([bot, "zondag"], notify_non_voters_args)
+        for dag in scheduler.REMINDER_DAYS:
+            self.assertIn([bot, dag], notify_non_voters_args)
 
         notify_voters_args = [j["args"] for j in notify_voters_jobs]
-        self.assertIn([bot, "vrijdag"], notify_voters_args)
-        self.assertIn([bot, "zaterdag"], notify_voters_args)
-        self.assertIn([bot, "zondag"], notify_voters_args)
+        for dag in scheduler.REMINDER_DAYS:
+            self.assertIn([bot, dag], notify_voters_args)
 
         # Controleer update_all_polls (1x)
         update_jobs = [j for j in added_jobs if j["func"] == scheduler.update_all_polls]
