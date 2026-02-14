@@ -17,23 +17,23 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
         """
         # Save original values
         orig_reminder_hour = scheduler.REMINDER_HOUR
-        orig_early_reminder_hour = scheduler.EARLY_REMINDER_HOUR
+        orig_early_reminder_hour = scheduler.WEEKEND_REMINDER_HOUR
         orig_reset_day = scheduler.RESET_DAY_OF_WEEK
         orig_reset_hour = scheduler.RESET_HOUR
         orig_min_votes = scheduler.MIN_NOTIFY_VOTES
         orig_reminder_days = scheduler.REMINDER_DAYS.copy()
-        orig_early_day = scheduler.EARLY_REMINDER_DAY
+        orig_early_day = scheduler.WEEKEND_REMINDER_DAY
         orig_config_path = scheduler.CONFIG_PATH
 
         try:
             config_data = {
                 "reminder_hour": 16,
-                "early_reminder_hour": 19,
+                "weekend_reminder_hour": 19,
                 "reset_day_of_week": 2,
                 "reset_hour": 21,
                 "min_notify_votes": 8,
                 "reminder_days": {"vrijdag": 4, "zaterdag": 5},
-                "early_reminder_day": "woensdag",
+                "weekend_reminder_day": "woensdag",
             }
 
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -46,21 +46,21 @@ class SchedulerTestCase(unittest.IsolatedAsyncioTestCase):
 
                 # Controleer dat waarden zijn overschreven
                 self.assertEqual(scheduler.REMINDER_HOUR, 16)
-                self.assertEqual(scheduler.EARLY_REMINDER_HOUR, 19)
+                self.assertEqual(scheduler.WEEKEND_REMINDER_HOUR, 19)
                 self.assertEqual(scheduler.RESET_DAY_OF_WEEK, 2)
                 self.assertEqual(scheduler.RESET_HOUR, 21)
                 self.assertEqual(scheduler.MIN_NOTIFY_VOTES, 8)
                 self.assertIn(4, scheduler.REMINDER_DAYS.values())
-                self.assertEqual(scheduler.EARLY_REMINDER_DAY, "woensdag")
+                self.assertEqual(scheduler.WEEKEND_REMINDER_DAY, "woensdag")
         finally:
             # Restore original values
             scheduler.REMINDER_HOUR = orig_reminder_hour
-            scheduler.EARLY_REMINDER_HOUR = orig_early_reminder_hour
+            scheduler.WEEKEND_REMINDER_HOUR = orig_early_reminder_hour
             scheduler.RESET_DAY_OF_WEEK = orig_reset_day
             scheduler.RESET_HOUR = orig_reset_hour
             scheduler.MIN_NOTIFY_VOTES = orig_min_votes
             scheduler.REMINDER_DAYS = orig_reminder_days
-            scheduler.EARLY_REMINDER_DAY = orig_early_day
+            scheduler.WEEKEND_REMINDER_DAY = orig_early_day
             scheduler.CONFIG_PATH = orig_config_path
 
     async def test_load_poll_config_missing_file(self):

@@ -1,3 +1,5 @@
+[🇳🇱 Nederlands](README.md) | **🇺🇸 English**
+
 # DMK-poll-bot 🇺🇸
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B%20%7C%203.13-blue.svg)
@@ -419,34 +421,34 @@ The bot uses APScheduler for automatic tasks:
 |---|---|---|---|
 | **00:00** | Monday | Tenor GIF sync | Sync tenor-links.template.json to tenor-links.json (only on changes) |
 | **20:00** | Tuesday | Reset polls | Clear votes, archive, send general reset notification |
-| **16:00** | Friday, Saturday, Sunday | Non-voter reminder | Send mention to members who haven't voted for that day (temporary, 5 sec) |
-| **17:00** | Friday, Saturday, Sunday | Maybe confirmation | Send "Vote Now" button to Maybe voters with leading time |
+| **16:00** | Configured days* | Non-voter & maybe reminder | Send mention to members who haven't voted and maybe-voters for that day (temporary, 5 sec) |
 | **18:00** | Daily | Poll update | Show counts, add decision rule under the poll |
-| **18:00** | Friday, Saturday, Sunday | Maybe conversion | Convert remaining "maybe" votes to "not joining" |
-| **18:05** | Friday, Saturday, Sunday | Proceeding notification | Mentions of voters on winning time (≥6), persistent mentions (5 hours) |
-| **20:00** | Thursday | Early reminder | Mention to members who haven't voted at all (temporary, 5 sec) |
+| **18:00** | Configured days* | Maybe conversion | Convert remaining "maybe" votes to "not joining" |
+| **18:05** | Configured days* | Proceeding notification | Mentions of voters on winning time (≥6), persistent mentions (5 hours) |
+| **20:00** | Configured (default: Thursday)* | Weekend reminder | Mention to members who haven't voted at all (temporary, 5 sec) |
 | **Every minute** | Continuous | Scheduled poll activation | Activate scheduled polls based on activation time |
 | **Every minute** | Continuous | Scheduled poll deactivation | Deactivate scheduled polls based on deactivation time |
+| **Every minute** | Continuous | Retry failed operations | Retry failed conversions and resets |
+
+\* *Configured days are set via `poll_settings.json` (default: all weekdays). Per channel, only days with active polls are processed.*
 
 ### Notification System
 
 The bot has a smart notification system with privacy in mind:
 
 1. **Temporary mentions** (5 seconds visible):
-   - Reminders for non-voters (4:00 PM Friday/Saturday/Sunday)
-   - Early reminders (8:00 PM Thursday)
+   - Reminders for non-voters and maybe-voters (4:00 PM, configured days)
+   - Weekend reminder (8:00 PM, configured — default Thursday)
    - Reset notifications (@everyone)
    - Users do get a notification on their device, but the mention disappears quickly from the channel
    - After 1 hour the entire message is automatically deleted
 
 2. **Persistent mentions** (5 hours visible):
-   - "Proceeding" messages for participants (6:05 PM Friday/Saturday/Sunday)
+   - "Proceeding" messages for participants (6:05 PM, configured days)
    - Remain visible for 5 hours, then the entire message is automatically deleted
    - This ensures participants can see who's joining throughout the day
 
-3. **Maybe confirmation** (5:00 PM):
-   - At 5:00 PM voters with "maybe" get a "Vote Now" button with the leading time
-   - Can confirm (Yes → winning time) or cancel (No → not joining)
+3. **Maybe conversion** (6:00 PM):
    - At 6:00 PM remaining "maybe" votes are automatically converted to "not joining"
 
 ### Catch-up mechanism

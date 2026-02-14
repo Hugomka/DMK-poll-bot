@@ -60,8 +60,8 @@ class TestLoadPollConfig(BaseTestCase):
         original_reset_day = scheduler.RESET_DAY_OF_WEEK
         original_reset_hour = scheduler.RESET_HOUR
         original_min_votes = scheduler.MIN_NOTIFY_VOTES
-        original_early_reminder_hour = scheduler.EARLY_REMINDER_HOUR
-        original_early_reminder_day = scheduler.EARLY_REMINDER_DAY
+        original_early_reminder_hour = scheduler.WEEKEND_REMINDER_HOUR
+        original_early_reminder_day = scheduler.WEEKEND_REMINDER_DAY
         original_reminder_days = scheduler.REMINDER_DAYS.copy()
 
         config_file = None
@@ -73,8 +73,8 @@ class TestLoadPollConfig(BaseTestCase):
                     "reset_day_of_week": 2,
                     "reset_hour": 21,
                     "min_notify_votes": 10,
-                    "early_reminder_hour": 19,
-                    "early_reminder_day": "woensdag",
+                    "weekend_reminder_hour": 19,
+                    "weekend_reminder_day": "woensdag",
                     "reminder_days": {"vrijdag": 4, "zaterdag": 5, "zondag": 6},
                 }
                 json.dump(custom_config, f)
@@ -89,8 +89,8 @@ class TestLoadPollConfig(BaseTestCase):
                 assert scheduler.RESET_DAY_OF_WEEK == 2
                 assert scheduler.RESET_HOUR == 21
                 assert scheduler.MIN_NOTIFY_VOTES == 10
-                assert scheduler.EARLY_REMINDER_HOUR == 19
-                assert scheduler.EARLY_REMINDER_DAY == "woensdag"
+                assert scheduler.WEEKEND_REMINDER_HOUR == 19
+                assert scheduler.WEEKEND_REMINDER_DAY == "woensdag"
                 assert scheduler.REMINDER_DAYS["vrijdag"] == 4
                 assert scheduler.REMINDER_DAYS["zaterdag"] == 5
                 assert scheduler.REMINDER_DAYS["zondag"] == 6
@@ -106,8 +106,8 @@ class TestLoadPollConfig(BaseTestCase):
             scheduler.RESET_DAY_OF_WEEK = original_reset_day
             scheduler.RESET_HOUR = original_reset_hour
             scheduler.MIN_NOTIFY_VOTES = original_min_votes
-            scheduler.EARLY_REMINDER_HOUR = original_early_reminder_hour
-            scheduler.EARLY_REMINDER_DAY = original_early_reminder_day
+            scheduler.WEEKEND_REMINDER_HOUR = original_early_reminder_hour
+            scheduler.WEEKEND_REMINDER_DAY = original_early_reminder_day
             scheduler.REMINDER_DAYS = original_reminder_days
 
     async def test_load_poll_config_partial_values(self):

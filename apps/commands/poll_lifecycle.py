@@ -540,6 +540,7 @@ class PollLifecycle(commands.Cog):
                 pass
 
             # Eerste bericht: Opening met @everyone (dynamisch gegenereerd)
+            # De @everyone in de i18n header is de daadwerkelijke, zichtbare ping.
             opening_text = _load_opening_message(channel_id=channel.id)
 
             send = _get_attr(channel, "send")

@@ -467,7 +467,6 @@ class TestLoadOpeningMessage(BaseTestCase):
         """Test that generic fallback is generated without channel_id"""
         result = _load_opening_message(channel_id=None)
         assert "Welkom bij de DMK-poll" in result
-        assert "@everyone" in result
         assert "Klik op **🗳️ Stemmen**" in result
         assert "Veel plezier! 🎉" in result
 

@@ -69,7 +69,7 @@ async def send_temporary_mention(
     Flow:
     1. Verwijder ALLE bestaande notificatieberichten (om duplicaten te voorkomen)
     2. Stuur nieuw bericht met mentions en optionele knop
-    3. Na 5 seconden: verwijder mentions (privacy)
+    3. Na 5 seconden: verwijder user-mentions voor privacy (@everyone blijft zichtbaar)
     4. Na delete_after_hours: verwijder het hele bericht
 
     Args:
@@ -129,8 +129,11 @@ async def send_temporary_mention(
         save_message_id(cid, message_key, msg.id)
 
         # Stap 3: Plan privacy removal (na 5 seconden)
+        # Verwijdert user-mentions (<@123>) voor privacy, maar @everyone blijft zichtbaar
         asyncio.create_task(
-            _remove_mentions_after_delay(msg, delay, text, view, show_button, cid)
+            _remove_mentions_after_delay(
+                msg, delay, mentions, text, view, show_button, cid
+            )
         )
 
         # Stap 4: Plan auto-delete (na delete_after_hours)
@@ -144,14 +147,24 @@ async def send_temporary_mention(
 
 
 async def _remove_mentions_after_delay(
-    message: Any, delay: float, text: str, view: Any, show_button: bool, channel_id: int
+    message: Any,
+    delay: float,
+    original_mentions: Optional[str],
+    text: str,
+    view: Any,
+    show_button: bool,
+    channel_id: int,
 ) -> None:
     """
-    Interne helper: verwijder mentions na delay seconden, behoud tekst en knop.
+    Interne helper: verwijder user-mentions na delay seconden, behoud @everyone en tekst.
+
+    User-mentions (<@123>, <@!123>) worden verwijderd voor privacy.
+    @everyone blijft zichtbaar — dat is geen privacy-gevoelige informatie.
 
     Args:
         message: Het Discord message object
         delay: Hoeveel seconden te wachten
+        original_mentions: De originele mentions string (om @everyone te detecteren)
         text: De tekst om te behouden
         view: De view om te behouden (bijv. Stem Nu knop)
         show_button: Of de knop getoond moet blijven
@@ -160,10 +173,14 @@ async def _remove_mentions_after_delay(
     try:
         await asyncio.sleep(delay)
 
-        # Build content zonder mentions using renderer (no comma artifacts)
+        # Behoud @everyone als die in de originele mentions zat
+        preserved_mentions = None
+        if original_mentions and "@everyone" in original_mentions:
+            preserved_mentions = "@everyone"
+
         content = render_notification_content(
             heading=_get_notification_heading(channel_id),
-            mentions=None,  # Remove mentions for privacy
+            mentions=preserved_mentions,
             text=text,
             footer=None,
         )

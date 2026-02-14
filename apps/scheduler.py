@@ -12,6 +12,7 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from apps.utils.constants import DAG_MAPPING
 from apps.utils.discord_client import fetch_message_or_none, get_channels, safe_call
 from apps.utils.logger import log_job, log_startup
 from apps.utils.mention_utils import (
@@ -21,7 +22,7 @@ from apps.utils.mention_utils import (
 from apps.utils.message_builder import build_doorgaan_participant_list
 from apps.utils.poll_message import (
     clear_message_id,
-    create_notification_message,
+
     get_message_id,
     is_channel_disabled,
     save_message_id,
@@ -58,9 +59,26 @@ MIN_NOTIFY_VOTES = 6
 REMINDER_HOUR = 16  # 16:00 uur - stuur herinnering vóór de deadline
 RESET_DAY_OF_WEEK = 1  # 0=ma, 1=di … reset op dinsdag
 RESET_HOUR = 20  # 20:00 uur - resetmoment
-REMINDER_DAYS = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
-EARLY_REMINDER_DAY = "donderdag"
-EARLY_REMINDER_HOUR = 20  # 20:00 uur
+REMINDER_DAYS = {
+    "maandag": 0,
+    "dinsdag": 1,
+    "woensdag": 2,
+    "donderdag": 3,
+    "vrijdag": 4,
+    "zaterdag": 5,
+    "zondag": 6,
+}
+WEEKEND_REMINDER_DAY = "donderdag"
+WEEKEND_REMINDER_HOUR = 20  # 20:00 uur
+DAG_TO_CRON = {
+    "maandag": "mon",
+    "dinsdag": "tue",
+    "woensdag": "wed",
+    "donderdag": "thu",
+    "vrijdag": "fri",
+    "zaterdag": "sat",
+    "zondag": "sun",
+}
 
 LOCK_PATH = ".scheduler.lock"
 STATE_PATH = ".scheduler_state.json"
@@ -68,8 +86,8 @@ STATE_PATH = ".scheduler_state.json"
 
 def _load_poll_config() -> None:
     global REMINDER_HOUR, RESET_DAY_OF_WEEK, RESET_HOUR
-    global MIN_NOTIFY_VOTES, REMINDER_DAYS, EARLY_REMINDER_DAY
-    global EARLY_REMINDER_HOUR
+    global MIN_NOTIFY_VOTES, REMINDER_DAYS, WEEKEND_REMINDER_DAY
+    global WEEKEND_REMINDER_HOUR
     if not CONFIG_PATH or not os.path.exists(CONFIG_PATH):
         return
     try:
@@ -79,7 +97,7 @@ def _load_poll_config() -> None:
         return
     # overschrijf waarden als ze bestaan in het JSON-bestand
     REMINDER_HOUR = int(data.get("reminder_hour", REMINDER_HOUR))
-    EARLY_REMINDER_HOUR = int(data.get("early_reminder_hour", EARLY_REMINDER_HOUR))
+    WEEKEND_REMINDER_HOUR = int(data.get("weekend_reminder_hour", data.get("early_reminder_hour", WEEKEND_REMINDER_HOUR)))
     RESET_DAY_OF_WEEK = int(data.get("reset_day_of_week", RESET_DAY_OF_WEEK))
     RESET_HOUR = int(data.get("reset_hour", RESET_HOUR))
     MIN_NOTIFY_VOTES = int(data.get("min_notify_votes", MIN_NOTIFY_VOTES))
@@ -88,7 +106,7 @@ def _load_poll_config() -> None:
         REMINDER_DAYS.update(
             {str(dag): int(idx) for dag, idx in data["reminder_days"].items()}
         )
-    EARLY_REMINDER_DAY = data.get("early_reminder_day", EARLY_REMINDER_DAY)
+    WEEKEND_REMINDER_DAY = data.get("weekend_reminder_day", data.get("early_reminder_day", WEEKEND_REMINDER_DAY))
 
 
 def _weekly_reset_threshold(now: datetime) -> datetime:
@@ -514,9 +532,8 @@ async def _run_catch_up(bot) -> None:  # pragma: no cover
     else:
         log_job("reset_polls", status="skipped")
 
-    # Notificaties (vr/za/zo - om 18:05)
-    weekday_map = {"vrijdag": 4, "zaterdag": 5, "zondag": 6}
-    for dag, target_wd in weekday_map.items():
+    # Notificaties (geconfigureerde dagen - om 18:05)
+    for dag, target_wd in REMINDER_DAYS.items():
         key = f"notify_{dag}"
         last_notify = state.get(key)
         days_since = (now.weekday() - target_wd) % 7
@@ -554,10 +571,10 @@ async def _run_catch_up(bot) -> None:  # pragma: no cover
 
     # Donderdag-herinnering naar niet-stemmers (20:00)
     last_thu = state.get("reminder_thursday")
-    days_since_thu = (now.weekday() - 3) % 7  # 3 = donderdag
+    days_since_thu = (now.weekday() - DAG_MAPPING[WEEKEND_REMINDER_DAY]) % 7
     last_date_thu = (now - timedelta(days=days_since_thu)).date()
     last_occurrence_thu = TZ.localize(
-        datetime.combine(last_date_thu, dt_time(EARLY_REMINDER_HOUR, 0))
+        datetime.combine(last_date_thu, dt_time(WEEKEND_REMINDER_HOUR, 0))
     )
     if now < last_occurrence_thu:
         last_occurrence_thu -= timedelta(days=7)
@@ -742,8 +759,10 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
     """
     Plan periodieke jobs en start de scheduler.
     - Pollupdate elke dag om 18:00.
-    - Herinnering niet-stemmers op vr/za/zo om 17:00.
-    - Notificatie dat een avond doorgaat op vr/za/zo om 18:05.
+    - Herinnering niet-stemmers op geconfigureerde dagen om 16:00.
+    - Notificatie dat een avond doorgaat op geconfigureerde dagen om 18:05.
+    - Misschien-conversie op geconfigureerde dagen om 18:00.
+    - Weekend-herinnering (standaard donderdag) om 20:00.
     - Reset op dinsdag om 20:00.
     - Tenor GIF sync op maandag om 00:00.
     """
@@ -768,72 +787,36 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         args=[bot],
         name="Wekelijkse tenor sync maandag 00:00",
     )
-    # Herinneringen (vrijdag, zaterdag, zondag)
-    scheduler.add_job(
-        notify_non_or_maybe_voters,
-        CronTrigger(day_of_week="fri", hour=REMINDER_HOUR, minute=0),
-        args=[bot, "vrijdag"],
-        name="Herinnering vrijdag",
-    )
-    scheduler.add_job(
-        notify_non_or_maybe_voters,
-        CronTrigger(day_of_week="sat", hour=REMINDER_HOUR, minute=0),
-        args=[bot, "zaterdag"],
-        name="Herinnering zaterdag",
-    )
-    scheduler.add_job(
-        notify_non_or_maybe_voters,
-        CronTrigger(day_of_week="sun", hour=REMINDER_HOUR, minute=0),
-        args=[bot, "zondag"],
-        name="Herinnering zondag",
-    )
-    # Notificaties als een avond doorgaat (18:05 om race-condities te voorkomen)
-    scheduler.add_job(
-        notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="fri", hour=18, minute=5),
-        args=[bot, "vrijdag"],
-        name="Notificatie vrijdag",
-    )
-    scheduler.add_job(
-        notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="sat", hour=18, minute=5),
-        args=[bot, "zaterdag"],
-        name="Notificatie zaterdag",
-    )
-    scheduler.add_job(
-        notify_voters_if_avond_gaat_door,
-        CronTrigger(day_of_week="sun", hour=18, minute=5),
-        args=[bot, "zondag"],
-        name="Notificatie zondag",
-    )
+    # Herinneringen, notificaties en misschien-conversie per geconfigureerde dag
+    for dag in REMINDER_DAYS:
+        cron_day = DAG_TO_CRON[dag]
+        scheduler.add_job(
+            notify_non_or_maybe_voters,
+            CronTrigger(day_of_week=cron_day, hour=REMINDER_HOUR, minute=0),
+            args=[bot, dag],
+            name=f"Herinnering {dag}",
+        )
+        # Notificatie als een avond doorgaat (18:05 om race-condities te voorkomen)
+        scheduler.add_job(
+            notify_voters_if_avond_gaat_door,
+            CronTrigger(day_of_week=cron_day, hour=18, minute=5),
+            args=[bot, dag],
+            name=f"Notificatie {dag}",
+        )
+        # Convert remaining Misschien votes to ❌ at 18:00
+        scheduler.add_job(
+            convert_remaining_misschien,
+            CronTrigger(day_of_week=cron_day, hour=18, minute=0),
+            args=[bot, dag],
+            name=f"Convert Misschien {dag}",
+        )
+    # Vroege herinnering (standaard donderdag)
+    early_cron_day = DAG_TO_CRON[WEEKEND_REMINDER_DAY]
     scheduler.add_job(
         notify_non_voters_thursday,
-        CronTrigger(day_of_week="thu", hour=EARLY_REMINDER_HOUR, minute=0),
+        CronTrigger(day_of_week=early_cron_day, hour=WEEKEND_REMINDER_HOUR, minute=0),
         args=[bot],
-        name="Herinnering donderdag",
-    )
-    # NOTE: Misschien voter notifications at 17:00 have been removed.
-    # Maybe voters are now included in the 16:00 combined reminder notification
-    # (see notify_non_voters function).
-
-    # Convert remaining Misschien votes to ❌ at 18:00
-    scheduler.add_job(
-        convert_remaining_misschien,
-        CronTrigger(day_of_week="fri", hour=18, minute=0),
-        args=[bot, "vrijdag"],
-        name="Convert Misschien vrijdag",
-    )
-    scheduler.add_job(
-        convert_remaining_misschien,
-        CronTrigger(day_of_week="sat", hour=18, minute=0),
-        args=[bot, "zaterdag"],
-        name="Convert Misschien zaterdag",
-    )
-    scheduler.add_job(
-        convert_remaining_misschien,
-        CronTrigger(day_of_week="sun", hour=18, minute=0),
-        args=[bot, "zondag"],
-        name="Convert Misschien zondag",
+        name=f"Herinnering {WEEKEND_REMINDER_DAY}",
     )
     # Scheduled poll activation check (every minute)
     scheduler.add_job(
@@ -1411,6 +1394,13 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
             if is_paused(cid):
                 continue
 
+            # Skip als activate_scheduled_polls dit kanaal al heeft afgehandeld
+            # (voorkomt dubbele @everyone notificatie bij gelijktijdige uitvoering)
+            activated = state.get("activated_channels_this_reset", {})
+            if str(cid) in activated:
+                any_reset = True  # activate_scheduled_polls heeft al gereset
+                continue
+
             # Reset votes voor dit specifieke kanaal
             try:
                 await reset_votes_scoped(gid, cid)
@@ -1471,6 +1461,8 @@ async def reset_polls(bot) -> bool:  # pragma: no cover
     # State bijwerken (nu is er wél gereset)
     try:
         state["reset_polls"] = now.isoformat()
+        # Ruim coördinatie-state op (niet meer nodig na reset)
+        state.pop("activated_channels_this_reset", None)
         _write_state(state)
     except Exception:  # pragma: no cover
         pass
@@ -1901,12 +1893,38 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         except Exception:  # pragma: no cover
                             pass
 
-                    # STAP 2: Opening bericht (nu nieuw aanmaken met dynamisch gegenereerde tekst)
+                    # STAP 2: Opening bericht met @everyone (zichtbaar, permanent)
+                    # De @everyone in de i18n header is de daadwerkelijke ping.
+                    # Als reset_polls al eerder heeft gedraaid in dit resetvenster,
+                    # onderdruk de ping met AllowedMentions.none() (tekst blijft zichtbaar).
+                    import discord as _discord
+
                     from apps.commands.poll_lifecycle import _load_opening_message
+
+                    suppress_ping = False
+                    if _within_reset_window(now):
+                        rstate = _read_state()
+                        lr = rstate.get("reset_polls")
+                        if lr:
+                            try:
+                                lr_dt = datetime.fromisoformat(str(lr))
+                                if lr_dt.tzinfo is None:
+                                    lr_dt = TZ.localize(lr_dt)
+                                if (now - lr_dt).total_seconds() < 300:
+                                    suppress_ping = True
+                            except Exception:  # pragma: no cover
+                                pass
 
                     opening_text = _load_opening_message(channel_id=cid)
                     if send:
-                        opening_msg = await safe_call(send, content=opening_text)
+                        if suppress_ping:
+                            opening_msg = await safe_call(
+                                send,
+                                content=opening_text,
+                                allowed_mentions=_discord.AllowedMentions.none(),
+                            )
+                        else:
+                            opening_msg = await safe_call(send, content=opening_text)
                         if opening_msg is not None:
                             save_message_id(cid, "opening", opening_msg.id)
 
@@ -1963,6 +1981,18 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         )
                     except Exception as e:  # pragma: no cover
                         print(f"⚠️ Openingsbericht versturen mislukt: {e}")
+
+                    # Registreer activatie voor coördinatie met reset_polls
+                    # (voorkomt dat reset_polls opnieuw @everyone stuurt)
+                    if _within_reset_window(now):
+                        try:
+                            act_state = _read_state()
+                            activated = act_state.get("activated_channels_this_reset", {})
+                            activated[str(cid)] = now.isoformat()
+                            act_state["activated_channels_this_reset"] = activated
+                            _write_state(act_state)
+                        except Exception:  # pragma: no cover
+                            pass
 
                     print(f"✅ Automatisch geactiveerd: kanaal {cid}, periodes: {periods_to_open}")
 
