@@ -1,7 +1,7 @@
 # tests/test_status_schedule_field.py
 
 """
-Tests for schedule field display in /dmk-poll-status command.
+Tests for period schedule field display in /dmk-poll-status command.
 """
 
 import os
@@ -11,271 +11,146 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from apps.commands.poll_status import PollStatus
 from apps.utils import poll_settings
-from apps.utils.poll_settings import (
-    set_default_activation,
-    set_default_deactivation,
-    set_scheduled_activation,
-    set_scheduled_deactivation,
-)
+from apps.utils.poll_settings import set_period_settings
 
 
 class TestStatusScheduleField(unittest.IsolatedAsyncioTestCase):
-    """Test that /dmk-poll-status shows schedule fields correctly with default labels."""
+    """Test that /dmk-poll-status shows period schedule fields correctly."""
 
     def setUp(self):
         """Reset settings before each test using temp file."""
-        # Create temp file for this test
         self.temp_file = tempfile.NamedTemporaryFile(
             mode="w", delete=False, suffix=".json", encoding="utf-8"
         )
         self.temp_file.close()
         self.temp_settings_path = self.temp_file.name
 
-        # Patch SETTINGS_FILE to use temp file
         self.original_settings_file = poll_settings.SETTINGS_FILE
         poll_settings.SETTINGS_FILE = self.temp_settings_path
 
     def tearDown(self):
         """Clean up after each test."""
-        # Restore original settings file
         poll_settings.SETTINGS_FILE = self.original_settings_file
-
-        # Remove temp file
         try:
             if os.path.exists(self.temp_settings_path):
                 os.remove(self.temp_settings_path)
         except Exception:
             pass
 
-    async def test_status_shows_geen_when_no_schedules(self):
-        """Test that status shows 'Geen' when no schedules are set."""
-        # Clear any seeded defaults
-        set_default_activation(None)
-        set_default_deactivation(None)
-
-        # Mock bot and interaction
-        mock_bot = MagicMock()
-        mock_interaction = MagicMock()
-        mock_interaction.response.defer = AsyncMock()
-        mock_interaction.followup.send = AsyncMock()
-
-        # Mock channel with ID
-        mock_channel = MagicMock()
-        mock_channel.id = 123456
-        mock_interaction.channel = mock_channel
-
-        # Mock guild
+    def _make_interaction(self, channel_id=123456, guild_id=789):
         mock_guild = MagicMock()
-        mock_guild.id = 789
-        mock_interaction.guild = mock_guild
+        mock_guild.id = guild_id
 
-        cog = PollStatus(mock_bot)
-
-        with patch("apps.utils.poll_storage.load_votes", return_value={}):
-            await cog._status_impl(mock_interaction)
-
-        # Check that followup.send was called
-        self.assertTrue(mock_interaction.followup.send.called)
-
-        # Get the embed that was sent
-        call_kwargs = mock_interaction.followup.send.call_args[1]
-        embed = call_kwargs.get("embed")
-
-        self.assertIsNotNone(embed)
-
-        # Find the schedule fields
-        act_field = None
-        deact_field = None
-        for field in embed.fields:
-            if "activatie" in field.name.lower():
-                act_field = field
-            if "deactivatie" in field.name.lower():
-                deact_field = field
-
-        self.assertIsNotNone(act_field, "Activation field should exist")
-        self.assertIsNotNone(deact_field, "Deactivation field should exist")
-        assert act_field is not None  # Type narrowing for Pylance
-        assert deact_field is not None  # Type narrowing for Pylance
-
-        # Both should show "Geen"
-        self.assertEqual(act_field.value, "Geen")
-        self.assertEqual(deact_field.value, "Geen")
-
-    async def test_status_shows_default_label_when_using_defaults(self):
-        """Test that status shows '(default)' label when using default schedules."""
-        # Set defaults
-        set_default_activation({"type": "wekelijks", "dag": "dinsdag", "tijd": "20:00"})
-        set_default_deactivation({"type": "wekelijks", "dag": "maandag", "tijd": "00:00"})
-
-        # Mock bot and interaction
-        mock_bot = MagicMock()
-        mock_interaction = MagicMock()
-        mock_interaction.response.defer = AsyncMock()
-        mock_interaction.followup.send = AsyncMock()
-
-        # Mock channel with ID (no override)
-        mock_channel = MagicMock()
-        mock_channel.id = 123456
-        mock_interaction.channel = mock_channel
-
-        # Mock guild
-        mock_guild = MagicMock()
-        mock_guild.id = 789
-        mock_interaction.guild = mock_guild
-
-        cog = PollStatus(mock_bot)
-
-        with patch("apps.utils.poll_storage.load_votes", return_value={}):
-            await cog._status_impl(mock_interaction)
-
-        # Get the embed that was sent
-        call_kwargs = mock_interaction.followup.send.call_args[1]
-        embed = call_kwargs.get("embed")
-
-        self.assertIsNotNone(embed)
-
-        # Find the schedule fields
-        act_field = None
-        deact_field = None
-        for field in embed.fields:
-            if "geplande activatie" in field.name.lower():
-                act_field = field
-            elif "geplande deactivatie" in field.name.lower():
-                deact_field = field
-
-        self.assertIsNotNone(act_field, f"Activation field not found. Fields: {[f.name for f in embed.fields]}")
-        self.assertIsNotNone(deact_field, f"Deactivation field not found. Fields: {[f.name for f in embed.fields]}")
-        assert act_field is not None  # Type narrowing for Pylance
-        assert deact_field is not None  # Type narrowing for Pylance
-
-        # Both should show the schedule with (default) label
-        self.assertIn("dinsdag", act_field.value, f"Expected 'dinsdag' in activation field, got: {act_field.value}")
-        self.assertIn("20:00", act_field.value)
-        self.assertIn("(default)", act_field.value)
-
-        self.assertIn("maandag", deact_field.value, f"Expected 'maandag' in deactivation field, got: {deact_field.value}")
-        self.assertIn("00:00", deact_field.value)
-        self.assertIn("(default)", deact_field.value)
-
-    async def test_status_shows_no_default_label_when_channel_has_override(self):
-        """Test that status shows no '(default)' label when channel has override."""
-        # Set defaults
-        set_default_activation({"type": "wekelijks", "dag": "dinsdag", "tijd": "20:00"})
-        set_default_deactivation({"type": "wekelijks", "dag": "maandag", "tijd": "00:00"})
-
-        # Set channel overrides
-        channel_id = 123456
-        set_scheduled_activation(channel_id, "wekelijks", "19:00", dag="woensdag")
-        set_scheduled_deactivation(channel_id, "wekelijks", "23:00", dag="zondag")
-
-        # Mock bot and interaction
-        mock_bot = MagicMock()
-        mock_interaction = MagicMock()
-        mock_interaction.response.defer = AsyncMock()
-        mock_interaction.followup.send = AsyncMock()
-
-        # Mock channel with ID
         mock_channel = MagicMock()
         mock_channel.id = channel_id
-        mock_interaction.channel = mock_channel
+        mock_channel.guild = mock_guild
+        mock_channel.members = []
 
-        # Mock guild
-        mock_guild = MagicMock()
-        mock_guild.id = 789
-        mock_interaction.guild = mock_guild
+        interaction = MagicMock()
+        interaction.response.defer = AsyncMock()
+        interaction.followup.send = AsyncMock()
+        interaction.channel = mock_channel
+        interaction.guild = mock_guild
+        return interaction
 
-        cog = PollStatus(mock_bot)
+    def _get_embed(self, interaction):
+        call_kwargs = interaction.followup.send.call_args[1]
+        return call_kwargs.get("embed")
+
+    def _get_field_by_name(self, embed, substr):
+        for field in embed.fields:
+            if substr in str(field.name):
+                return field
+        return None
+
+    async def test_status_shows_both_periods(self):
+        """Test that status shows both vr-zo and ma-do period fields."""
+        set_period_settings(123456, "vr-zo", enabled=True, open_day="dinsdag", open_time="20:00", close_day="maandag", close_time="00:00")
+        set_period_settings(123456, "ma-do", enabled=True, open_day="vrijdag", open_time="20:00", close_day="vrijdag", close_time="00:00")
+
+        cog = PollStatus(MagicMock())
+        interaction = self._make_interaction()
 
         with patch("apps.utils.poll_storage.load_votes", return_value={}):
-            await cog._status_impl(mock_interaction)
+            await cog._status_impl(interaction)
 
-        # Get the embed that was sent
-        call_kwargs = mock_interaction.followup.send.call_args[1]
-        embed = call_kwargs.get("embed")
-
+        embed = self._get_embed(interaction)
         self.assertIsNotNone(embed)
 
-        # Find the schedule fields
-        act_field = None
-        deact_field = None
-        for field in embed.fields:
-            if "geplande activatie" in field.name.lower():
-                act_field = field
-            elif "geplande deactivatie" in field.name.lower():
-                deact_field = field
+        vrzo_field = self._get_field_by_name(embed, "vr-zo")
+        mado_field = self._get_field_by_name(embed, "ma-do")
 
-        self.assertIsNotNone(act_field, f"Activation field not found. Fields: {[f.name for f in embed.fields]}")
-        self.assertIsNotNone(deact_field, f"Deactivation field not found. Fields: {[f.name for f in embed.fields]}")
-        assert act_field is not None  # Type narrowing for Pylance
-        assert deact_field is not None  # Type narrowing for Pylance
+        self.assertIsNotNone(vrzo_field, f"vr-zo field not found. Fields: {[f.name for f in embed.fields]}")
+        self.assertIsNotNone(mado_field, f"ma-do field not found. Fields: {[f.name for f in embed.fields]}")
 
-        # Should show channel overrides WITHOUT (default) label
-        self.assertIn("woensdag", act_field.value, f"Expected 'woensdag' in activation field, got: {act_field.value}")
-        self.assertIn("19:00", act_field.value)
-        self.assertNotIn("(default)", act_field.value)
+        assert vrzo_field is not None
+        assert mado_field is not None
+        self.assertIn("Ingeschakeld", str(vrzo_field.value))
+        self.assertIn("Ingeschakeld", str(mado_field.value))
 
-        self.assertIn("zondag", deact_field.value, f"Expected 'zondag' in deactivation field, got: {deact_field.value}")
-        self.assertIn("23:00", deact_field.value)
-        self.assertNotIn("(default)", deact_field.value)
+    async def test_status_shows_open_close_times(self):
+        """Test that enabled periods show open/close day and time."""
+        set_period_settings(123456, "vr-zo", enabled=True, open_day="dinsdag", open_time="20:00", close_day="maandag", close_time="00:00")
 
-    async def test_status_mixed_default_and_override(self):
-        """Test status when one schedule is default and one is override."""
-        # Set defaults
-        set_default_activation({"type": "wekelijks", "dag": "dinsdag", "tijd": "20:00"})
-        set_default_deactivation({"type": "wekelijks", "dag": "maandag", "tijd": "00:00"})
-
-        # Set only activation override (deactivation should use default)
-        channel_id = 123456
-        set_scheduled_activation(channel_id, "wekelijks", "19:00", dag="vrijdag")
-
-        # Mock bot and interaction
-        mock_bot = MagicMock()
-        mock_interaction = MagicMock()
-        mock_interaction.response.defer = AsyncMock()
-        mock_interaction.followup.send = AsyncMock()
-
-        # Mock channel with ID
-        mock_channel = MagicMock()
-        mock_channel.id = channel_id
-        mock_interaction.channel = mock_channel
-
-        # Mock guild
-        mock_guild = MagicMock()
-        mock_guild.id = 789
-        mock_interaction.guild = mock_guild
-
-        cog = PollStatus(mock_bot)
+        cog = PollStatus(MagicMock())
+        interaction = self._make_interaction()
 
         with patch("apps.utils.poll_storage.load_votes", return_value={}):
-            await cog._status_impl(mock_interaction)
+            await cog._status_impl(interaction)
 
-        # Get the embed that was sent
-        call_kwargs = mock_interaction.followup.send.call_args[1]
-        embed = call_kwargs.get("embed")
+        embed = self._get_embed(interaction)
+        vrzo_field = self._get_field_by_name(embed, "vr-zo")
+        self.assertIsNotNone(vrzo_field)
+        assert vrzo_field is not None
 
-        # Find the schedule fields
-        act_field = None
-        deact_field = None
-        for field in embed.fields:
-            if "geplande activatie" in field.name.lower():
-                act_field = field
-            elif "geplande deactivatie" in field.name.lower():
-                deact_field = field
+        value = str(vrzo_field.value)
+        self.assertIn("dinsdag", value)
+        self.assertIn("20:00", value)
+        self.assertIn("maandag", value)
+        self.assertIn("00:00", value)
 
-        self.assertIsNotNone(act_field, f"Activation field not found. Fields: {[f.name for f in embed.fields]}")
-        self.assertIsNotNone(deact_field, f"Deactivation field not found. Fields: {[f.name for f in embed.fields]}")
-        assert act_field is not None  # Type narrowing for Pylance
-        assert deact_field is not None  # Type narrowing for Pylance
+    async def test_status_disabled_period_shows_uitgeschakeld(self):
+        """Test that disabled period shows 'Uitgeschakeld' without open/close times."""
+        set_period_settings(123456, "ma-do", enabled=False)
 
-        # Activation should show override (no default label)
-        self.assertIn("vrijdag", act_field.value, f"Expected 'vrijdag' in activation field, got: {act_field.value}")
-        self.assertIn("19:00", act_field.value)
-        self.assertNotIn("(default)", act_field.value)
+        cog = PollStatus(MagicMock())
+        interaction = self._make_interaction()
 
-        # Deactivation should show default (with default label)
-        self.assertIn("maandag", deact_field.value, f"Expected 'maandag' in deactivation field, got: {deact_field.value}")
-        self.assertIn("00:00", deact_field.value)
-        self.assertIn("(default)", deact_field.value)
+        with patch("apps.utils.poll_storage.load_votes", return_value={}):
+            await cog._status_impl(interaction)
+
+        embed = self._get_embed(interaction)
+        mado_field = self._get_field_by_name(embed, "ma-do")
+        self.assertIsNotNone(mado_field)
+        assert mado_field is not None
+
+        value = str(mado_field.value)
+        self.assertIn("Uitgeschakeld", value)
+        # Should not show open/close times for disabled period
+        self.assertNotIn("Opent:", value)
+        self.assertNotIn("Sluit:", value)
+
+    async def test_status_shows_open_closed_indicator(self):
+        """Test that enabled periods show open/closed status indicator."""
+        set_period_settings(123456, "vr-zo", enabled=True, open_day="dinsdag", open_time="20:00", close_day="maandag", close_time="00:00")
+
+        cog = PollStatus(MagicMock())
+        interaction = self._make_interaction()
+
+        with patch("apps.utils.poll_storage.load_votes", return_value={}):
+            await cog._status_impl(interaction)
+
+        embed = self._get_embed(interaction)
+        vrzo_field = self._get_field_by_name(embed, "vr-zo")
+        self.assertIsNotNone(vrzo_field)
+        assert vrzo_field is not None
+
+        value = str(vrzo_field.value)
+        # Should show either Open or Gesloten indicator
+        self.assertTrue(
+            "🟢 Open" in value or "🔴 Gesloten" in value,
+            f"Expected open/closed indicator in: {value}",
+        )
 
 
 if __name__ == "__main__":

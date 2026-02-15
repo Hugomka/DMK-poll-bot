@@ -15,7 +15,7 @@ from discord.ext import commands
 from apps.commands import with_default_suffix
 from apps.entities.poll_option import get_poll_options
 from apps.utils.celebration_gif import get_celebration_gif_url
-from apps.utils.constants import DAG_NAMEN
+
 from apps.utils.message_builder import (
     build_grouped_names_for,
     get_non_voters_for_day,
@@ -34,9 +34,10 @@ from apps.utils.poll_message import (
 )
 from apps.utils.poll_settings import (
     get_effective_activation,
-    get_effective_deactivation,
+    get_period_settings,
     get_setting,
     is_paused,
+    is_period_currently_open,
 )
 from apps.utils.poll_storage import load_votes
 
@@ -97,44 +98,8 @@ class PollStatus(commands.Cog):
 
         from apps.utils.i18n import get_day_name, t
 
-        # Helper function to format schedule information
-        def format_schedule(schedule: Optional[dict], is_default: bool) -> str:
-            """Format a schedule dict into a readable string with default label."""
-            if not schedule:
-                return t(cid_val, "STATUS.no_schedule")
-
-            typ = schedule.get("type")
-            tijd = schedule.get("tijd", "??:??")
-
-            if typ == "datum":
-                datum = schedule.get("datum", "")
-                try:
-                    # Convert from internal YYYY-MM-DD to display DD-MM-YYYY
-                    datum_obj = datetime.strptime(datum, "%Y-%m-%d")
-                    datum_display = datum_obj.strftime("%d-%m-%Y")
-                    dag_naam = get_day_name(cid_val, DAG_NAMEN[datum_obj.weekday()])
-                    result = f"{dag_naam} {datum_display} om {tijd}"
-                except Exception:  # pragma: no cover
-                    result = f"{datum} om {tijd}"
-            elif typ == "wekelijks":
-                dag = schedule.get("dag", "?")
-                dag_display = get_day_name(cid_val, dag)
-                result = f"elke {dag_display} om {tijd}"
-            else:  # pragma: no cover
-                result = "Unknown"
-
-            # Add default label if this is a default schedule
-            if is_default and result != t(cid_val, "STATUS.no_schedule"):
-                result += f"  *{t(cid_val, 'STATUS.default_label')}*"
-
-            return result
-
         try:
             pauze_txt = t(cid_val, "STATUS.yes") if is_paused(cid_val) else t(cid_val, "STATUS.no")
-
-            # Retrieve effective schedule information (with fallback to defaults)
-            act_sched, act_is_default = get_effective_activation(cid_val)
-            deact_sched, deact_is_default = get_effective_deactivation(cid_val)
 
             embed = discord.Embed(
                 title=t(cid_val, "STATUS.status_title"),
@@ -142,17 +107,31 @@ class PollStatus(commands.Cog):
                 color=discord.Color.blurple(),
             )
 
-            # Add schedule fields with default labels
-            embed.add_field(
-                name=t(cid_val, "STATUS.activation_field"),
-                value=format_schedule(act_sched, act_is_default),
-                inline=False,
-            )
-            embed.add_field(
-                name=t(cid_val, "STATUS.deactivation_field"),
-                value=format_schedule(deact_sched, deact_is_default),
-                inline=False,
-            )
+            # Add period schedule fields for both periods
+            from apps.utils.period_dates import TZ
+            now = datetime.now(TZ)
+            for period in ["vr-zo", "ma-do"]:
+                settings = get_period_settings(cid_val, period)
+                enabled = settings.get("enabled", False)
+                status_label = t(cid_val, "STATUS.period_enabled") if enabled else t(cid_val, "STATUS.period_disabled")
+
+                lines = [f"**{status_label}**"]
+                if enabled:
+                    is_open = is_period_currently_open(settings, now)
+                    lines.append(t(cid_val, "STATUS.period_open") if is_open else t(cid_val, "STATUS.period_closed"))
+
+                    open_day = get_day_name(cid_val, settings.get("open_day", ""))
+                    open_time = settings.get("open_time", "00:00")
+                    close_day = get_day_name(cid_val, settings.get("close_day", ""))
+                    close_time = settings.get("close_time", "00:00")
+                    lines.append(t(cid_val, "STATUS.period_opens", day=open_day, time=open_time))
+                    lines.append(t(cid_val, "STATUS.period_closes", day=close_day, time=close_time))
+
+                embed.add_field(
+                    name=t(cid_val, "STATUS.period_header", period=period),
+                    value="\n".join(lines),
+                    inline=True,
+                )
 
             # Gescopeerde stemmen voor dit guild en kanaal
             scoped = await load_votes(gid_val, cid_val)
