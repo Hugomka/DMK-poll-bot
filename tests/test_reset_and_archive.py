@@ -37,24 +37,29 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
     async def test_append_week_snapshot_maakt_csv(self):
         await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
         await ar.append_week_snapshot_scoped(
-            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+            guild_id=1, channel_id=123,
+            now=datetime.now(ZoneInfo("Europe/Amsterdam")),
+            period="vr-zo",
         )
-        self.assertTrue(ar.archive_exists_scoped())
-        self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
+        self.assertTrue(ar.archive_exists_scoped(1, 123))
 
     async def test_append_leeg_snapshot(self):
+        """period=None schrijft geen archief, ook niet met lege telling."""
         await ar.append_week_snapshot_scoped(
             now=datetime.now(ZoneInfo("Europe/Amsterdam"))
         )
-        self.assertTrue(ar.archive_exists_scoped())
+        self.assertFalse(ar.archive_exists_scoped())
 
     async def test_delete_archive_verwijdert_file(self):
+        await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
         await ar.append_week_snapshot_scoped(
-            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
+            guild_id=1, channel_id=123,
+            now=datetime.now(ZoneInfo("Europe/Amsterdam")),
+            period="vr-zo",
         )
-        ok = ar.delete_archive_scoped()
+        ok = ar.delete_archive_scoped(1, 123)
         self.assertTrue(ok)
-        self.assertFalse(os.path.exists(ar.ARCHIVE_CSV))
+        self.assertFalse(ar.archive_exists_scoped(1, 123))
 
     async def test_week_dates_eu_localizes_naive_datetime(self):
         """Naive datetime → wordt gelokaliseerd (Europe/Amsterdam) in _week_dates_eu."""
@@ -130,17 +135,16 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
 
     async def test_append_twice_writes_header_once(self):
         """Eerste append schrijft header; tweede append van dezelfde week update de rij."""
+        await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
+        now = datetime.now(ZoneInfo("Europe/Amsterdam"))
         # Eerste snapshot
-        await ar.append_week_snapshot_scoped(
-            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
-        )
+        await ar.append_week_snapshot_scoped(guild_id=1, channel_id=123, now=now, period="vr-zo")
         # Tweede snapshot (zelfde week → update bestaande rij)
-        await ar.append_week_snapshot_scoped(
-            now=datetime.now(ZoneInfo("Europe/Amsterdam"))
-        )
+        await ar.append_week_snapshot_scoped(guild_id=1, channel_id=123, now=now, period="vr-zo")
 
-        self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
-        with open(ar.ARCHIVE_CSV, "r", encoding="utf-8") as f:
+        csv_path = ar.get_archive_path_scoped(1, 123)
+        self.assertTrue(os.path.exists(csv_path))
+        with open(csv_path, "r", encoding="utf-8") as f:
             rows = list(csv.reader(f))
         # Precies 2 regels: header + 1 data-rij (tweede append update dezelfde week)
         self.assertEqual(len(rows), 2)
@@ -189,28 +193,23 @@ class TestResetEnArchiefUitgebreid(BaseTestCase):
 
     async def test_append_week_snapshot_uses_default_now(self):
         """
-        append_week_snapshot_scoped zonder 'now' → gebruikt default Europe/Amsterdam now
-        en schrijft het archief (dekt het now is None-pad).
+        append_week_snapshot_scoped zonder 'now' → gebruikt default Europe/Amsterdam now.
+        Met een stem en period="vr-zo" wordt het archief aangemaakt.
         """
-        # Zorg dat archief nog niet bestaat
-        if os.path.exists(ar.ARCHIVE_CSV):
-            os.remove(ar.ARCHIVE_CSV)
-
-        await ar.append_week_snapshot_scoped()  # now=None → default pad
-        self.assertTrue(ar.archive_exists_scoped())
-        self.assertTrue(os.path.exists(ar.ARCHIVE_CSV))
+        await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
+        await ar.append_week_snapshot_scoped(guild_id=1, channel_id=123, period="vr-zo")
+        self.assertTrue(ar.archive_exists_scoped(1, 123))
 
     async def test_open_archive_bytes_returns_name_and_bytes(self):
         """
         open_archive_bytes als het archief bestaat → (naam, bytes).
         (dekt het open/read/return-pad)
         """
-        # Maak zeker dat er een CSV is
-        if not os.path.exists(ar.ARCHIVE_CSV):
-            await ar.append_week_snapshot_scoped()
+        await toggle_vote("abc", "vrijdag", "om 19:00 uur", 1, 123)
+        await ar.append_week_snapshot_scoped(guild_id=1, channel_id=123, period="vr-zo")
 
-        name, data = ar.open_archive_bytes_scoped()
-        self.assertEqual(name, "dmk_archive.csv")
+        name, data = ar.open_archive_bytes_scoped(1, 123)
+        self.assertIsNotNone(name)
         # Houd Pylance tevreden: assert en cast naar bytes
         self.assertIsNotNone(data)
         data_b = cast(bytes, data)

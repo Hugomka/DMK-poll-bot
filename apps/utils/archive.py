@@ -536,34 +536,39 @@ async def _write_archive_csv(
             w.writerow(row)
 
 
+def _has_votes(telling: dict, days: list) -> bool:
+    """Check of er stemmen zijn voor de opgegeven dagen (niet-stemmers tellen niet mee)."""
+    for dag in days:
+        if dag not in telling:
+            continue
+        for key, count in telling[dag].items():
+            if key != "niet gestemd" and count > 0:
+                return True
+    return False
+
+
 async def append_week_snapshot_scoped(
     guild_id: Optional[int | str] = None,
     channel_id: Optional[int | str] = None,
     now: Optional[datetime] = None,
     channel: Any = None,
+    period: Optional[str] = None,
 ) -> None:
     """
     Schrijf 1 rij naar CSV met week+datums+tellingen+niet-stemmers.
 
-    Gebruikt dual archive systeem:
-    - Weekend archief (vrijdag/zaterdag/zondag): altijd actief (backward compatible)
-    - Weekday archief (maandag/dinsdag/woensdag/donderdag): alleen actief als weekday polls enabled zijn
-
-    Backward compat:
-      - Zonder guild/channel → gebruik globale ARCHIVE_CSV (legacy tests).
-      - Sommige oude tests roepen append_week_snapshot_scoped(<now>) aan:
-        detecteer dat en verschuif argumenten.
+    Period-aware: alleen archiveren als er daadwerkelijk stemmen zijn.
+    - period="vr-zo": schrijft weekend archief als er stemmen zijn voor vr-zo dagen
+    - period="ma-do": schrijft weekday archief als er stemmen zijn voor ma-do dagen
+    - period=None: niets doen (geen rij met nullen archiveren)
     """
-    # Back-compat: eerste arg kan 'now' zijn
-    if isinstance(guild_id, datetime) and channel_id is None and now is None:
-        now = guild_id
-        guild_id = None
-        channel_id = None
+    if period not in ("vr-zo", "ma-do"):
+        return
+
     _ensure_dir()
     if now is None:
         now = datetime.now(pytz.timezone("Europe/Amsterdam"))
 
-    # Zonder IDs: legacy pad + lege telling is prima voor tests
     votes = (
         await load_votes(guild_id, channel_id)
         if (guild_id is not None and channel_id is not None)
@@ -571,18 +576,11 @@ async def append_week_snapshot_scoped(
     )
     telling = await _build_counts_from_votes(votes, channel, guild_id, channel_id)
 
-    # Altijd weekend archief schrijven (backward compatible)
-    await _archive_weekend(telling, guild_id, channel_id, now)
-
-    # Alleen weekday archief schrijven als er weekday polls ingeschakeld zijn
-    if guild_id is not None and channel_id is not None:
-        # Import hier om circulaire import te voorkomen
-        from apps.utils.poll_settings import get_enabled_poll_days
-
-        enabled_days = get_enabled_poll_days(int(channel_id))
-        weekday_enabled = any(day in enabled_days for day in WEEKDAY_DAYS)
-
-        if weekday_enabled:
+    if period == "vr-zo":
+        if _has_votes(telling, WEEKEND_DAYS):
+            await _archive_weekend(telling, guild_id, channel_id, now)
+    else:  # period == "ma-do"
+        if _has_votes(telling, WEEKDAY_DAYS):
             await _archive_weekdays(telling, guild_id, channel_id, now)
 
 

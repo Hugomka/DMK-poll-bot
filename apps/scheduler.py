@@ -1715,20 +1715,28 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                 try:
                     gid = getattr(guild, "id", 0)
 
-                    # RESET: Voor elke periode die sluit, reset de stemmen
+                    # ARCHIVEER eerst, per periode, vóór de reset (zodat stemmen nog aanwezig zijn)
+                    from apps.utils.archive import append_week_snapshot_scoped
+
                     for period in periods_to_close:
                         try:
-                            await reset_votes_scoped(gid, cid)
-                            log_job("reset_period", status=f"executed_{period}")
-                        except Exception:  # pragma: no cover
-                            # Fallback naar lege votes
-                            try:
-                                from apps.utils.poll_storage import save_votes_scoped
-                                await save_votes_scoped(gid, cid, {})
-                            except Exception:  # pragma: no cover
-                                from apps.utils.retry_queue import add_failed_reset
+                            await append_week_snapshot_scoped(gid, cid, now=now, channel=channel, period=period)
+                        except Exception as e:  # pragma: no cover
+                            print(f"⚠️ Archiveren bij sluiting van {period} mislukt: {e}")
 
-                                add_failed_reset(str(gid), str(cid))
+                    # RESET: één keer (stemmen zijn gedeeld over alle periodes)
+                    try:
+                        await reset_votes_scoped(gid, cid)
+                        log_job("reset_period", status=f"executed_{'_'.join(periods_to_close)}")
+                    except Exception:  # pragma: no cover
+                        # Fallback naar lege votes
+                        try:
+                            from apps.utils.poll_storage import save_votes_scoped
+                            await save_votes_scoped(gid, cid, {})
+                        except Exception:  # pragma: no cover
+                            from apps.utils.retry_queue import add_failed_reset
+
+                            add_failed_reset(str(gid), str(cid))
 
                     # Wis celebration message
                     try:
@@ -1746,14 +1754,6 @@ async def deactivate_scheduled_polls(bot) -> None:  # pragma: no cover
                             clear_message_id(cid, key)
                         except Exception:  # pragma: no cover
                             pass
-
-                    # Archiveer huidige week's data voordat we deactiveren
-                    try:
-                        from apps.utils.archive import append_week_snapshot_scoped
-
-                        await append_week_snapshot_scoped(gid, cid, channel=channel)
-                    except Exception as e:  # pragma: no cover
-                        print(f"⚠️ Archiveren bij deactivatie mislukt: {e}")
 
                     # Stuur resetbericht voor de periode(s) die gesloten zijn
                     period_names = " en ".join(periods_to_close)

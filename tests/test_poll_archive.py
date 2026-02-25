@@ -553,8 +553,9 @@ class TestArchiveWithNonVoters(BaseTestCase):
             os.remove(csv_path)
 
         try:
-            # Append zonder channel (niet-stemmers zullen 0 zijn)
-            await append_week_snapshot_scoped(guild_id, channel_id, channel=None)
+            # Append met een stem zodat er een archief wordt geschreven
+            with patch("apps.utils.archive.load_votes", return_value={"u1": {"vrijdag": ["om 19:00 uur"]}}):
+                await append_week_snapshot_scoped(guild_id, channel_id, channel=None, period="vr-zo")
 
             # Lees CSV en check header
             with open(csv_path, "r", encoding="utf-8") as f:
@@ -601,7 +602,7 @@ class TestArchiveWithNonVoters(BaseTestCase):
             with patch("apps.utils.archive.load_votes", return_value={
                 "123": {"vrijdag": ["om 19:00 uur"]},
             }):
-                await append_week_snapshot_scoped(guild_id, channel_id, channel=mock_channel)
+                await append_week_snapshot_scoped(guild_id, channel_id, channel=mock_channel, period="vr-zo")
 
             # Lees CSV en check data row
             with open(csv_path, "r", encoding="utf-8") as f:
@@ -643,8 +644,9 @@ class TestArchiveWithNonVoters(BaseTestCase):
             os.remove(csv_path)
 
         try:
-            # Append zonder channel
-            await append_week_snapshot_scoped(guild_id, channel_id, channel=None)
+            # Append met een stem zodat er een archief wordt geschreven, maar zonder channel
+            with patch("apps.utils.archive.load_votes", return_value={"u1": {"vrijdag": ["om 19:00 uur"]}}):
+                await append_week_snapshot_scoped(guild_id, channel_id, channel=None, period="vr-zo")
 
             # Lees CSV en check data row
             with open(csv_path, "r", encoding="utf-8") as f:
@@ -690,8 +692,9 @@ class TestArchiveWithNonVoters(BaseTestCase):
                 f.write(old_header + "\n")
                 f.write(old_data + "\n")
 
-            # Append nieuwe week (dit zou header moeten migreren)
-            await append_week_snapshot_scoped(guild_id, channel_id, channel=None)
+            # Append nieuwe week met een stem (header migratie + period="vr-zo")
+            with patch("apps.utils.archive.load_votes", return_value={"u1": {"vrijdag": ["om 19:00 uur"]}}):
+                await append_week_snapshot_scoped(guild_id, channel_id, channel=None, period="vr-zo")
 
             # Lees CSV en check
             with open(csv_path, "r", encoding="utf-8") as f:
@@ -733,84 +736,64 @@ class TestArchiveWithNonVoters(BaseTestCase):
 class TestWeekdayArchive(BaseTestCase):
     """Tests voor weekday archive functionaliteit (dual archive systeem)"""
 
-    async def test_weekday_archive_created_when_weekday_enabled(self):
-        """Test dat weekday archief wordt aangemaakt als weekday polls ingeschakeld zijn"""
+    async def test_weekday_archive_created_when_period_mado(self):
+        """Test dat weekday archief wordt aangemaakt voor period=ma-do als er stemmen zijn"""
         from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from apps.utils.poll_storage import toggle_vote
         from datetime import datetime
         import pytz
         import csv
 
-        # Setup: enable maandag poll
-        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag", "vrijdag"]):
-            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+        await toggle_vote("u1", "maandag", "om 19:00 uur", 123, 456)
+        now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
 
-            await append_week_snapshot_scoped(
-                guild_id=123,
-                channel_id=456,
-                now=now,
-                channel=None
-            )
+        await append_week_snapshot_scoped(guild_id=123, channel_id=456, now=now, period="ma-do")
 
-            # Check dat weekend archief bestaat
-            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
-            assert os.path.exists(weekend_path), "Weekend archief moet bestaan"
+        # Check dat alleen weekday archief bestaat (geen weekend archief)
+        weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+        weekday_path = get_archive_path_scoped(123, 456, weekday=True)
 
-            # Check dat weekday archief bestaat
-            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
-            assert os.path.exists(weekday_path), "Weekday archief moet bestaan"
+        assert not os.path.exists(weekend_path), "Weekend archief mag niet bestaan bij period=ma-do"
+        assert os.path.exists(weekday_path), "Weekday archief moet bestaan"
 
-            # Verify weekday CSV structure
-            with open(weekday_path, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                rows = list(reader)
+        # Verify weekday CSV structure
+        with open(weekday_path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
 
-            assert len(rows) == 2, "Weekday CSV moet header + 1 data rij hebben"
+        assert len(rows) == 2, "Weekday CSV moet header + 1 data rij hebben"
+        header = rows[0]
+        assert header[0] == "week"
+        assert "ma_19" in header
+        assert "di_19" in header
+        assert "wo_19" in header
+        assert "do_19" in header
 
-            header = rows[0]
-            assert header[0] == "week"
-            assert header[1] == "datum_maandag"
-            assert header[2] == "datum_dinsdag"
-            assert header[3] == "datum_woensdag"
-            assert header[4] == "datum_donderdag"
-            assert "ma_19" in header
-            assert "di_19" in header
-            assert "wo_19" in header
-            assert "do_19" in header
+        # Cleanup
+        if os.path.exists(weekday_path):
+            os.remove(weekday_path)
 
-            # Cleanup
-            if os.path.exists(weekend_path):
-                os.remove(weekend_path)
-            if os.path.exists(weekday_path):
-                os.remove(weekday_path)
-
-    async def test_weekday_archive_not_created_when_weekday_disabled(self):
-        """Test dat weekday archief NIET wordt aangemaakt als alleen weekend polls ingeschakeld zijn"""
+    async def test_vrzo_period_does_not_create_weekday_archive(self):
+        """Test dat period=vr-zo alleen weekend archief aanmaakt, geen weekday archief"""
         from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from apps.utils.poll_storage import toggle_vote
         from datetime import datetime
         import pytz
 
-        # Setup: only weekend days enabled
-        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["vrijdag", "zaterdag", "zondag"]):
-            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+        await toggle_vote("u1", "vrijdag", "om 19:00 uur", 123, 456)
+        now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
 
-            await append_week_snapshot_scoped(
-                guild_id=123,
-                channel_id=456,
-                now=now,
-                channel=None
-            )
+        await append_week_snapshot_scoped(guild_id=123, channel_id=456, now=now, period="vr-zo")
 
-            # Check dat weekend archief bestaat
-            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
-            assert os.path.exists(weekend_path), "Weekend archief moet bestaan"
+        weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+        weekday_path = get_archive_path_scoped(123, 456, weekday=True)
 
-            # Check dat weekday archief NIET bestaat
-            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
-            assert not os.path.exists(weekday_path), "Weekday archief mag niet bestaan"
+        assert os.path.exists(weekend_path), "Weekend archief moet bestaan"
+        assert not os.path.exists(weekday_path), "Weekday archief mag niet bestaan bij period=vr-zo"
 
-            # Cleanup
-            if os.path.exists(weekend_path):
-                os.remove(weekend_path)
+        # Cleanup
+        if os.path.exists(weekend_path):
+            os.remove(weekend_path)
 
     async def test_week_dates_weekdays_calculates_correct_dates(self):
         """Test dat _week_dates_weekdays correct de maandag-donderdag datums berekent"""
@@ -869,14 +852,15 @@ class TestWeekdayArchive(BaseTestCase):
         await toggle_vote("user3", "woensdag", "misschien", 123, 456)
         await toggle_vote("user4", "donderdag", "niet meedoen", 123, 456)
 
-        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag", "dinsdag", "woensdag", "donderdag"]):
-            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+        now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
 
+        if True:  # scope block for cleanup consistency
             await append_week_snapshot_scoped(
                 guild_id=123,
                 channel_id=456,
                 now=now,
-                channel=None
+                channel=None,
+                period="ma-do",
             )
 
             weekday_path = get_archive_path_scoped(123, 456, weekday=True)
@@ -914,35 +898,125 @@ class TestWeekdayArchive(BaseTestCase):
         import pytz
         import csv
 
-        with patch("apps.utils.poll_settings.get_enabled_poll_days", return_value=["maandag"]):
-            now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+        from apps.utils.poll_storage import toggle_vote
+        await toggle_vote("u1", "maandag", "om 19:00 uur", 123, 456)
 
-            # Eerste archivering
-            await append_week_snapshot_scoped(123, 456, now, None)
+        now = datetime(2025, 11, 22, 10, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
 
-            weekday_path = get_archive_path_scoped(123, 456, weekday=True)
+        # Eerste archivering
+        await append_week_snapshot_scoped(123, 456, now, None, period="ma-do")
 
-            with open(weekday_path, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                rows_before = list(reader)
+        weekday_path = get_archive_path_scoped(123, 456, weekday=True)
 
-            assert len(rows_before) == 2, "Moet header + 1 data rij hebben"
+        with open(weekday_path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows_before = list(reader)
 
-            # Tweede archivering (zelfde week)
-            await append_week_snapshot_scoped(123, 456, now, None)
+        assert len(rows_before) == 2, "Moet header + 1 data rij hebben"
 
-            with open(weekday_path, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                rows_after = list(reader)
+        # Tweede archivering (zelfde week)
+        await append_week_snapshot_scoped(123, 456, now, None, period="ma-do")
 
-            assert len(rows_after) == 2, "Moet nog steeds header + 1 data rij hebben (geen duplicate)"
+        with open(weekday_path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows_after = list(reader)
 
-            # Cleanup
-            if os.path.exists(weekday_path):
-                os.remove(weekday_path)
-            weekend_path = get_archive_path_scoped(123, 456, weekday=False)
-            if os.path.exists(weekend_path):
-                os.remove(weekend_path)
+        assert len(rows_after) == 2, "Moet nog steeds header + 1 data rij hebben (geen duplicate)"
+
+        # Cleanup
+        if os.path.exists(weekday_path):
+            os.remove(weekday_path)
+        weekend_path = get_archive_path_scoped(123, 456, weekday=False)
+        if os.path.exists(weekend_path):
+            os.remove(weekend_path)
+
+
+class TestPeriodAwareArchive(BaseTestCase):
+    """Tests voor period-aware archivering (period parameter in append_week_snapshot_scoped)"""
+
+    async def test_period_vrzo_with_votes_creates_weekend_archive(self):
+        """period='vr-zo' schrijft weekend archief als er stemmen zijn"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from apps.utils.poll_storage import toggle_vote
+        from datetime import datetime
+        import pytz
+
+        guild_id, channel_id = 7001, 7002
+        await toggle_vote("u1", "vrijdag", "om 19:00 uur", guild_id, channel_id)
+
+        now = datetime(2025, 11, 17, 1, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))  # maandag
+        await append_week_snapshot_scoped(guild_id, channel_id, now=now, period="vr-zo")
+
+        weekend_path = get_archive_path_scoped(guild_id, channel_id, weekday=False)
+        weekday_path = get_archive_path_scoped(guild_id, channel_id, weekday=True)
+
+        assert os.path.exists(weekend_path), "Weekend archief moet bestaan"
+        assert not os.path.exists(weekday_path), "Weekday archief mag niet bestaan bij period=vr-zo"
+
+        os.remove(weekend_path)
+
+    async def test_period_vrzo_without_votes_skips_archive(self):
+        """period='vr-zo' schrijft GEEN archief als er geen stemmen zijn"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from datetime import datetime
+        import pytz
+
+        guild_id, channel_id = 7003, 7004
+        now = datetime(2025, 11, 17, 1, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+
+        await append_week_snapshot_scoped(guild_id, channel_id, now=now, period="vr-zo")
+
+        weekend_path = get_archive_path_scoped(guild_id, channel_id, weekday=False)
+        assert not os.path.exists(weekend_path), "Weekend archief mag niet bestaan als er geen stemmen zijn"
+
+    async def test_period_mado_with_votes_creates_weekday_archive(self):
+        """period='ma-do' schrijft weekday archief als er stemmen zijn"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from apps.utils.poll_storage import toggle_vote
+        from datetime import datetime
+        import pytz
+
+        guild_id, channel_id = 7005, 7006
+        await toggle_vote("u1", "maandag", "om 19:00 uur", guild_id, channel_id)
+
+        now = datetime(2025, 11, 21, 1, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))  # vrijdag
+        await append_week_snapshot_scoped(guild_id, channel_id, now=now, period="ma-do")
+
+        weekend_path = get_archive_path_scoped(guild_id, channel_id, weekday=False)
+        weekday_path = get_archive_path_scoped(guild_id, channel_id, weekday=True)
+
+        assert not os.path.exists(weekend_path), "Weekend archief mag niet bestaan bij period=ma-do"
+        assert os.path.exists(weekday_path), "Weekday archief moet bestaan"
+
+        os.remove(weekday_path)
+
+    async def test_period_mado_without_votes_skips_archive(self):
+        """period='ma-do' schrijft GEEN archief als er geen stemmen zijn"""
+        from apps.utils.archive import append_week_snapshot_scoped, get_archive_path_scoped
+        from datetime import datetime
+        import pytz
+
+        guild_id, channel_id = 7007, 7008
+        now = datetime(2025, 11, 21, 1, 0, tzinfo=pytz.timezone("Europe/Amsterdam"))
+
+        await append_week_snapshot_scoped(guild_id, channel_id, now=now, period="ma-do")
+
+        weekday_path = get_archive_path_scoped(guild_id, channel_id, weekday=True)
+        assert not os.path.exists(weekday_path), "Weekday archief mag niet bestaan als er geen stemmen zijn"
+
+    async def test_has_votes_helper(self):
+        """_has_votes geeft True als er stemmen zijn, False bij alleen niet-stemmers"""
+        from apps.utils.archive import _has_votes, WEEKEND_DAYS
+
+        empty = {dag: {"om 19:00 uur": 0, "om 20:30 uur": 0, "misschien": 0,
+                       "was misschien": 0, "niet meedoen": 0, "niet gestemd": 5}
+                 for dag in WEEKEND_DAYS}
+        assert not _has_votes(empty, WEEKEND_DAYS), "Alleen niet-stemmers telt niet als stem"
+
+        with_votes = dict(empty)
+        with_votes["vrijdag"] = dict(empty["vrijdag"])
+        with_votes["vrijdag"]["om 19:00 uur"] = 2
+        assert _has_votes(with_votes, WEEKEND_DAYS), "Echte stem moet True geven"
 
 
 if __name__ == "__main__":
