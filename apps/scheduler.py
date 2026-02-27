@@ -1956,6 +1956,7 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
 
                     # STAP 6: Notificatiebericht met HammerTime (altijd nieuw aanmaken na cleanup)
                     # Dit voorkomt dubbele notificatieberichten (Bug 4)
+                    from apps.utils.poll_message import create_notification_message
                     await create_notification_message(
                         channel,
                         activation_hammertime=(
@@ -1968,7 +1969,6 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         from apps.utils.i18n import t
                         from apps.utils.mention_utils import send_temporary_mention
 
-                        period_names = " en ".join(periods_to_open)
                         if hammertime_str:
                             opening_notification = t(
                                 cid, "NOTIFICATIONS.poll_opened_at", tijd=hammertime_str

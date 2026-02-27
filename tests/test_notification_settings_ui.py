@@ -180,6 +180,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         # Herlaad view om disabled state te krijgen
         view = NotificationSettingsView(channel_id)
         button = view.children[0]
+        assert isinstance(button, NotificationButton)
 
         # Mock interaction
         interaction = MagicMock()
@@ -205,6 +206,7 @@ class TestNotificationSettingsUI(BaseTestCase):
         channel_id = 123
         view = NotificationSettingsView(channel_id)
         button = view.children[0]
+        assert isinstance(button, NotificationButton)
 
         # Mock interaction zonder channel_id
         interaction = MagicMock()

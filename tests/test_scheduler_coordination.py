@@ -5,7 +5,6 @@ Tests voor coördinatie tussen reset_polls en activate_scheduled_polls.
 Voorkomt dubbele @everyone notificaties wanneer beide jobs gelijktijdig
 draaien op dinsdag 20:00.
 """
-from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytz
