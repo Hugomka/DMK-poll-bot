@@ -264,34 +264,17 @@ class PollOptionButton(discord.ui.Button):
         # BELANGRIJK: Check of poll-berichten aanwezig zijn
         # Als er geen poll-berichten zijn, betekent dit dat de poll gesloten is (sluitingsbericht actief)
         # Dan NIETS doen - geen poll-berichten aanmaken tijdens sluitingsperiode
-        vrijdag_msg = get_message_id(self.view.channel_id, "vrijdag")
-        zaterdag_msg = get_message_id(self.view.channel_id, "zaterdag")
-        zondag_msg = get_message_id(self.view.channel_id, "zondag")
-
-        # Als er geen enkele poll-message is, dan is de poll gesloten
-        if (
-            vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None
-        ):  # pragma: no cover
+        if not any(get_message_id(self.view.channel_id, dag) for dag in WEEK_DAYS):  # pragma: no cover
             return
 
         import asyncio
 
-        # Check huidige status van alle dagen
-        vrijdag_disabled = is_day_completely_disabled(self.view.channel_id, "vrijdag")
-        zaterdag_disabled = is_day_completely_disabled(self.view.channel_id, "zaterdag")
-        zondag_disabled = is_day_completely_disabled(self.view.channel_id, "zondag")
-
-        # Check of messages bestaan
-        vrijdag_exists = get_message_id(self.view.channel_id, "vrijdag") is not None
-        zaterdag_exists = get_message_id(self.view.channel_id, "zaterdag") is not None
-        zondag_exists = get_message_id(self.view.channel_id, "zondag") is not None
+        # Check huidige status en message-aanwezigheid van alle dagen
+        disabled = {dag: is_day_completely_disabled(self.view.channel_id, dag) for dag in WEEK_DAYS}
+        exists = {dag: get_message_id(self.view.channel_id, dag) is not None for dag in WEEK_DAYS}
 
         # Detecteer of een dag nieuw enabled wordt (was disabled, nu enabled, maar message bestaat nog niet)
-        nieuwe_dag_aanmaken = (
-            (not vrijdag_disabled and not vrijdag_exists)
-            or (not zaterdag_disabled and not zaterdag_exists)
-            or (not zondag_disabled and not zondag_exists)
-        )
+        nieuwe_dag_aanmaken = any(not disabled[dag] and not exists[dag] for dag in WEEK_DAYS)
 
         if nieuwe_dag_aanmaken:
             # Een nieuwe dag moet aangemaakt worden → verwijder alles en hermaak in juiste volgorde
@@ -301,23 +284,11 @@ class PollOptionButton(discord.ui.Button):
             update_tasks = []
 
             # Voor elke dag: verwijder als volledig disabled, anders edit
-            if vrijdag_disabled and vrijdag_exists:  # pragma: no cover
-                update_tasks.append(self._delete_day_message(channel, "vrijdag"))
-            elif not vrijdag_disabled and vrijdag_exists:  # pragma: no cover
-                # Edit bestaande message (tijd toegevoegd/verwijderd)
-                update_tasks.append(schedule_poll_update(channel, "vrijdag", delay=0))
-
-            if zaterdag_disabled and zaterdag_exists:  # pragma: no cover
-                update_tasks.append(self._delete_day_message(channel, "zaterdag"))
-            elif not zaterdag_disabled and zaterdag_exists:  # pragma: no cover
-                # Edit bestaande message (tijd toegevoegd/verwijderd)
-                update_tasks.append(schedule_poll_update(channel, "zaterdag", delay=0))
-
-            if zondag_disabled and zondag_exists:  # pragma: no cover
-                update_tasks.append(self._delete_day_message(channel, "zondag"))
-            elif not zondag_disabled and zondag_exists:  # pragma: no cover
-                # Edit bestaande message (tijd toegevoegd/verwijderd)
-                update_tasks.append(schedule_poll_update(channel, "zondag", delay=0))
+            for dag in WEEK_DAYS:
+                if disabled[dag] and exists[dag]:  # pragma: no cover
+                    update_tasks.append(self._delete_day_message(channel, dag))
+                elif not disabled[dag] and exists[dag]:  # pragma: no cover
+                    update_tasks.append(schedule_poll_update(channel, dag, delay=0))
 
             if update_tasks:  # pragma: no cover
                 await asyncio.gather(*update_tasks, return_exceptions=True)
@@ -336,42 +307,20 @@ class PollOptionButton(discord.ui.Button):
         # BELANGRIJK: Check of poll-berichten aanwezig zijn
         # Als er geen poll-berichten zijn, betekent dit dat de poll gesloten is (sluitingsbericht actief)
         # Dan NIETS doen - geen poll-berichten aanmaken tijdens sluitingsperiode
-        vrijdag_msg = get_message_id(self.view.channel_id, "vrijdag")
-        zaterdag_msg = get_message_id(self.view.channel_id, "zaterdag")
-        zondag_msg = get_message_id(self.view.channel_id, "zondag")
-
-        # Als er geen enkele poll-message is, dan is de poll gesloten
-        if (
-            vrijdag_msg is None and zaterdag_msg is None and zondag_msg is None
-        ):  # pragma: no cover
+        if not any(get_message_id(self.view.channel_id, dag) for dag in WEEK_DAYS):  # pragma: no cover
             return
 
         import asyncio
 
         # Stap 1: Verwijder ALLE bestaande poll messages
-        all_days = WEEK_DAYS
-        delete_tasks = [self._delete_day_message(channel, dag) for dag in all_days]
+        delete_tasks = [self._delete_day_message(channel, dag) for dag in WEEK_DAYS]
         await asyncio.gather(*delete_tasks, return_exceptions=True)
 
-        # Stap 2: Check welke dagen enabled zijn
-        vrijdag_disabled = is_day_completely_disabled(
-            self.view.channel_id, "vrijdag"
-        )  # pragma: no cover
-        zaterdag_disabled = is_day_completely_disabled(
-            self.view.channel_id, "zaterdag"
-        )  # pragma: no cover
-        zondag_disabled = is_day_completely_disabled(
-            self.view.channel_id, "zondag"
-        )  # pragma: no cover
-
-        # Stap 3: Hermaak poll messages in de juiste volgorde (alleen enabled dagen)
+        # Stap 2+3: Hermaak poll messages in de juiste volgorde (alleen enabled dagen)
         update_tasks = []  # pragma: no cover
-        if not vrijdag_disabled:  # pragma: no cover
-            update_tasks.append(schedule_poll_update(channel, "vrijdag", delay=0.1))
-        if not zaterdag_disabled:  # pragma: no cover
-            update_tasks.append(schedule_poll_update(channel, "zaterdag", delay=0.2))
-        if not zondag_disabled:  # pragma: no cover
-            update_tasks.append(schedule_poll_update(channel, "zondag", delay=0.3))
+        for i, dag in enumerate(WEEK_DAYS):  # pragma: no cover
+            if not is_day_completely_disabled(self.view.channel_id, dag):  # pragma: no cover
+                update_tasks.append(schedule_poll_update(channel, dag, delay=(i + 1) * 0.1))
 
         if update_tasks:  # pragma: no cover
             await asyncio.gather(*update_tasks, return_exceptions=True)

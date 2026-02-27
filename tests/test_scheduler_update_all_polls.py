@@ -356,7 +356,7 @@ class UpdateAllPollsTestCase(unittest.IsolatedAsyncioTestCase):
             patch.object(scheduler, "get_channels", side_effect=fake_get_channels),
             patch.object(scheduler, "is_channel_disabled", return_value=False),
             patch.object(scheduler, "get_message_id", side_effect=fake_get_message_id),
-            patch("apps.utils.poll_settings.get_enabled_period_days", side_effect=fake_get_enabled_period_days),
+            patch("apps.scheduler.get_enabled_period_days", side_effect=fake_get_enabled_period_days),
             patch("apps.utils.discord_client.fetch_message_or_none", side_effect=fake_fetch_message),
             patch("apps.utils.discord_client.safe_call", side_effect=fake_safe_call),
             patch.object(

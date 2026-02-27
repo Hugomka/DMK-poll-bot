@@ -13,7 +13,7 @@ from discord.ext import commands
 from apps.commands import with_default_suffix
 from apps.utils.i18n import t
 from apps.utils.poll_message import update_poll_message
-from apps.utils.poll_settings import get_enabled_poll_days, set_visibility
+from apps.utils.poll_settings import get_enabled_period_days, set_visibility
 
 
 class PollVotes(commands.Cog):
@@ -72,7 +72,7 @@ class PollVotes(commands.Cog):
                 doel_dagen = [dag.value]
             else:
                 # Gebruik alleen de enabled dagen uit instellingen
-                doel_dagen = get_enabled_poll_days(channel.id)
+                doel_dagen = [d["dag"] for d in get_enabled_period_days(channel.id, reference_date=None)]
 
             laatste: Optional[dict] = None
             for d in doel_dagen:

@@ -13,6 +13,7 @@ from apps.utils.poll_message import (
 from tests.base import BaseTestCase
 
 EXPECTED_DAYS = ["vrijdag", "zaterdag", "zondag"]
+EXPECTED_PERIOD_DAYS = [{"dag": d, "datum_iso": "2025-12-05"} for d in EXPECTED_DAYS]
 
 
 class TestCreateCelebrationEmbed(BaseTestCase):
@@ -49,7 +50,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
 
         # Mock votes - iedereen heeft gestemd
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days"
+            "apps.utils.poll_settings.get_enabled_period_days"
         ) as mock_enabled_days:
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -65,7 +66,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
                                 "apps.utils.poll_storage.load_votes"
                             ) as mock_load_votes:
                                 # Alle 3 dagen enabled
-                                mock_enabled_days.return_value = EXPECTED_DAYS
+                                mock_enabled_days.return_value = EXPECTED_PERIOD_DAYS
                                 # Geen niet-stemmers voor alle dagen
                                 mock_non_voters.return_value = (0, [])
                                 # Mock echte stemmen (user_id: votes)
@@ -108,7 +109,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         channel.send = AsyncMock()
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -135,7 +136,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         gif_msg.delete = AsyncMock()
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -176,7 +177,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         channel.id = 100
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -200,7 +201,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         channel.id = 100
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -223,7 +224,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         channel.id = 100
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -240,7 +241,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         channel.id = 100
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -287,7 +288,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
 
         # Mock discord.File directement om open() probleem te vermijden
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -360,7 +361,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         test_tenor_url = "https://tenor.com/view/test-gif-12345"
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"
@@ -396,7 +397,7 @@ class TestCheckAllVotedCelebration(BaseTestCase):
         test_tenor_url = "https://tenor.com/view/test-gif-12345"
 
         with patch(
-            "apps.utils.poll_message.get_enabled_poll_days", return_value=EXPECTED_DAYS
+            "apps.utils.poll_settings.get_enabled_period_days", return_value=EXPECTED_PERIOD_DAYS
         ):
             with patch(
                 "apps.utils.poll_message.get_non_voters_for_day"

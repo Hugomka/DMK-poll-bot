@@ -14,7 +14,6 @@ from apps.utils.celebration_gif import get_celebration_gif_url
 from apps.utils.discord_client import fetch_message_or_none, safe_call
 from apps.utils.message_builder import build_poll_message_for_day_async
 from apps.utils.poll_settings import (
-    get_enabled_poll_days,
     is_paused,
     should_hide_counts,
     should_hide_ghosts,
@@ -449,8 +448,9 @@ async def check_all_voted_celebration(
 ) -> None:
     """Check of iedereen heeft gestemd en stuur/verwijder celebration message."""
     try:
-        # Check alleen enabled dagen voor niet-stemmers
-        dagen = get_enabled_poll_days(channel_id)
+        # Check alleen huidige-periode-dagen voor niet-stemmers
+        from apps.utils.poll_settings import get_enabled_period_days
+        dagen = [d["dag"] for d in get_enabled_period_days(channel_id, reference_date=None)]
 
         all_voted = True
         for dag in dagen:

@@ -79,8 +79,8 @@ class TestPollVotesStemmen(BaseTestCase):
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
         ) as mock_update, patch(
-            "apps.commands.poll_votes.get_enabled_poll_days",
-            return_value=["vrijdag", "zaterdag", "zondag"]
+            "apps.commands.poll_votes.get_enabled_period_days",
+            return_value=[{"dag": d, "datum_iso": "2025-12-05"} for d in ["vrijdag", "zaterdag", "zondag"]]
         ):
             # Mock return value voor laatste dag (zondag)
             mock_set_visibility.return_value = {"modus": "altijd", "tijd": "18:00"}
@@ -199,8 +199,8 @@ class TestPollVotesStemmen(BaseTestCase):
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
         ) as mock_update, patch(
-            "apps.commands.poll_votes.get_enabled_poll_days",
-            return_value=["vrijdag", "zaterdag", "zondag"]
+            "apps.commands.poll_votes.get_enabled_period_days",
+            return_value=[{"dag": d, "datum_iso": "2025-12-05"} for d in ["vrijdag", "zaterdag", "zondag"]]
         ):
             # Mock return value voor laatste dag
             mock_set_visibility.return_value = {"modus": "deadline", "tijd": "20:00"}
@@ -234,8 +234,8 @@ class TestPollVotesStemmen(BaseTestCase):
         with patch("apps.commands.poll_votes.set_visibility") as mock_set_visibility, patch(
             "apps.commands.poll_votes.update_poll_message", new=AsyncMock()
         ), patch(
-            "apps.commands.poll_votes.get_enabled_poll_days",
-            return_value=["vrijdag", "zaterdag", "zondag"]
+            "apps.commands.poll_votes.get_enabled_period_days",
+            return_value=[{"dag": d, "datum_iso": "2025-12-05"} for d in ["vrijdag", "zaterdag", "zondag"]]
         ):
             # Mock return value voor laatste dag
             mock_set_visibility.return_value = {"modus": "deadline", "tijd": "18:00"}

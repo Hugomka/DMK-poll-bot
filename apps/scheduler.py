@@ -30,6 +30,7 @@ from apps.utils.poll_message import (
     set_channel_disabled,
 )
 from apps.utils.poll_settings import (
+    get_enabled_period_days,
     get_enabled_poll_days,
     get_period_settings,
     get_reminder_time,
@@ -352,11 +353,10 @@ async def notify_non_voters_thursday(bot) -> None:  # pragma: no cover
             if not is_notification_enabled(cid, "thursday_reminder"):
                 continue
 
-            # Skip als GEEN van de dagen in 'deadline' modus staat
+            # Skip als GEEN van de huidige-periode-dagen in 'deadline' modus staat
             # (donderdag-notificatie is alleen relevant voor deadline-scenario)
-            if not any(
-                _is_deadline_mode(cid, dag) for dag in get_enabled_poll_days(cid)
-            ):
+            _period_days = [d["dag"] for d in get_enabled_period_days(cid, reference_date=None)]
+            if not _period_days or not any(_is_deadline_mode(cid, dag) for dag in _period_days):
                 continue
 
             # Check DENY_CHANNEL_NAMES
@@ -890,8 +890,6 @@ async def update_all_polls(bot) -> None:  # pragma: no cover
                 continue
 
             # Gebruik period-based logica (altijd huidige dag)
-            from apps.utils.poll_settings import get_enabled_period_days
-
             dagen_info = get_enabled_period_days(cid, reference_date=None)
 
             # Verwijder oude dag-berichten die niet meer in de enabled periods zitten
@@ -1023,9 +1021,10 @@ async def notify_non_or_maybe_voters(  # pragma: no cover
             if not channel and dag:  # Scheduler-modus met specifieke dag
                 if not _is_deadline_mode(int(cid) if cid != "0" else 0, dag):
                     continue
-                # Check of de dag enabled is voor dit kanaal
-                enabled_days = get_enabled_poll_days(int(cid) if cid != "0" else 0)
-                if dag not in enabled_days:
+                # Check of de dag enabled is voor de huidige open periode
+                _cid_int = int(cid) if cid != "0" else 0
+                _open_days = [d["dag"] for d in get_enabled_period_days(_cid_int, reference_date=None)]
+                if dag not in _open_days:
                     continue
 
             # Alleen leden die toegang hebben tot dit specifieke kanaal
@@ -1277,8 +1276,6 @@ async def notify_voters_if_avond_gaat_door(bot, dag: str) -> None:  # pragma: no
 
             # Bereken datum en converteer naar Hammertime
             # Gebruik period-based system om correcte datum te krijgen
-            from apps.utils.poll_settings import get_enabled_period_days
-
             dagen_info = get_enabled_period_days(cid, reference_date=None)
             datum_iso = None
             for day_info in dagen_info:
@@ -1928,9 +1925,9 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                         if opening_msg is not None:
                             save_message_id(cid, "opening", opening_msg.id)
 
-                    # STAP 3: Dag-berichten creëren (nieuw)
-                    for dag in get_enabled_poll_days(cid):
-                        await update_poll_message(channel, dag)
+                    # STAP 3: Dag-berichten creëren (nieuw) — alleen open-periode-dagen
+                    for _dag_info in get_enabled_period_days(cid, reference_date=None):
+                        await update_poll_message(channel, _dag_info["dag"])
 
                     # STAP 4: Stemmen-knop bericht (nieuw aanmaken)
                     from apps.utils.i18n import t

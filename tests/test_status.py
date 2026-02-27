@@ -1,6 +1,6 @@
 # tests/test_status.py
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from apps.commands.poll_status import PollStatus
 from apps.utils.poll_storage import toggle_vote
@@ -536,8 +536,9 @@ class TestStatusCommand(BaseTestCase):
         interaction.response.defer = AsyncMock()
         interaction.followup.send = AsyncMock()
 
-        # ⏯️ Aanroepen van status
-        await self.cog._status_impl(interaction)
+        # ⏯️ Aanroepen van status — mock is_period_currently_open zodat beide periodes altijd open zijn
+        with patch("apps.utils.poll_settings.is_period_currently_open", return_value=True):
+            await self.cog._status_impl(interaction)
 
         # 🔍 Controleer dat een embed is gestuurd
         interaction.followup.send.assert_called()
@@ -601,8 +602,9 @@ class TestStatusCommand(BaseTestCase):
         interaction.response.defer = AsyncMock()
         interaction.followup.send = AsyncMock()
 
-        # ⏯️ Aanroepen van status
-        await self.cog._status_impl(interaction)
+        # ⏯️ Aanroepen van status — mock is_period_currently_open zodat ma-do open is
+        with patch("apps.utils.poll_settings.is_period_currently_open", return_value=True):
+            await self.cog._status_impl(interaction)
 
         # 🔍 Controleer dat een embed is gestuurd
         interaction.followup.send.assert_called()
