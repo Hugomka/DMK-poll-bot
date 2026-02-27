@@ -10,7 +10,7 @@
 ![Stars](https://img.shields.io/github/stars/Hugomka/DMK-poll-bot?style=social)
 [![Coverage](https://img.shields.io/codecov/c/github/Hugomka/DMK-poll-bot?label=Coverage)](https://codecov.io/gh/Hugomka/DMK-poll-bot)
 
-**DMK-poll-bot** is een slimme, volledig automatische Discord-bot om weekenden te plannen voor **Deaf Mario Kart (DMK)**.
+**DMK-poll-bot** is een slimme, volledig automatische Discord-bot om game-avonden te plannen voor **Deaf Mario Kart (DMK)**.
 Deze bot is speciaal gemaakt voor de DMK-community, zodat het organiseren van game-avonden soepel en eerlijk gaat.
 Je hoeft niet langer te puzzelen met reacties: de bot regelt de poll, verzamelt stemmen en communiceert duidelijk de uitkomst.
 
@@ -18,7 +18,10 @@ Je hoeft niet langer te puzzelen met reacties: de bot regelt de poll, verzamelt 
 
 ## 🔰 Introductie
 
-DMK-poll-bot helpt de **DMK club** bij het plannen van races in het weekend. Elke week start de bot een nieuwe poll voor **vrijdag**, **zaterdag** en **zondag**.
+DMK-poll-bot helpt de **DMK club** bij het plannen van races. De bot ondersteunt **twee periodes** per week:
+- **vr-zo** (weekend): opent dinsdag 20:00, sluit maandag 00:00 — polls voor vrijdag, zaterdag en zondag
+- **ma-do** (doordeweeks): opent vrijdag 20:00, sluit vrijdag 00:00 — polls voor maandag t/m donderdag
+
 Leden stemmen met knopjes, de stemmen blijven tot de deadline verborgen, en de bot beslist automatisch of er genoeg animo is.
 Ook is er ondersteuning voor **gaststemmen** en een **CSV-archief** van resultaten. Kortom: een toegankelijke, gebruiksvriendelijke poll die past bij onze Discord-community.
 
@@ -35,7 +38,7 @@ Met DMK-poll-bot gaat dit **automatisch** en **eerlijk** – iedereen kan met é
 | **🗳️ Stemmen per dag** | Voor maandag t/m zondag elk een eigen poll met opties (standaard: alleen weekend actief). |
 | **✅ Aanpasbare pollopties** | Tijden/opties via `poll_options.json` en `/dmk-poll-instelling` (standaard: 19:00, 20:30 voor vrijdag/zaterdag/zondag). |
 | **🔒 Veilige opslag** | Stemmen in `votes.json` met async lock, zodat alles stabiel en snel blijft. |
-| **⏰ Automatische scheduler** | Nieuwe week op dinsdag 20:00, dag-updates om 18:00, herinneringen om 16:00, notificaties bij "gaat door". |
+| **⏰ Automatische scheduler** | Twee periodes: vr-zo opent di 20:00 / sluit ma 00:00, ma-do opent vr 20:00 / sluit vr 00:00. Dag-updates om 18:00, herinneringen om 16:00, notificaties bij "gaat door". |
 | **📅 Poll scheduling** | Plan polls om automatisch te activeren/deactiveren op specifieke tijden (per kanaal configureerbaar). |
 | **🏁 Automatische beslissing** | Op de dag zelf na de deadline: ≥6 stemmen nodig; bij gelijkstand wint **20:30**. |
 | **📢 Slimme notificaties** | Herinneringen voor niet-stemmers (16:00), vroege herinnering donderdag (20:00), Misschien-bevestiging (17:00), en mentions bij doorgaan-berichten. |
@@ -459,8 +462,10 @@ De bot gebruikt APScheduler voor automatische taken:
 
 | Tijdstip | Dag | Taak | Beschrijving |
 |---|---|---|---|
-| **00:00** | Maandag | Tenor GIF sync | Sync tenor-links.template.json naar tenor-links.json (alleen bij wijzigingen) |
-| **20:00** | Dinsdag | Reset polls | Stemmen leeg maken, archiveren, algemene resetmelding sturen |
+| **00:00** | Maandag | Tenor GIF sync + vr-zo sluiting | Sync GIFs; archiveer weekend poll (vr-zo) als er stemmen zijn; reset stemmen |
+| **20:00** | Dinsdag | vr-zo opening | Nieuwe weekend poll starten (vrijdag t/m zondag) |
+| **00:00** | Vrijdag | ma-do sluiting | Archiveer weekday poll (ma-do) als er stemmen zijn; reset stemmen |
+| **20:00** | Vrijdag | ma-do opening | Nieuwe weekday poll starten (maandag t/m donderdag) |
 | **16:00** | Geconfigureerde dagen* | Herinnering niet-stemmers & misschien | Mention sturen naar leden die nog niet gestemd hebben én misschien-stemmers voor die dag (tijdelijk, 5 sec) |
 | **18:00** | Dagelijks | Poll-update | Aantallen tonen, beslissingsregel toevoegen onder de poll |
 | **18:00** | Geconfigureerde dagen* | Misschien-conversie | Resterende "misschien"-stemmen omzetten naar "niet meedoen" |
@@ -579,11 +584,19 @@ De bot heeft een unified settings systeem toegankelijk via `/dmk-poll-instelling
 ### Poll-opties
 
 Toggle welke dag/tijd combinaties zichtbaar zijn in de poll:
+
+**Weekend (vr-zo):**
 - **Vrijdag** 19:00 / 20:30 (🔴🟠)
 - **Zaterdag** 19:00 / 20:30 (🟡⚪)
 - **Zondag** 19:00 / 20:30 (🟢🔵)
 
-**Gebruik:** Handig om bepaalde dagen/tijden tijdelijk uit te schakelen zonder de hele poll te verwijderen. Bijvoorbeeld: alleen vrijdag beschikbaar maken, of alleen 19:00 tijden tonen.
+**Doordeweeks (ma-do):**
+- **Maandag** 19:00 / 20:30 (🟥🟧)
+- **Dinsdag** 19:00 / 20:30 (🟨⬜)
+- **Woensdag** 19:00 / 20:30 (🟩🟦)
+- **Donderdag** 19:00 / 20:30 (🟪🟫)
+
+**Gebruik:** Handig om bepaalde dagen/tijden tijdelijk uit te schakelen zonder de hele poll te verwijderen. Elke periode (vr-zo / ma-do) kan onafhankelijk in- of uitgeschakeld worden.
 
 **Interactieve UI:** Groene knoppen (✅ actief) en grijze knoppen (⚪ uitgeschakeld). Klik om te togglen.
 
@@ -732,6 +745,42 @@ cat .scheduler_state.json
 ---
 
 ## 🎉 Recente verbeteringen
+
+### v2.5 - Twee-periodes systeem (2026-02)
+
+**Volledig twee-periodes systeem:**
+- **vr-zo periode**: opent dinsdag 20:00, sluit maandag 00:00 — polls voor vrijdag, zaterdag, zondag
+- **ma-do periode**: opent vrijdag 20:00, sluit vrijdag 00:00 — polls voor maandag t/m donderdag
+- Beide periodes volledig onafhankelijk in- en uitschakelbaar per kanaal via periode-instellingen
+- Stemknoppen tonen alleen dagen van momenteel **open** periodes (geen toekomstige/gesloten dagen)
+
+**Periode-bewuste scheduler:**
+- Open/sluit automatisch per periode op de juiste dag en tijd
+- Archiveer vr-zo → weekend CSV, ma-do → weekday CSV (alleen als er echte stemmen zijn)
+- Archivering gebeurt altijd **vóór** reset (votes zijn dan nog aanwezig)
+- Reset stemmen één keer per cyclus (gedeeld tussen periodes)
+
+**Twee aparte archieven:**
+- `_weekend.csv` voor vr-zo periode
+- `_weekdays.csv` voor ma-do periode
+- Geen lege rijen — alleen archiveren als er echte stemmen zijn
+
+**Status commando verbeterd:**
+- `/dmk-poll-status` toont beide periodes met 🟢 open / 🔴 gesloten indicator, plus open/sluit dag en tijd
+
+**Bestanden aangepast:**
+- `apps/utils/poll_settings.py` — `is_period_currently_open()`, `get_enabled_period_days()`, `get_period_settings()`, `set_period_settings()`, migratiefuncties
+- `apps/utils/archive.py` — `period=` parameter, `_has_votes()`, dual CSV routing
+- `apps/scheduler.py` — periode-bewuste open/sluit/archief/reminder logica
+- `apps/commands/poll_status.py` — beide periodes weergegeven
+- `apps/commands/poll_votes.py` — visibility command periode-bewust
+- `apps/ui/poll_options_settings.py` — dynamische dag-loops (alle 7 dagen)
+- `apps/ui/poll_buttons.py` — `datum` parameter voor cross-periode stemknoppen
+- `apps/logic/visibility.py` — `is_vote_button_visible()` met datum-parameter
+
+**Test resultaten:** ✅ 1096 tests passing
+
+---
 
 ### v2.4 - Dual Language & Category Polls (2026-01)
 

@@ -10,7 +10,7 @@
 ![Stars](https://img.shields.io/github/stars/Hugomka/DMK-poll-bot?style=social)
 [![Coverage](https://img.shields.io/codecov/c/github/Hugomka/DMK-poll-bot?label=Coverage)](https://codecov.io/gh/Hugomka/DMK-poll-bot)
 
-**DMK-poll-bot** is a smart, fully automatic Discord bot for planning weekends for **Deaf Mario Kart (DMK)**.
+**DMK-poll-bot** is a smart, fully automatic Discord bot for planning game nights for **Deaf Mario Kart (DMK)**.
 This bot was specially made for the DMK community, making organizing game nights smooth and fair.
 No more puzzling with reactions: the bot handles the poll, collects votes, and clearly communicates the outcome.
 
@@ -18,7 +18,10 @@ No more puzzling with reactions: the bot handles the poll, collects votes, and c
 
 ## 🔰 Introduction
 
-DMK-poll-bot helps the **DMK club** plan races on weekends. Every week the bot starts a new poll for **Friday**, **Saturday**, and **Sunday**.
+DMK-poll-bot helps the **DMK club** plan races. The bot supports **two periods** per week:
+- **fri-sun** (weekend): opens Tuesday 8:00 PM, closes Monday 12:00 AM — polls for Friday, Saturday, and Sunday
+- **mon-thu** (weekdays): opens Friday 8:00 PM, closes Friday 12:00 AM — polls for Monday through Thursday
+
 Members vote with buttons, votes remain hidden until the deadline, and the bot automatically decides if there's enough interest.
 There's also support for **guest votes** and a **CSV archive** of results. In short: an accessible, user-friendly poll that fits our Discord community.
 
@@ -507,11 +510,18 @@ The bot has a unified settings system accessible via `/dmk-poll-instelling` with
 ### Poll Options
 
 Toggle which day/time combinations are visible in the poll:
+**Weekend (fri-sun):**
 - **Friday** 7:00 PM / 8:30 PM (🔴🟠)
 - **Saturday** 7:00 PM / 8:30 PM (🟡⚪)
 - **Sunday** 7:00 PM / 8:30 PM (🟢🔵)
 
-**Use:** Handy for temporarily disabling certain days/times without removing the entire poll. For example: make only Friday available, or show only 7:00 PM times.
+**Weekdays (mon-thu):**
+- **Monday** 7:00 PM / 8:30 PM (🟥🟧)
+- **Tuesday** 7:00 PM / 8:30 PM (🟨⬜)
+- **Wednesday** 7:00 PM / 8:30 PM (🟩🟦)
+- **Thursday** 7:00 PM / 8:30 PM (🟪🟫)
+
+**Use:** Handy for temporarily disabling certain days/times without removing the entire poll. Each period (fri-sun / mon-thu) can be enabled or disabled independently.
 
 **Interactive UI:** Green buttons (✅ active) and gray buttons (⚪ disabled). Click to toggle.
 
@@ -627,6 +637,32 @@ cat .scheduler_state.json
 ---
 
 ## 🎉 Recent Improvements
+
+### v2.5 - Two-Period System (2026-02)
+
+**Full two-period system:**
+- **fri-sun period**: opens Tuesday 8:00 PM, closes Monday 12:00 AM — polls for Friday, Saturday, Sunday
+- **mon-thu period**: opens Friday 8:00 PM, closes Friday 12:00 AM — polls for Monday through Thursday
+- Both periods fully independent, enable/disable per channel via period settings
+- Vote buttons only show days from currently **open** periods (no future/closed days)
+
+**Period-aware scheduler:**
+- Opens/closes automatically per period at the correct day and time
+- Archives fri-sun → weekend CSV, mon-thu → weekday CSV (only if real votes exist)
+- Archiving always happens **before** reset (votes are still present)
+- Resets votes once per cycle (shared between periods)
+
+**Two separate archives:**
+- `_weekend.csv` for fri-sun period
+- `_weekdays.csv` for mon-thu period
+- No empty rows — only archives when real votes exist
+
+**Status command improved:**
+- `/dmk-poll-status` shows both periods with 🟢 open / 🔴 closed indicator, plus open/close day and time
+
+**Test results:** ✅ 1096 tests passing
+
+---
 
 ### v2.4 - Dual Language & Category Polls (2026-01)
 
