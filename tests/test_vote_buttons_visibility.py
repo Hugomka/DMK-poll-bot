@@ -15,9 +15,9 @@ class TestStemknopZichtbaarheid(BaseTestCase):
         self.channel_id = 123456
         self.dag = "vrijdag"
 
-    # 🎯 Voorbeeld: vrijdag 18:00, stemmen voor 20:30 mag nog
+    # 🎯 Voorbeeld: vrijdag 17:59 (vóór deadline 18:00), stemmen voor 20:30 mag nog
     def test_knop_is_zichtbaar_voor_deadline(self):
-        now = datetime(2025, 8, 22, 18, 0, tzinfo=ZoneInfo("Europe/Amsterdam"))
+        now = datetime(2025, 8, 22, 17, 59, tzinfo=ZoneInfo("Europe/Amsterdam"))
         zichtbaar = is_vote_button_visible(
             self.channel_id, self.dag, "om 20:30 uur", now
         )
@@ -54,8 +54,9 @@ class TestStemknopZichtbaarheid(BaseTestCase):
         )
         self.assertFalse(zichtbaar2)
 
-    # ✅ Specials zijn zichtbaar zolang dag nog bezig is (voor sluiting)
+    # ✅ Specials zijn zichtbaar zolang dag nog bezig is (modus 'altijd' → geen deadline-blokkering)
     def test_specials_zichtbaar_voor_deadline(self):
+        set_visibility(self.channel_id, "zondag", modus="altijd")
         now = datetime(
             2025, 8, 17, 18, 55, tzinfo=ZoneInfo("Europe/Amsterdam")
         )  # Zondag
@@ -67,8 +68,9 @@ class TestStemknopZichtbaarheid(BaseTestCase):
         )
         self.assertTrue(zichtbaar2)
 
-    # ✅ Na 19:00 mag je nog stemmen voor 20:30 → specials ook nog zichtbaar
+    # ✅ Na 19:00 mag je nog stemmen voor 20:30 → specials ook nog zichtbaar (modus 'altijd')
     def test_specials_zichtbaar_na_1900_maar_voor_2030(self):
+        set_visibility(self.channel_id, "zondag", modus="altijd")
         now = datetime(2025, 8, 17, 19, 1, tzinfo=ZoneInfo("Europe/Amsterdam"))
         zichtbaar1 = is_vote_button_visible(self.channel_id, "zondag", "misschien", now)
         zichtbaar2 = is_vote_button_visible(

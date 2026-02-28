@@ -5,10 +5,7 @@ from datetime import date, datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from apps.logic.visibility import (
-    _has_explicit_setting,
-    is_vote_button_visible,
-)
+from apps.logic.visibility import is_vote_button_visible
 from apps.utils.poll_settings import set_visibility
 from tests.base import BaseTestCase
 
@@ -53,10 +50,24 @@ class TestVisibilityButtons(BaseTestCase):
             is_vote_button_visible(self.channel_id, self.zaterdag, "om 19:00 uur", now)
         )
 
-    # ---- Dezelfde dag, normale tijden ----
+    # ---- Standaard deadline-blokkering (de bug-fix) ----
+
+    async def test_default_deadline_blocks_voting_at_1800(self):
+        # Zonder expliciete instelling geldt standaard deadline 18:00 → na 18:00 geblokkeerd
+        at_1759 = datetime(2025, 8, 15, 17, 59, tzinfo=AMS)
+        at_1800 = datetime(2025, 8, 15, 18, 0, tzinfo=AMS)
+        self.assertTrue(
+            is_vote_button_visible(self.channel_id, self.vrijdag, "om 19:00 uur", at_1759)
+        )
+        self.assertFalse(
+            is_vote_button_visible(self.channel_id, self.vrijdag, "om 19:00 uur", at_1800)
+        )
+
+    # ---- Dezelfde dag, normale tijden (modus 'altijd' om deadline-blokkering te omzeilen) ----
 
     async def test_same_day_1900_before_and_after(self):
-        # Vrijdag: 18:59 -> zichtbaar; 19:00 -> uit
+        # In 'altijd' modus: knop sluit op eigen tijdslot (19:00), niet op deadline
+        set_visibility(self.channel_id, self.vrijdag, modus="altijd")
         before = datetime(2025, 8, 15, 18, 59, tzinfo=AMS)
         after = datetime(2025, 8, 15, 19, 0, tzinfo=AMS)
         self.assertTrue(
@@ -69,7 +80,8 @@ class TestVisibilityButtons(BaseTestCase):
         )
 
     async def test_same_day_2030_before_and_after(self):
-        # Vrijdag: 20:29 -> zichtbaar; 20:30 -> uit
+        # In 'altijd' modus: knop sluit op eigen tijdslot (20:30), niet op deadline
+        set_visibility(self.channel_id, self.vrijdag, modus="altijd")
         before = datetime(2025, 8, 15, 20, 29, tzinfo=AMS)
         after = datetime(2025, 8, 15, 20, 30, tzinfo=AMS)
         self.assertTrue(
@@ -84,6 +96,8 @@ class TestVisibilityButtons(BaseTestCase):
     # ---- Specials ("misschien" en "niet meedoen") ----
 
     async def test_specials_visible_until_next_slot_then_off(self):
+        # In 'altijd' modus: specials volgen tijdslot-logica, niet de deadline
+        set_visibility(self.channel_id, self.vrijdag, modus="altijd")
         # Met standaard opties bestaat 20:30, dus na 19:00 maar vóór 20:30 nog zichtbaar
         at_1910 = datetime(2025, 8, 15, 19, 10, tzinfo=AMS)
         self.assertTrue(
@@ -146,50 +160,14 @@ class TestVisibilityButtons(BaseTestCase):
             )
         )
 
-    # ---- _has_explicit_setting coverage ----
-
-    async def test_has_explicit_setting_true_and_false(self):
-        # False zonder opgeslagen instelling (BaseTestCase already uses temp file)
-        self.assertFalse(_has_explicit_setting(self.channel_id, self.vrijdag))
-
-        # True na set_visibility
-        set_visibility(self.channel_id, self.vrijdag, modus="deadline", tijd="18:00")
-        self.assertTrue(_has_explicit_setting(self.channel_id, self.vrijdag))
-
-    async def test_has_explicit_setting_when_loader_is_none(self):
-        # Patch loader naar None → functie moet False retourneren
-        import apps.logic.visibility as vis
-
-        original = getattr(vis, "_load_settings_data", None)
-        try:
-            setattr(vis, "_load_settings_data", None)
-            self.assertFalse(_has_explicit_setting(self.channel_id, self.vrijdag))
-        finally:
-            setattr(vis, "_load_settings_data", original)
-
-    async def test_has_explicit_setting_when_loader_raises_exception(self):
-        # Forceer exception in _load_settings_data → except-pad (return False)
-        import apps.logic.visibility as vis
-
-        def boom():
-            raise RuntimeError("boom")
-
-        original = getattr(vis, "_load_settings_data", None)
-        try:
-            setattr(vis, "_load_settings_data", boom)
-            self.assertFalse(_has_explicit_setting(self.channel_id, self.vrijdag))
-        finally:
-            setattr(vis, "_load_settings_data", original)
-
     # ---- Exceptietakken binnen is_vote_button_visible ----
 
     async def test_is_visible_handles_get_setting_exception(self):
-        # Zorg dat er een expliciete setting is, zodat we in de try/except komen
-        set_visibility(self.channel_id, self.vrijdag, modus="deadline", tijd="18:00")
+        # Als get_setting een exception gooit, valt hij terug op {} → deadline-check met default 18:00
+        # Bij 17:00 is 17:00 < 18:00 → niet geblokkeerd → tijdslot-logica bepaalt resultaat
         with patch(
             "apps.logic.visibility.get_setting", side_effect=RuntimeError("fail")
         ):
-            # Voor 20:30 en zonder bruikbaar setting-object valt hij terug op {} en gaat door op tijdslot-logica
             now = datetime(2025, 8, 15, 17, 0, tzinfo=AMS)
             self.assertTrue(
                 is_vote_button_visible(
@@ -198,10 +176,11 @@ class TestVisibilityButtons(BaseTestCase):
             )
 
     async def test_is_visible_handles_get_poll_options_exception(self):
+        # In 'altijd' modus wordt de deadline omzeild; exception in get_poll_options → tijden = [] → False
+        set_visibility(self.channel_id, self.vrijdag, modus="altijd")
         with patch(
             "apps.logic.visibility.get_poll_options", side_effect=RuntimeError("kapot")
         ):
-            # Specials met exception → tijden = [] → False
             now = datetime(2025, 8, 15, 19, 10, tzinfo=AMS)
             self.assertFalse(
                 is_vote_button_visible(self.channel_id, self.vrijdag, "misschien", now)
@@ -242,20 +221,20 @@ class TestVisibilityButtons(BaseTestCase):
         )
 
     async def test_datum_today_falls_through_to_time_logic(self):
-        """Datum == vandaag moet doorvallen naar de zelfde-dag tijdlogica."""
-        # Vrijdag 15 aug, 18:59 → 19:00-knop nog zichtbaar
-        now_before = datetime(2025, 8, 15, 18, 59, tzinfo=AMS)
+        """Datum == vandaag valt door naar zelfde-dag logica (deadline 18:00 is standaard actief)."""
         today = date(2025, 8, 15)
+        # Vrijdag 15 aug, 17:59 → vóór deadline (18:00) → 19:00-knop zichtbaar
+        now_before = datetime(2025, 8, 15, 17, 59, tzinfo=AMS)
         self.assertTrue(
             is_vote_button_visible(
                 self.channel_id, self.vrijdag, "om 19:00 uur", now_before, datum=today
             )
         )
-        # Vrijdag 15 aug, 19:00 → 19:00-knop uit
-        now_after = datetime(2025, 8, 15, 19, 0, tzinfo=AMS)
+        # Vrijdag 15 aug, 18:00 → deadline bereikt → alle knoppen uit
+        now_deadline = datetime(2025, 8, 15, 18, 0, tzinfo=AMS)
         self.assertFalse(
             is_vote_button_visible(
-                self.channel_id, self.vrijdag, "om 19:00 uur", now_after, datum=today
+                self.channel_id, self.vrijdag, "om 19:00 uur", now_deadline, datum=today
             )
         )
 

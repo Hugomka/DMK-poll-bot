@@ -5,16 +5,6 @@ from datetime import date, datetime, time
 from apps.entities.poll_option import get_poll_options
 from apps.utils.poll_settings import get_setting
 
-# We roepen een interne helper aan om te bepalen of er een expliciete instelling is opgeslagen.
-# Het standaardgedrag verbergt de stemknoppen wanneer het aantal zichtbare dagen kleiner is dan
-# het aantal geplande poll‑dagen.
-try:
-    from apps.utils.poll_settings import (
-        _load_data as _load_settings_data,  # type: ignore
-    )
-except Exception:  # pragma: no cover
-    _load_settings_data = None  # type: ignore
-
 WEEKDAG_INDEX = {
     "maandag": 0,
     "dinsdag": 1,
@@ -32,22 +22,6 @@ TIJD_LABELS = {
 }
 
 
-def _has_explicit_setting(channel_id: int, dag: str) -> bool:
-    """
-    Geef True terug als er een expliciete invoer is opgeslagen voor dit kanaal/deze dag.
-    We willen de standaardwaarde in de code ('deadline', 18:00) NIET als expliciet beschouwen
-    voor de zichtbaarheid van
-    """
-    if _load_settings_data is None:
-        return False
-    try:
-        data = _load_settings_data() or {}
-        ch = data.get(str(channel_id), {})
-        return dag in ch
-    except Exception:
-        return False
-
-
 def is_vote_button_visible(
     channel_id: int,
     dag: str,
@@ -62,8 +36,8 @@ def is_vote_button_visible(
     - Dag in verleden: onzichtbaar
     - Dag in toekomst: zichtbaar
     - Zelfde dag:
-        * Als er voor deze dag/kanaal **expliciet** 'deadline' is ingesteld en het is >= deadline:
-          ALLE knoppen uit (admin-keuze)
+        * Modus 'deadline' (standaard of expliciet): ALLE knoppen uit na deadline-tijd (18:00)
+        * Modus 'altijd': nooit blokkeren op deadline (wel nog de tijdslot-cutoffs hieronder)
         * Normale tijden: zichtbaar tot eigen tijd (19:00 / 20:30 / 23:30)
         * Specials ('misschien', 'niet meedoen'): zichtbaar zolang er nog een komend tijdslot is
 
@@ -94,20 +68,20 @@ def is_vote_button_visible(
         elif dag_index > now_index:
             return True
 
-    # Zelfde dag → alleen deadline afdwingen als admin dit expliciet heeft gezet
-    if _has_explicit_setting(channel_id, dag):
+    # Zelfde dag → blokkeer stemmen na deadline (altijd, ook als standaardinstelling)
+    # Uitzondering: 'altijd' modus → nooit blokkeren
+    try:
+        setting = get_setting(channel_id, dag) or {}
+    except Exception:
+        setting = {}
+    if isinstance(setting, dict) and setting.get("modus") != "altijd":
+        tijd_str = str(setting.get("tijd", "18:00"))
         try:
-            setting = get_setting(channel_id, dag) or {}
+            uur, minuut = [int(x) for x in tijd_str.split(":", 1)]
         except Exception:
-            setting = {}
-        if isinstance(setting, dict) and setting.get("modus") == "deadline":
-            tijd_str = str(setting.get("tijd", "18:00"))
-            try:
-                uur, minuut = [int(x) for x in tijd_str.split(":", 1)]
-            except Exception:
-                uur, minuut = 18, 0
-            if now.time() >= time(uur, minuut):
-                return False
+            uur, minuut = 18, 0
+        if now.time() >= time(uur, minuut):
+            return False
 
     # Daarna de specifieke knoplogica voor vandaag
     if tijd in TIJD_LABELS:
