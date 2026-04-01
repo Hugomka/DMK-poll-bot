@@ -22,7 +22,6 @@ from apps.utils.mention_utils import (
 from apps.utils.message_builder import build_doorgaan_participant_list
 from apps.utils.poll_message import (
     clear_message_id,
-
     get_message_id,
     is_channel_disabled,
     save_message_id,
@@ -95,7 +94,12 @@ def _load_poll_config() -> None:
         return
     # overschrijf waarden als ze bestaan in het JSON-bestand
     REMINDER_HOUR = int(data.get("reminder_hour", REMINDER_HOUR))
-    WEEKEND_REMINDER_HOUR = int(data.get("weekend_reminder_hour", data.get("early_reminder_hour", WEEKEND_REMINDER_HOUR)))
+    WEEKEND_REMINDER_HOUR = int(
+        data.get(
+            "weekend_reminder_hour",
+            data.get("early_reminder_hour", WEEKEND_REMINDER_HOUR),
+        )
+    )
     RESET_DAY_OF_WEEK = int(data.get("reset_day_of_week", RESET_DAY_OF_WEEK))
     RESET_HOUR = int(data.get("reset_hour", RESET_HOUR))
     MIN_NOTIFY_VOTES = int(data.get("min_notify_votes", MIN_NOTIFY_VOTES))
@@ -104,7 +108,9 @@ def _load_poll_config() -> None:
         REMINDER_DAYS.update(
             {str(dag): int(idx) for dag, idx in data["reminder_days"].items()}
         )
-    WEEKEND_REMINDER_DAY = data.get("weekend_reminder_day", data.get("early_reminder_day", WEEKEND_REMINDER_DAY))
+    WEEKEND_REMINDER_DAY = data.get(
+        "weekend_reminder_day", data.get("early_reminder_day", WEEKEND_REMINDER_DAY)
+    )
 
 
 def _weekly_reset_threshold(now: datetime) -> datetime:
@@ -763,13 +769,16 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(hour=18, minute=0),
         args=[bot],
         name="Dagelijkse pollupdate om 18:00",
+        misfire_grace_time=60,
     )
     # Wekelijkse reset (dinsdag 20:00)
+    # misfire_grace_time=60: voorkomt dat de job gemist wordt als de scheduler kort geblokkeerd was
     scheduler.add_job(
         reset_polls,
         CronTrigger(day_of_week="tue", hour=RESET_HOUR, minute=0),
         args=[bot],
         name="Wekelijkse reset dinsdag 20:00",
+        misfire_grace_time=60,
     )
     # Wekelijkse tenor GIF sync (maandag 00:00)
     scheduler.add_job(
@@ -777,6 +786,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(day_of_week="mon", hour=0, minute=0),
         args=[bot],
         name="Wekelijkse tenor sync maandag 00:00",
+        misfire_grace_time=60,
     )
     # Herinneringen, notificaties en misschien-conversie per geconfigureerde dag
     for dag in REMINDER_DAYS:
@@ -786,6 +796,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
             CronTrigger(day_of_week=cron_day, hour=REMINDER_HOUR, minute=0),
             args=[bot, dag],
             name=f"Herinnering {dag}",
+            misfire_grace_time=60,
         )
         # Notificatie als een avond doorgaat (18:05 om race-condities te voorkomen)
         scheduler.add_job(
@@ -793,6 +804,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
             CronTrigger(day_of_week=cron_day, hour=18, minute=5),
             args=[bot, dag],
             name=f"Notificatie {dag}",
+            misfire_grace_time=60,
         )
         # Convert remaining Misschien votes to ❌ at 18:00
         scheduler.add_job(
@@ -800,6 +812,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
             CronTrigger(day_of_week=cron_day, hour=18, minute=0),
             args=[bot, dag],
             name=f"Convert Misschien {dag}",
+            misfire_grace_time=60,
         )
     # Vroege herinnering (standaard donderdag)
     early_cron_day = DAG_TO_CRON[WEEKEND_REMINDER_DAY]
@@ -808,13 +821,16 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(day_of_week=early_cron_day, hour=WEEKEND_REMINDER_HOUR, minute=0),
         args=[bot],
         name=f"Herinnering {WEEKEND_REMINDER_DAY}",
+        misfire_grace_time=60,
     )
     # Scheduled poll activation check (every minute)
+    # misfire_grace_time=30: deactivate_scheduled_polls duurt ~2s en blokkeert anders deze job
     scheduler.add_job(
         activate_scheduled_polls,
         CronTrigger(minute="*"),
         args=[bot],
         name="Scheduled poll activation check",
+        misfire_grace_time=30,
     )
     # Scheduled poll deactivation check (every minute)
     scheduler.add_job(
@@ -822,6 +838,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(minute="*"),
         args=[bot],
         name="Scheduled poll deactivation check",
+        misfire_grace_time=30,
     )
     # Retry failed operations (conversions + resets, every minute)
     scheduler.add_job(
@@ -829,6 +846,7 @@ def setup_scheduler(bot) -> None:  # pragma: no cover
         CronTrigger(minute="*"),
         args=[bot],
         name="Retry failed operations",
+        misfire_grace_time=30,
     )
     scheduler.start()
     asyncio.create_task(_run_catch_up_with_lock(bot))
@@ -1119,7 +1137,11 @@ async def notify_non_or_maybe_voters(  # pragma: no cover
                     # Extract just the instruction part (after the header line)
                     # "📣 DMK-poll – **{dag}**\n{count_text}Als je nog niet gestemd hebt..."
                     # We want: "Als je nog niet gestemd hebt voor **{dag}**, doe dat dan a.u.b. zo snel mogelijk."
-                    instruction = non_voter_text.split("\n", 1)[-1] if "\n" in non_voter_text else non_voter_text
+                    instruction = (
+                        non_voter_text.split("\n", 1)[-1]
+                        if "\n" in non_voter_text
+                        else non_voter_text
+                    )
                 else:
                     instruction = t(
                         cid_int,
@@ -1145,7 +1167,9 @@ async def notify_non_or_maybe_voters(  # pragma: no cover
             if maybe_mentions and dag:
                 try:
                     if len(scope_ids) > 1:
-                        calculated_time = await calculate_leading_time_scoped(gid, scope_ids, dag)
+                        calculated_time = await calculate_leading_time_scoped(
+                            gid, scope_ids, dag
+                        )
                     else:
                         calculated_time = await calculate_leading_time(gid, cid, dag)
                     if calculated_time:
@@ -2048,7 +2072,9 @@ async def activate_scheduled_polls(bot) -> None:  # pragma: no cover
                     if _within_reset_window(now):
                         try:
                             act_state = _read_state()
-                            activated = act_state.get("activated_channels_this_reset", {})
+                            activated = act_state.get(
+                                "activated_channels_this_reset", {}
+                            )
                             activated[str(cid)] = now.isoformat()
                             act_state["activated_channels_this_reset"] = activated
                             _write_state(act_state)
