@@ -27,6 +27,7 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
                     "trigger": trigger,
                     "args": args,
                     "name": name,
+                    "misfire_grace_time": kwargs.get("misfire_grace_time"),
                 }
             )
 
@@ -116,6 +117,53 @@ class SchedulerSetupTestCase(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertEqual(len(activation_jobs), 1)
         self.assertEqual(activation_jobs[0]["args"], [bot])
+
+        # Controleer misfire_grace_time voor minuut-jobs (30s)
+        minute_job_funcs = [
+            scheduler.activate_scheduled_polls,
+            scheduler.deactivate_scheduled_polls,
+            scheduler.retry_failed_operations,
+        ]
+        for func in minute_job_funcs:
+            jobs = [j for j in added_jobs if j["func"] == func]
+            self.assertEqual(len(jobs), 1, f"Geen job gevonden voor {func.__name__}")
+            self.assertEqual(
+                jobs[0]["misfire_grace_time"],
+                30,
+                f"{func.__name__} moet misfire_grace_time=30 hebben",
+            )
+
+        # Controleer misfire_grace_time voor uur/dag-jobs (60s)
+        hourly_job_funcs = [
+            scheduler.update_all_polls,
+            scheduler.reset_polls,
+            scheduler.sync_tenor_links_weekly,
+            scheduler.notify_non_voters_thursday,
+        ]
+        for func in hourly_job_funcs:
+            jobs = [j for j in added_jobs if j["func"] == func]
+            self.assertGreater(len(jobs), 0, f"Geen job gevonden voor {func.__name__}")
+            for job in jobs:
+                self.assertEqual(
+                    job["misfire_grace_time"],
+                    60,
+                    f"{func.__name__} moet misfire_grace_time=60 hebben",
+                )
+
+        # Per-dag jobs ook 60s
+        per_dag_funcs = [
+            scheduler.notify_non_or_maybe_voters,
+            scheduler.notify_voters_if_avond_gaat_door,
+            scheduler.convert_remaining_misschien,
+        ]
+        for func in per_dag_funcs:
+            jobs = [j for j in added_jobs if j["func"] == func]
+            for job in jobs:
+                self.assertEqual(
+                    job["misfire_grace_time"],
+                    60,
+                    f"{func.__name__} moet misfire_grace_time=60 hebben",
+                )
 
         # Assert: scheduler.start is aangeroepen
         mock_start.assert_called_once()
